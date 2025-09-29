@@ -1241,8 +1241,8 @@ fn enhanced_enum_features() {
     // #[default] 属性允许为枚举的某个变体标记为默认值
     // 这在使用 `..` 模式或 `Default` trait 时特别有用
 
-    #[derive(Debug, PartialEq)]
-    #[repr(u8)]  // 确保底层类型一致，便于默认值处理
+    #[derive(Debug, PartialEq, Default, Copy, Clone)]
+    #[repr(u16)]  // 确保底层类型一致，便于默认值处理
     enum HttpStatus {
         #[default]  // 标记为默认变体
         Ok = 200,
@@ -1315,7 +1315,7 @@ fn enhanced_enum_features() {
     println!("默认 API 响应：{:?}", default_response);
 
     // 4. 配置管理中的默认值应用
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, PartialEq, Default)]
     enum LogLevel {
         #[default]  // 默认日志级别
         Info,
@@ -1344,7 +1344,7 @@ fn enhanced_enum_features() {
     println!("默认配置：{:?}", config);
 
     // 5. 状态机中的默认状态
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, PartialEq, Default)]
     enum ConnectionState {
         #[default]  // 默认状态
         Disconnected,
@@ -1369,11 +1369,11 @@ fn enhanced_enum_features() {
         }
     }
 
-    let mut manager = NetworkManager::default();
+    let manager = NetworkManager::default();
     println!("网络管理器初始状态：{:?}", manager);
 
     // 6. 在 API 版本管理中的应用
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, PartialEq, Default)]
     enum ApiVersion {
         #[default]  // 默认使用最新版本
         V2,
@@ -1632,8 +1632,8 @@ mod tests {
 
     #[test]
     fn test_rust_162_default_attribute() {
-        #[derive(Debug, PartialEq)]
-        #[repr(u8)]
+        #[derive(Debug, PartialEq, Default)]
+        #[repr(u16)]
         enum HttpStatus {
             #[default]
             Ok = 200,
@@ -1662,7 +1662,7 @@ mod tests {
 
     #[test]
     fn test_default_enum_in_structs() {
-        #[derive(Debug, PartialEq)]
+        #[derive(Debug, PartialEq, Default)]
         enum LogLevel {
             #[default]
             Info,
@@ -1693,7 +1693,7 @@ mod tests {
 
     #[test]
     fn test_state_machine_with_default() {
-        #[derive(Debug, PartialEq)]
+        #[derive(Debug, PartialEq, Default)]
         enum ConnectionState {
             #[default]
             Disconnected,

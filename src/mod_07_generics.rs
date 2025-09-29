@@ -177,8 +177,8 @@ fn generic_enums() {
 
     // 标准库中的泛型枚举：Result<T, E>
     // Result<T, E> 表示操作可能成功或失败的情况
-    let success: Result<i32, String> = Ok(200);
-    let error: Result<i32, String> = Err("Something went wrong".to_string());
+    let success: std::result::Result<i32, String> = Ok(200);
+    let error: std::result::Result<i32, String> = Err("Something went wrong".to_string());
 
     println!("Result 示例: {:?} {:?}", success, error);
 
@@ -686,7 +686,7 @@ fn advanced_generic_patterns() {
         value: T,
     }
 
-    impl<T> Container for NumberContainer<T> {
+    impl<T: Clone> Container for NumberContainer<T> {
         type Item = T;                       // 指定关联类型
 
         fn get(&self) -> Self::Item {
@@ -705,6 +705,7 @@ fn advanced_generic_patterns() {
 
     // 泛型默认参数：为类型参数提供默认值
     // 这使得泛型类型更加易用
+    #[derive(Debug)]
     struct Pair<T = i32> {                   // T 默认为 i32
         first: T,
         second: T,
@@ -721,7 +722,7 @@ fn advanced_generic_patterns() {
     where
         T: Default,
     {
-        [T::default(); N]
+        std::array::from_fn(|_| T::default())
     }
 
     let array: [i32; 5] = create_array();
@@ -972,7 +973,10 @@ fn generic_example_program() {
             self.handlers.push(Box::new(handler));
         }
 
-        fn process_event(&self, event: Event<T>) {
+        fn process_event(&self, event: Event<T>)
+        where
+            T: Clone,
+        {
             for handler in &self.handlers {
                 handler.handle(event.clone());
             }
@@ -1299,7 +1303,7 @@ mod tests {
             value: T,
         }
 
-        impl<T> Container for NumberContainer<T> {
+        impl<T: Clone> Container for NumberContainer<T> {
             type Item = T;
 
             fn get(&self) -> Self::Item {
@@ -1317,7 +1321,7 @@ mod tests {
         where
             T: Default,
         {
-            [T::default(); N]
+            std::array::from_fn(|_| T::default())
         }
 
         let array: [i32; 3] = create_array();

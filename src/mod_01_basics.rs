@@ -232,7 +232,7 @@ fn print_message(message: &str) {
 
 // 无参数函数
 fn get_pi() -> f64 {
-    3.141592653589793
+    std::f64::consts::PI
 }
 
 // 函数参数的规则
@@ -318,8 +318,8 @@ fn comments_example() {
         // 这是一个有文档的函数
     }
 
-    //! 这是模块级文档注释：用于描述整个模块
-    //! 通常放在文件的开头，描述模块的用途和功能
+    // 这是模块级文档注释：用于描述整个模块
+    // 通常放在文件的开头，描述模块的用途和功能
 
     // 注释的最佳实践：
     // 1. 解释"为什么"而不是"是什么"
@@ -329,9 +329,10 @@ fn comments_example() {
     // 5. 避免显而易见的注释
 
     // 代码示例：良好的注释风格
-    let mut counter = 0; // 计数器，跟踪处理的项目数量
+    let counter = 0; // 计数器，跟踪处理的项目数量
 
     // 计算平均值，处理可能的除零错误
+    let total = 42; // 假设的总数
     let average = if counter > 0 {
         // 使用浮点数除法获得精确结果
         (total as f64) / (counter as f64)
@@ -917,7 +918,6 @@ fn practical_expect_examples() {
     }
 
     // 场景 3: 条件编译的预期警告
-    #[cfg(feature = "experimental")]
     mod experimental_features {
         #![expect(dead_code, reason = "实验性功能，按需启用")]
 

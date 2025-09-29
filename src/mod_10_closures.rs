@@ -653,7 +653,7 @@ fn closure_performance() {
     // 闭包捕获大型数据结构时，可能会影响性能
     // 理解这种影响对于编写高效代码很重要
     let mut data = vec![0; 1000];
-    let closure = |i: usize| data[i] = i;
+    let mut closure = |i: usize| data[i] = i;
 
     let start = std::time::Instant::now();
     for i in 0..1000 {
@@ -900,8 +900,6 @@ pub fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_basic_closure() {
         let add_one = |x| x + 1;

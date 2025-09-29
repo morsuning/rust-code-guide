@@ -407,7 +407,7 @@ fn struct_pattern_matching() {
     println!("=== 结构体模式匹配 ===");
 
     // 定义用于模式匹配的结构体
-    #[derive(Debug)]
+    #[derive(Debug, Copy, Clone)]
     struct Point {
         x: i32,
         y: i32,

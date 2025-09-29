@@ -419,10 +419,11 @@ fn trait_objects_and_dynamic_dispatch() {
         fn description(&self) -> String {
             format!("面积: {:.2}", self.area())
         }
+        fn clone_box(&self) -> Box<dyn Drawable>;
     }
 
     // 实现不同的图形类型
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     struct Circle {
         x: f64,
         y: f64,
@@ -443,9 +444,13 @@ fn trait_objects_and_dynamic_dispatch() {
         fn description(&self) -> String {
             format!("{}圆形，面积: {:.2}", self.color, self.area())
         }
+
+        fn clone_box(&self) -> Box<dyn Drawable> {
+            Box::new(self.clone())
+        }
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     struct Rectangle {
         x: f64,
         y: f64,
@@ -467,13 +472,23 @@ fn trait_objects_and_dynamic_dispatch() {
         fn description(&self) -> String {
             format!("{}矩形，面积: {:.2}", self.color, self.area())
         }
+
+        fn clone_box(&self) -> Box<dyn Drawable> {
+            Box::new(self.clone())
+        }
     }
 
     // 图形管理器：使用 trait 对象集合
-    #[derive(Debug)]
     struct ShapeManager {
         shapes: Vec<Box<dyn Drawable>>,
         total_area: f64,
+    }
+
+    impl std::fmt::Debug for ShapeManager {
+        fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            write!(f, "ShapeManager {{ shapes: [{} shapes], total_area: {:.2} }}",
+                   self.shapes.len(), self.total_area)
+        }
     }
 
     impl ShapeManager {
@@ -513,7 +528,7 @@ fn trait_objects_and_dynamic_dispatch() {
         // 查找最大图形
         fn find_largest(&self) -> Option<&dyn Drawable> {
             self.shapes.iter()
-                .max_by(|a, b| a.area().partial_cmp(&b.area()).unwrap())
+                .max_by(|a, b| a.area().partial_cmp(&b.area()).unwrap_or(std::cmp::Ordering::Equal))
                 .map(|boxed| boxed.as_ref())
         }
     }
@@ -581,9 +596,9 @@ fn associated_types_and_gat() {
         fn next(&mut self) -> Option<Self::Item>;
 
         // 其他方法可以使用 Item 类型
-        fn collect<B>(self) -> B
+        fn collect<B: FromIterator<Self::Item>>(self) -> B
         where
-            B: FromIterator<Self::Item>,
+            Self: Sized,
         {
             // 这是一个简化版本，实际的 collect 更复杂
             unimplemented!()
@@ -625,9 +640,15 @@ fn associated_types_and_gat() {
             self.len() == 0
         }
 
-        fn iter(&self) -> Box<dyn Iterator<Item = &Self::Item> + '_> {
-            // 返回一个迭代器，产生容器元素的引用
-            Box::new(ContainerIterator { container: self, index: 0 })
+        fn iter(&self) -> std::vec::IntoIter<&Self::Item> {
+            // 简化实现：返回向量元素的迭代器
+            let mut items = Vec::new();
+            for i in 0..self.len() {
+                if let Some(item) = self.get(i) {
+                    items.push(item);
+                }
+            }
+            items.into_iter()
         }
     }
 
@@ -661,24 +682,7 @@ fn associated_types_and_gat() {
         }
     }
 
-    // 用于容器的迭代器
-    struct ContainerIterator<'a, C: Container + ?Sized> {
-        container: &'a C,
-        index: usize,
-    }
-
-    impl<'a, C: Container + ?Sized> Iterator for ContainerIterator<'a, C> {
-        type Item = &'a C::Item;
-
-        fn next(&mut self) -> Option<Self::Item> {
-            let result = self.container.get(self.index);
-            if result.is_some() {
-                self.index += 1;
-            }
-            result
-        }
-    }
-
+    
     // 测试关联类型的使用
     let mut counter = Counter { current: 0, max: 5 };
     println!("计数器迭代:");
@@ -698,13 +702,13 @@ fn associated_types_and_gat() {
     println!("\n容器内容:");
     for i in 0..container.len() {
         if let Some(item) = container.get(i) {
-            println!("  {}: {}", i, item);
+            println!("  {}: {:?}", i, item);
         }
     }
 
     println!("\n使用迭代器遍历容器:");
     for item in container.iter() {
-        println!("  {}", item);
+        println!("  {:?}", item);
     }
 
     // 关联类型的优势：
@@ -730,12 +734,7 @@ fn associated_types_and_gat() {
 fn operator_overloading_and_default_generics() {
     println!("=== 运算符重载与默认泛型参数 ===");
 
-    // 加法运算符 trait 的简化版本
-    // 注意：Rhs = Self 是默认泛型参数，表示默认与相同类型相加
-    trait Add<Rhs = Self> {
-        type Output;
-        fn add(self, rhs: Rhs) -> Self::Output;
-    }
+    use std::ops::Add;
 
     // 二维向量类型
     #[derive(Debug, Clone, Copy, PartialEq)]
@@ -1059,6 +1058,9 @@ fn supertraits_and_trait_hierarchy() {
         }
     }
 
+    // 实现 OutlinePrint
+    impl OutlinePrint for Circle {}
+
     // 最后实现 ColoredShape
     impl ColoredShape for Circle {
         fn color(&self) -> &str {
@@ -1174,8 +1176,14 @@ fn newtype_pattern_and_type_safety() {
         }
     }
 
-    // 为 Newtype 实现运算符
-    use std::ops::{Add, Sub, Mul, Div};
+    // 为 Newtype 实现运算符和 Clone
+    use std::ops::{Add, Sub, Mul};
+
+    impl Clone for Meters {
+        fn clone(&self) -> Self {
+            Meters(self.0)
+        }
+    }
 
     impl Add for Meters {
         type Output = Self;
@@ -1239,7 +1247,7 @@ fn newtype_pattern_and_type_safety() {
     println!("Newtype 模式示例:");
     println!("距离1: {}", distance1);
     println!("距离2: {}", distance2);
-    println!("距离差: {}", calculate_distance(distance1, distance2));
+    println!("距离差: {}", calculate_distance(distance1.clone(), distance2));
 
     let centimeters = distance1.to_centimeters();
     println!("转换为厘米: {}", centimeters);

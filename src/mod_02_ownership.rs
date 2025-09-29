@@ -481,8 +481,10 @@ fn practical_examples() {
 
     // 示例 5：生命周期实践
     fn get_longest_prefix<'a>(prefixes: &'a [&str], word: &'a str) -> Option<&'a str> {
-        prefixes.iter()
-            .filter(|&&prefix| word.starts_with(prefix))
+        prefixes
+            .iter()
+            .copied() // <- 把 &&str 变成 &str
+            .filter(|prefix| word.starts_with(prefix))
             .max_by_key(|prefix| prefix.len())
     }
 

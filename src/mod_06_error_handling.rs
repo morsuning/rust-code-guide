@@ -115,7 +115,7 @@ fn result_type_basics() {
     println!("unwrap_or_else 结果: {}", value);
 
     // map()：对 Ok 值进行转换，保持 Err 不变
-    let doubled = divide(10.0, 2.0).map(|x| x * 2);
+    let doubled = divide(10.0, 2.0).map(|x| x * 2.0);
     println!("map 转换: {:?}", doubled);
 
     // and_then()：链式操作，类似于 flatMap
@@ -470,7 +470,7 @@ fn error_handling_patterns() {
 
     // 测试各种模式
     println!("测试输入验证:");
-    for input in vec!["", "valid", "a".repeat(101)] {
+    for input in vec!["", "valid", &"a".repeat(101)] {
         match validate_input(input) {
             Ok(()) => println!("'{}' 验证通过", input),
             Err(e) => println!("'{}' 验证失败: {}", input, e),
@@ -819,7 +819,7 @@ fn error_handling_example_program() {
     fn calculate_statistics(numbers: &[i32]) -> (f64, f64, i32) {
         let sum: i32 = numbers.iter().sum();
         let avg = sum as f64 / numbers.len() as f64;
-        let max = numbers.iter().max().copied().unwrap_or(0);
+        let max = numbers.iter().max().copied().unwrap_or(0) as f64;
         (avg, max, sum)
     }
 
@@ -1016,12 +1016,12 @@ fn enhanced_error_trait() {
             self.source.as_ref().map(|s| s.as_ref() as &(dyn Error + 'static))
         }
 
-        // 提供更多的错误详情（Rust 1.76+ 改进）
-        fn provide<'a>(&'a self, request: &mut error::Request<'a>) {
-            // 在实际应用中，这里可以提供更多的上下文信息
-            request.provide_value("query", &self.query);
-            request.provide_value("error_type", "database");
-        }
+        // 提供更多的错误详情（需要 nightly 编译器和 unstable 特性）
+        // fn provide<'a>(&'a self, request: &mut std::error::Request<'a>) {
+        // 在实际应用中，这里可以提供更多的上下文信息
+        //     request.provide_value("query", &self.query);
+        //     request.provide_value("error_type", "database");
+        // }
     }
 
     // 2. 错误链和上下文（Rust 1.76+ 改进）
@@ -1041,27 +1041,27 @@ fn enhanced_error_trait() {
     }
 
     impl Error for NetworkError {
-        fn provide<'a>(&'a self, request: &mut error::Request<'a>) {
-            request.provide_value("url", &self.url);
-            if let Some(code) = self.status_code {
-                request.provide_value("status_code", code);
-            }
-            request.provide_value("error_type", "network");
-        }
+        // fn provide<'a>(&'a self, request: &mut std::error::Request<'a>) {
+        // error_generic_member_access 是实验性特性，暂时注释
+        //     request.provide_value("url", &self.url);
+        //     if let Some(code) = self.status_code {
+        //         request.provide_value("status_code", code);
+        //     }
+        //     request.provide_value("error_type", "network");
+        // }
     }
 
     // 创建嵌套的错误链
     fn fetch_user_data(user_id: u32) -> Result<String, DatabaseError> {
         // 模拟数据库查询失败
         if user_id == 999 {
-            Err(DatabaseError::new("用户不存在",
-                format!("SELECT * FROM users WHERE id = {}", user_id))
-                .with_source(NetworkError {
-                    message: "连接超时".to_string(),
-                    url: "tcp://database:5432".to_string(),
-                    status_code: None,
-                })
-            )
+            let query = format!("SELECT * FROM users WHERE id = {}", user_id);
+            let network_error = NetworkError {
+                message: "连接超时".to_string(),
+                url: "tcp://database:5432".to_string(),
+                status_code: None,
+            };
+            Err(DatabaseError::new("用户不存在", &query).with_source(network_error))
         } else {
             Ok(format!("用户数据: {}", user_id))
         }
@@ -1078,14 +1078,21 @@ fn enhanced_error_trait() {
                 println!("  源错误: {}", source);
             }
 
-            // 使用增强的错误信息（Rust 1.76+）
+            // 使用增强的错误信息（需要 nightly 编译器和 unstable 特性）
+            // 注意：std::error::request_value 是不稳定的特性，需要以下配置：
+            // 在 Cargo.toml 中添加：
+            // ```toml
+            // [unstable]
+            // error_generic_member_access = true
+            // ```
+            // 或者在代码顶部添加 #![feature(error_generic_member_access)]
             println!("  错误详情:");
-            if let Some(query) = error::request_value::<String>(&e, "query") {
-                println!("    查询: {}", query);
-            }
-            if let Some(error_type) = error::request_value::<&str>(&e, "error_type") {
-                println!("    错误类型: {}", error_type);
-            }
+            // if let Some(query) = std::error::request_value::<String>(&e, "query") {
+            //     println!("    查询: {}", query);
+            // }
+            // if let Some(error_type) = std::error::request_value::<&str>(&e, "error_type") {
+            //     println!("    错误类型: {}", error_type);
+            // }
         }
     }
 
@@ -1120,14 +1127,15 @@ fn enhanced_error_trait() {
             Some(self.source.as_ref() as &(dyn Error + 'static))
         }
 
-        fn provide<'a>(&'a self, request: &mut error::Request<'a>) {
-            request.provide_value("operation", &self.operation);
-            request.provide_value("context", &self.context);
-            request.provide_value("error_type", "service");
+        // fn provide<'a>(&'a self, request: &mut std::error::Request<'a>) {
+        // error_generic_member_access 是实验性特性，暂时注释
+        //     request.provide_value("operation", &self.operation);
+        //     request.provide_value("context", &self.context);
+        //     request.provide_value("error_type", "service");
 
-            // 将源错误的信息也传递出去
-            self.source.provide(request);
-        }
+        // 将源错误的信息也传递出去
+        //     self.source.provide(request);
+        // }
     }
 
     // 使用错误包装
@@ -1178,12 +1186,13 @@ fn enhanced_error_trait() {
     }
 
     impl Error for ConfigError {
-        fn provide<'a>(&'a self, request: &mut error::Request<'a>) {
-            request.provide_value("config_key", &self.key);
-            request.provide_value("config_value", &self.value);
-            request.provide_value("expected_type", &self.expected_type);
-            request.provide_value("error_type", "configuration");
-        }
+        // fn provide<'a>(&'a self, request: &mut std::error::Request<'a>) {
+        //     // error_generic_member_access 是实验性特性，暂时注释
+        //     request.provide_value("config_key", &self.key);
+        //     request.provide_value("config_value", &self.value);
+        //     request.provide_value("expected_type", &self.expected_type);
+        //     request.provide_value("error_type", "configuration");
+        // }
     }
 
     fn parse_config_value(key: &str, value: &str, expected_type: &str) -> Result<(), ConfigError> {
@@ -1231,13 +1240,13 @@ fn enhanced_error_trait() {
                 println!("配置 '{}' = '{}' (类型: {}) ✗", key, value, expected_type);
                 println!("  错误: {}", e);
 
-                // 使用增强的错误信息
-                if let Some(config_key) = error::request_value::<String>(&e, "config_key") {
-                    println!("  配置键: {}", config_key);
-                }
-                if let Some(config_value) = error::request_value::<String>(&e, "config_value") {
-                    println!("  配置值: {}", config_value);
-                }
+                // 使用增强的错误信息（需要 nightly 编译器和 unstable 特性）
+                // if let Some(config_key) = std::error::request_value::<String>(&e, "config_key") {
+                //     println!("  配置键: {}", config_key);
+                // }
+                // if let Some(config_value) = std::error::request_value::<String>(&e, "config_value") {
+                //     println!("  配置值: {}", config_value);
+                // }
             }
         }
     }
@@ -1254,16 +1263,16 @@ fn enhanced_error_trait() {
         }
 
         // 记录结构化的错误信息
-        let mut request = error::Request::new();
-        error.provide(&mut request);
+        // let mut request = std::error::Request::new();
+        // error.provide(&mut request);
 
-        println!("[ERROR]   详细信息:");
-        if let Some(operation) = request.value::<String>() {
-            println!("[ERROR]     操作: {}", operation);
-        }
-        if let Some(error_type) = request.value::<&str>() {
-            println!("[ERROR]     类型: {}", error_type);
-        }
+        // println!("[ERROR]   详细信息:");
+        // if let Some(operation) = request.value::<String>() {
+        //     println!("[ERROR]     操作: {}", operation);
+        // }
+        // if let Some(error_type) = request.value::<&str>() {
+        //     println!("[ERROR]     类型: {}", error_type);
+        // }
     }
 
     // 模拟一个复杂错误
@@ -1478,15 +1487,16 @@ mod tests {
 
         impl Error for EnhancedError {
             fn source(&self) -> Option<&(dyn Error + 'static)> {
-                self.source.as_deref()
+                self.source.as_ref().map(|s| s.as_ref() as &(dyn Error + 'static))
             }
 
-            fn provide<'a>(&'a self, request: &mut error::Request<'a>) {
-                request
-                    .provide_value::<&str>(&self.message)
-                    .provide_value("error_code", &500u16)
-                    .provide_value("context_data", &self.context_data);
-            }
+            // fn provide<'a>(&'a self, request: &mut std::error::Request<'a>) {
+            // error_generic_member_access 是实验性特性，暂时注释
+            //     request
+            //         .provide_value::<&str>(&self.message)
+            //         .provide_value("error_code", &500u16)
+            //         .provide_value("context_data", &self.context_data);
+            // }
         }
 
         let error = EnhancedError {
@@ -1501,12 +1511,12 @@ mod tests {
         // 测试错误源
         assert!(error.source().is_none());
 
-        // 测试结构化错误数据访问
-        let mut request = error::Request::new();
-        error.provide(&mut request);
-
+        // 测试结构化错误数据访问（需要 nightly 编译器和 unstable 特性）
+        // let mut request = std::error::Request::new();
+        // error.provide(&mut request);
+        //
         // 验证提供了结构化数据
-        assert!(request.value::<&str>().is_some());
+        // assert!(request.value::<&str>().is_some());
     }
 
     #[test]
@@ -1527,12 +1537,13 @@ mod tests {
         }
 
         impl Error for NetworkError {
-            fn provide<'a>(&'a self, request: &mut error::Request<'a>) {
-                request
-                    .provide_value("url", &self.url)
-                    .provide_value("status_code", &self.status_code)
-                    .provide_value("error_type", "network");
-            }
+            // fn provide<'a>(&'a self, request: &mut std::error::Request<'a>) {
+            //     // error_generic_member_access 是实验性特性，暂时注释
+            //     request
+            //         .provide_value("url", &self.url)
+            //         .provide_value("status_code", &self.status_code)
+            //         .provide_value("error_type", "network");
+            // }
         }
 
         #[derive(Debug)]
@@ -1552,13 +1563,14 @@ mod tests {
                 Some(&self.source)
             }
 
-            fn provide<'a>(&'a self, request: &mut error::Request<'a>) {
-                request
-                    .provide_value("service", &self.service)
-                    .provide_value("error_type", "service");
-                // 委托给源错误以提供更多信息
-                self.source.provide(request);
-            }
+            // fn provide<'a>(&'a self, request: &mut std::error::Request<'a>) {
+            //     // error_generic_member_access 是实验性特性，暂时注释
+            //     request
+            //         .provide_value("service", &self.service)
+            //         .provide_value("error_type", "service");
+            //     // 委托给源错误以提供更多信息
+            //     self.source.provide(request);
+            // }
         }
 
         let network_error = NetworkError {

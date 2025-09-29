@@ -1,6 +1,6 @@
 # Rust 代码指南
 
-基于《The Rust Programming Language》书籍的 Rust 语言特性完整教程，包含所有 Rust 版本特性的代码示例和详细注释。
+基于《The Rust Programming Language》书籍的 Rust 语言特性完整教程，并补充完善了截止Rust 1.90版本的所有新增语言特性，包含所有 Rust 版本特性的代码示例和详细注释。
 
 ## 项目结构
 

@@ -384,8 +384,6 @@ fn hashmap_deep_dive() {
     }
 
     // HashMap 的性能考虑和优化
-    let mut map = HashMap::new();
-
     // 预分配容量：避免多次扩容
     let mut optimized_map = HashMap::with_capacity(1000);
     println!("预分配的 HashMap: 容量={}", optimized_map.capacity());
@@ -414,7 +412,6 @@ fn hashmap_deep_dive() {
 
     // 自定义哈希和比较
     use std::hash::{Hash, Hasher};
-    use std::collections::hash_map::DefaultHasher;
 
     struct CustomKey {
         id: u32,
@@ -477,12 +474,12 @@ fn other_collections_detailed() {
     list.push_front("start".to_string());
     println!("LinkedList 初始状态: {:?}", list);
 
-    // 中间插入（需要遍历）
-    let mut cursor = list.cursor_front_mut();
-    if let Some(node) = cursor.current() {
-        cursor.insert_after("middle".to_string());
-    }
-    println!("中间插入后: {:?}", list);
+    // 中间插入（需要遍历）- linked_list_cursors 是 unstable 特性
+    // let mut cursor = list.cursor_front_mut();
+    // if let Some(node) = cursor.current() {
+    //     cursor.insert_after("middle".to_string());
+    // }
+    // println!("中间插入后: {:?}", list);
 
     // 前后删除
     let front = list.pop_front();
@@ -702,7 +699,7 @@ fn iterators_deep_dive() {
     println!("fold 求和: {}", sum);
 
     // reduce - 减少（fold 的特例，初始值为第一个元素）
-    let product = numbers.iter().reduce(|acc, &x| acc * x);
+    let product = numbers.iter().cloned().reduce(|acc, x| acc * x);
     println!("reduce 乘积: {:?}", product);
 
     // any/all - 存在性检查
@@ -711,7 +708,7 @@ fn iterators_deep_dive() {
     println!("any(有偶数): {}, all(全正数): {}", has_even, all_positive);
 
     // count - 计数
-    let count = numbers.iter().filter(|&x| x > 3).count();
+    let count = numbers.iter().filter(|&&x| x > 3).count();
     println!("count(>3): {}", count);
 
     // find - 查找
@@ -751,14 +748,14 @@ fn iterators_deep_dive() {
     // 迭代器性能优化技巧：
     // 1. 使用 by_ref() 避免所有权问题
     let numbers = vec![1, 2, 3, 4, 5];
-    let sum = numbers.iter().filter(|&&x| x > 2).sum();
+    let sum: i32 = numbers.iter().filter(|&&x| x > 2).sum();
     let count = numbers.iter().filter(|&&x| x > 2).count();
     println!("重复使用 iter(): sum={}, count={}", sum, count);
 
     // 2. 使用 peek() 预览下一个元素
     let mut iter = numbers.iter().peekable();
-    while let Some(&&x) = iter.next() {
-        if let Some(&&next) = iter.peek() {
+    while let Some(&x) = iter.next() {
+        if let Some(&next) = iter.peek() {
             println!("当前: {}, 下一个: {}", x, next);
         } else {
             println!("当前: {}, 无下一个", x);
@@ -857,7 +854,7 @@ fn collection_performance_optimization() {
     let start = Instant::now();
     let (sum2, count2, max2) = large_vec.iter()
         .filter(|&&x| x % 2 == 0)
-        .fold((0, 0, None), |(sum, count, max), &x| {
+        .fold((0, 0, None::<i32>), |(sum, count, max), &x| {
             let new_max = match max {
                 Some(m) => Some(m.max(x)),
                 None => Some(x),
@@ -868,8 +865,8 @@ fn collection_performance_optimization() {
 
     println!("  多次遍历耗时: {:?}", multiple_pass_duration);
     println!("  单次遍历耗时: {:?}", single_pass_duration);
-    println!("  结果验证: sum={}={}, count={}={}, max={:?}",
-             sum, sum2, count, count2, max, max2);
+    println!("  结果验证: sum={}, count={}, max={:?}",
+             sum, count, max);
 
     // 4. 内存使用优化
     println!("\n4. 内存使用优化:");
@@ -939,195 +936,198 @@ fn collection_performance_optimization() {
 // 展示如何综合运用各种集合类型构建一个完整的数据处理系统
 // 这个示例将展示集合在实际应用中的协作和优化
 
+use std::collections::{HashMap, HashSet, VecDeque};
+
+// 定义数据结构（在模块级别以便测试访问）
+#[derive(Debug, Clone)]
+struct Event {
+    id: String,
+    event_type: String,
+    timestamp: u64,
+    user_id: String,
+    data: HashMap<String, String>,
+}
+
+#[derive(Debug)]
+struct ProcessingRule {
+    name: String,
+    conditions: Vec<String>,
+    actions: Vec<String>,
+    priority: u32,
+}
+
+// 事件处理器
+struct EventProcessor {
+    // 待处理事件队列（需要处理顺序）
+    event_queue: VecDeque<Event>,
+
+    // 已处理事件缓存（快速查找）
+    processed_cache: HashSet<String>,
+
+    // 用户事件统计（快速聚合）
+    user_stats: HashMap<String, (u32, u64)>, // (event_count, last_timestamp)
+
+    // 事件类型统计（有序遍历）
+    event_type_stats: HashMap<String, u32>,
+
+    // 处理规则（有序优先级）
+    rules: Vec<ProcessingRule>,
+}
+
+impl EventProcessor {
+    fn new() -> Self {
+        EventProcessor {
+            event_queue: VecDeque::with_capacity(1000),
+            processed_cache: HashSet::with_capacity(1000),
+            user_stats: HashMap::with_capacity(100),
+            event_type_stats: HashMap::with_capacity(50),
+            rules: Vec::new(),
+        }
+    }
+
+    // 添加事件到队列
+    fn add_event(&mut self, event: Event) {
+        // 检查是否已处理
+        if self.processed_cache.contains(&event.id) {
+            println!("事件 {} 已处理，跳过", event.id);
+            return;
+        }
+
+        self.event_queue.push_back(event);
+    }
+
+    // 批量添加事件
+    fn add_events(&mut self, events: Vec<Event>) {
+        for event in events {
+            self.add_event(event);
+        }
+    }
+
+    // 添加处理规则
+    fn add_rule(&mut self, rule: ProcessingRule) {
+        self.rules.push(rule);
+        // 按优先级排序
+        self.rules.sort_by(|a, b| b.priority.cmp(&a.priority));
+    }
+
+    // 处理单个事件
+    fn process_event(&mut self, event: &Event) -> Result<String, String> {
+        let mut results = Vec::new();
+
+        // 应用处理规则
+        for rule in &self.rules {
+            let mut conditions_met = true;
+
+            // 检查所有条件
+            for condition in &rule.conditions {
+                if condition.starts_with("type:") {
+                    let expected_type = &condition[5..];
+                    if event.event_type != expected_type {
+                        conditions_met = false;
+                        break;
+                    }
+                } else if condition.starts_with("user:") {
+                    let user_prefix = &condition[5..];
+                    if !event.user_id.starts_with(user_prefix) {
+                        conditions_met = false;
+                        break;
+                    }
+                }
+            }
+
+            // 如果条件满足，执行动作
+            if conditions_met {
+                for action in &rule.actions {
+                    let result = self.execute_action(event, action);
+                    results.push(result);
+                }
+            }
+        }
+
+        // 更新统计信息
+        self.update_stats(event);
+
+        // 标记为已处理
+        self.processed_cache.insert(event.id.clone());
+
+        Ok(results.join(", "))
+    }
+
+    // 执行动作
+    fn execute_action(&self, event: &Event, action: &str) -> String {
+        match action {
+            "log" => format!("记录事件: {}", event.id),
+            "alert" => format!("警报: 用户 {} 的 {} 事件", event.user_id, event.event_type),
+            "count" => format!("计数: {}", event.event_type),
+            _ => format!("未知动作: {}", action),
+        }
+    }
+
+    // 更新统计信息
+    fn update_stats(&mut self, event: &Event) {
+        // 更新用户统计
+        let user_entry = self.user_stats.entry(event.user_id.clone()).or_insert((0, 0));
+        user_entry.0 += 1;
+        user_entry.1 = event.timestamp;
+
+        // 更新事件类型统计
+        *self.event_type_stats.entry(event.event_type.clone()).or_insert(0) += 1;
+    }
+
+    // 处理所有待处理事件
+    fn process_all_events(&mut self) -> Vec<Result<String, String>> {
+        let mut results = Vec::new();
+
+        while let Some(event) = self.event_queue.pop_front() {
+            let result = self.process_event(&event);
+            results.push(result);
+        }
+
+        results
+    }
+
+    // 获取统计报告
+    fn get_report(&self) -> String {
+        let mut report = String::new();
+
+        report.push_str("=== 数据处理报告 ===\n");
+
+        // 处理的事件数量
+        report.push_str(&format!("已处理事件数: {}\n", self.processed_cache.len()));
+
+        // 事件类型统计（按数量排序）
+        let mut type_stats: Vec<_> = self.event_type_stats.iter().collect();
+        type_stats.sort_by(|a, b| b.1.cmp(a.1));
+
+        report.push_str("事件类型统计:\n");
+        for (event_type, count) in type_stats {
+            report.push_str(&format!("  {}: {}\n", event_type, count));
+        }
+
+        // 用户活动统计（按时间排序）
+        let mut user_stats: Vec<_> = self.user_stats.iter().collect();
+        user_stats.sort_by(|a, b| b.1 .1.cmp(&a.1 .1));
+
+        report.push_str("用户活动统计:\n");
+        for (user_id, (count, timestamp)) in user_stats.iter().take(5) {
+            report.push_str(&format!("  {}: {} 事件，最后活动: {}\n", user_id, count, timestamp));
+        }
+
+        // 队列状态
+        report.push_str(&format!("待处理队列大小: {}\n", self.event_queue.len()));
+        report.push_str(&format!("活跃规则数: {}\n", self.rules.len()));
+
+        report
+    }
+}
+
 fn data_processing_pipeline_system() {
     println!("=== 综合实例：数据流处理系统 ===");
 
     use std::collections::{HashMap, HashSet, VecDeque};
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    // 定义数据结构
-    #[derive(Debug, Clone)]
-    struct Event {
-        id: String,
-        event_type: String,
-        timestamp: u64,
-        user_id: String,
-        data: HashMap<String, String>,
-    }
-
-    #[derive(Debug)]
-    struct ProcessingRule {
-        name: String,
-        conditions: Vec<String>,
-        actions: Vec<String>,
-        priority: u32,
-    }
-
-    // 事件处理器
-    struct EventProcessor {
-        // 待处理事件队列（需要处理顺序）
-        event_queue: VecDeque<Event>,
-
-        // 已处理事件缓存（快速查找）
-        processed_cache: HashSet<String>,
-
-        // 用户事件统计（快速聚合）
-        user_stats: HashMap<String, (u32, u64)>, // (event_count, last_timestamp)
-
-        // 事件类型统计（有序遍历）
-        event_type_stats: HashMap<String, u32>,
-
-        // 处理规则（有序优先级）
-        rules: Vec<ProcessingRule>,
-    }
-
-    impl EventProcessor {
-        fn new() -> Self {
-            EventProcessor {
-                event_queue: VecDeque::with_capacity(1000),
-                processed_cache: HashSet::with_capacity(1000),
-                user_stats: HashMap::with_capacity(100),
-                event_type_stats: HashMap::with_capacity(50),
-                rules: Vec::new(),
-            }
-        }
-
-        // 添加事件到队列
-        fn add_event(&mut self, event: Event) {
-            // 检查是否已处理
-            if self.processed_cache.contains(&event.id) {
-                println!("事件 {} 已处理，跳过", event.id);
-                return;
-            }
-
-            self.event_queue.push_back(event);
-        }
-
-        // 批量添加事件
-        fn add_events(&mut self, events: Vec<Event>) {
-            for event in events {
-                self.add_event(event);
-            }
-        }
-
-        // 添加处理规则
-        fn add_rule(&mut self, rule: ProcessingRule) {
-            self.rules.push(rule);
-            // 按优先级排序
-            self.rules.sort_by(|a, b| b.priority.cmp(&a.priority));
-        }
-
-        // 处理单个事件
-        fn process_event(&mut self, event: &Event) -> Result<String, String> {
-            let mut results = Vec::new();
-
-            // 应用处理规则
-            for rule in &self.rules {
-                let mut conditions_met = true;
-
-                // 检查所有条件
-                for condition in &rule.conditions {
-                    if condition.starts_with("type:") {
-                        let expected_type = &condition[5..];
-                        if event.event_type != expected_type {
-                            conditions_met = false;
-                            break;
-                        }
-                    } else if condition.starts_with("user:") {
-                        let user_prefix = &condition[5..];
-                        if !event.user_id.starts_with(user_prefix) {
-                            conditions_met = false;
-                            break;
-                        }
-                    }
-                }
-
-                // 如果条件满足，执行动作
-                if conditions_met {
-                    for action in &rule.actions {
-                        let result = self.execute_action(event, action);
-                        results.push(result);
-                    }
-                }
-            }
-
-            // 更新统计信息
-            self.update_stats(event);
-
-            // 标记为已处理
-            self.processed_cache.insert(event.id.clone());
-
-            Ok(results.join(", "))
-        }
-
-        // 执行动作
-        fn execute_action(&self, event: &Event, action: &str) -> String {
-            match action {
-                "log" => format!("记录事件: {}", event.id),
-                "alert" => format!("警报: 用户 {} 的 {} 事件", event.user_id, event.event_type),
-                "count" => format!("计数: {}", event.event_type),
-                _ => format!("未知动作: {}", action),
-            }
-        }
-
-        // 更新统计信息
-        fn update_stats(&mut self, event: &Event) {
-            // 更新用户统计
-            let user_entry = self.user_stats.entry(event.user_id.clone()).or_insert((0, 0));
-            user_entry.0 += 1;
-            user_entry.1 = event.timestamp;
-
-            // 更新事件类型统计
-            *self.event_type_stats.entry(event.event_type.clone()).or_insert(0) += 1;
-        }
-
-        // 处理所有待处理事件
-        fn process_all_events(&mut self) -> Vec<Result<String, String>> {
-            let mut results = Vec::new();
-
-            while let Some(event) = self.event_queue.pop_front() {
-                let result = self.process_event(&event);
-                results.push(result);
-            }
-
-            results
-        }
-
-        // 获取统计报告
-        fn get_report(&self) -> String {
-            let mut report = String::new();
-
-            report.push_str("=== 数据处理报告 ===\n");
-
-            // 处理的事件数量
-            report.push_str(&format!("已处理事件数: {}\n", self.processed_cache.len()));
-
-            // 事件类型统计（按数量排序）
-            let mut type_stats: Vec<_> = self.event_type_stats.iter().collect();
-            type_stats.sort_by(|a, b| b.1.cmp(a.1));
-
-            report.push_str("事件类型统计:\n");
-            for (event_type, count) in type_stats {
-                report.push_str(&format!("  {}: {}\n", event_type, count));
-            }
-
-            // 用户活动统计（按时间排序）
-            let mut user_stats: Vec<_> = self.user_stats.iter().collect();
-            user_stats.sort_by(|a, b| b.1 .1.cmp(&a.1 .1));
-
-            report.push_str("用户活动统计:\n");
-            for (user_id, (count, timestamp)) in user_stats.iter().take(5) {
-                report.push_str(&format!("  {}: {} 事件，最后活动: {}\n", user_id, count, timestamp));
-            }
-
-            // 队列状态
-            report.push_str(&format!("待处理队列大小: {}\n", self.event_queue.len()));
-            report.push_str(&format!("活跃规则数: {}\n", self.rules.len()));
-
-            report
-        }
-    }
-
+    
     // 创建模拟数据
     let generate_events = || {
         let mut events = Vec::new();

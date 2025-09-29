@@ -200,19 +200,19 @@ fn iterator_consumers() {
     // position - 查找位置
     // position 返回第一个满足条件的元素的索引
     // 这在需要知道元素位置时很有用
-    let pos = numbers.iter().position(|&&x| x == 3);
+    let pos = numbers.iter().position(|&x| x == 3);
     println!("position 查找3的位置: {:?}", pos);
 
     // any - 任意元素满足条件
     // any 检查是否有任意元素满足条件，一旦找到就返回 true
     // 这是短路操作，不会遍历所有元素
-    let has_even = numbers.iter().any(|&&x| x % 2 == 0);
+    let has_even = numbers.iter().any(|&x| x % 2 == 0);
     println!("any 是否有偶数: {}", has_even);
 
     // all - 所有元素满足条件
     // all 检查是否所有元素都满足条件，一旦发现不满足的就返回 false
     // 这也是短路操作，提高效率
-    let all_positive = numbers.iter().all(|&&x| x > 0);
+    let all_positive = numbers.iter().all(|&x| x > 0);
     println!("all 都为正数: {}", all_positive);
 
     // count - 计数
@@ -454,10 +454,10 @@ fn iterator_chaining() {
     // 文本处理链 - 词频统计
     // 展示了迭代器在文本处理中的强大能力
     let text = "Hello world! Rust is awesome. Hello iterators!";
-    let word_count: std::collections::HashMap<&str, usize> = text
+    let word_count: std::collections::HashMap<String, usize> = text
         .split_whitespace()                          // 分割单词
         .map(|word| word.to_lowercase())             // 转换为小写
-        .map(|word| word.trim_end_matches(&['.', '!', '?', ',', ';', ':'][..]))  // 移除标点
+        .map(|word| word.trim_end_matches(&['.', '!', '?', ',', ';', ':'][..]).to_string())  // 移除标点并转换为String
         .filter(|word| !word.is_empty())             // 过滤空单词
         .fold(std::collections::HashMap::new(), |mut map, word| {  // 统计词频
             *map.entry(word).or_insert(0) += 1;
@@ -659,7 +659,7 @@ fn iterator_patterns() {
     // 使用 windows 方法创建滑动窗口，用于分析连续的数据序列
     // 这种模式在时间序列分析、信号处理等领域很常见
     let data = vec![1, 2, 3, 4, 5];
-    let windows: Vec<Vec<&i32>> = data.windows(2).map(|w| w.to_vec()).collect();
+    let windows: Vec<Vec<i32>> = data.windows(2).map(|w| w.to_vec()).collect();
     println!("滑动窗口: {:?}", windows);
 
     // 模式 5: 条件求和
@@ -746,11 +746,11 @@ fn iterator_example_program() {
         }
 
         // 找出最常见的单词
-        fn most_common_word(&self) -> Option<(&str, usize)> {
+        fn most_common_word(&self) -> Option<(String, usize)> {
             let mut counts = std::collections::HashMap::new();
             self.text.split_whitespace()
                 .map(|word| word.to_lowercase())                 // 小写化
-                .map(|word| word.trim_end_matches(&['.', '!', '?', ',', ';', ':'][..]))  // 移除标点
+                .map(|word| word.trim_end_matches(&['.', '!', '?', ',', ';', ':'][..]).to_string())  // 移除标点并转换为String
                 .filter(|word| !word.is_empty())                 // 过滤空单词
                 .for_each(|word| {
                     *counts.entry(word).or_insert(0) += 1;       // 统计词频
@@ -767,10 +767,10 @@ fn iterator_example_program() {
         }
 
         // 获取不重复的单词列表
-        fn unique_words(&self) -> Vec<&str> {
-            let mut words: Vec<&str> = self.text.split_whitespace()
+        fn unique_words(&self) -> Vec<String> {
+            let mut words: Vec<String> = self.text.split_whitespace()
                 .map(|word| word.to_lowercase())
-                .map(|word| word.trim_end_matches(&['.', '!', '?', ',', ';', ':'][..]))
+                .map(|word| word.trim_end_matches(&['.', '!', '?', ',', ';', ':'][..]).to_string())
                 .filter(|word| !word.is_empty())
                 .collect();
 
@@ -814,8 +814,8 @@ Rust empowers everyone to build reliable and efficient software.
 
         let count = valid_data.clone().count() as f64;
         let average = valid_data.clone().sum::<f64>() / count;
-        let max = valid_data.clone().fold(0.0, f64::max);
-        let min = valid_data.fold(100.0, f64::min);
+        let max = valid_data.clone().fold(0.0, |a, &b| f64::max(a, b));
+        let min = valid_data.fold(100.0, |a, &b| f64::min(a, b));
 
         (min, max, average)
     }
@@ -950,6 +950,12 @@ mod tests {
     fn test_custom_iterator() {
         struct Counter {
             count: u32,
+        }
+
+        impl Counter {
+            fn new() -> Counter {
+                Counter { count: 0 }
+            }
         }
 
         impl Iterator for Counter {
