@@ -1846,7 +1846,7 @@ mod tests {
 // 模拟的 C 函数声明
 mod libc {
     use std::os::raw::{c_char, c_int, c_void};
-    pub type size_t = usize; // 在大多数平台上，size_t 相当于 usize
+    pub type SizeT = usize; // 在大多数平台上，SizeT 相当于 usize
 
     pub const AF_INET: i32 = 2;
     pub const SOCK_STREAM: i32 = 1;
