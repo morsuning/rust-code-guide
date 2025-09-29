@@ -1766,9 +1766,10 @@ mod tests {
 
     #[test]
     fn test_thread_local_storage() {
+        let initial_count = unsafe { get_ffi_counter() };
         unsafe { increment_ffi_counter() };
         unsafe { increment_ffi_counter() };
-        assert_eq!(unsafe { get_ffi_counter() }, 2);
+        assert_eq!(unsafe { get_ffi_counter() }, initial_count + 2);
     }
 
     // 为测试添加的 FFI 函数

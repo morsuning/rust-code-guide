@@ -145,7 +145,11 @@ fn macro_pattern_matching() {
         };
         // 匹配三个参数，创建 3D 点
         ($x:expr, $y:expr, $z:expr) => {
-            Point3D { x: $x, y: $y, z: $z }
+            Point3D {
+                x: $x,
+                y: $y,
+                z: $z,
+            }
         };
     }
 
@@ -162,8 +166,8 @@ fn macro_pattern_matching() {
         z: i32,
     }
 
-    let p2 = create_point!(10, 20);  // 匹配第一个模式
-    let p3 = create_point!(10, 20, 30);  // 匹配第二个模式
+    let p2 = create_point!(10, 20); // 匹配第一个模式
+    let p3 = create_point!(10, 20, 30); // 匹配第二个模式
     println!("2D点: {:?}", p2);
     println!("3D点: {:?}", p3);
 
@@ -426,12 +430,10 @@ fn macro_hygiene() {
     // 演示3：宏卫生与块表达式
     // 宏展开的代码在语法上等同于手写的代码
     macro_rules! safe_increment {
-        ($x:expr) => {
-            {
-                let temp = $x;
-                temp + 1
-            }
-        };
+        ($x:expr) => {{
+            let temp = $x;
+            temp + 1
+        }};
     }
 
     let value = 10;
@@ -792,6 +794,9 @@ fn attribute_macros() {
     /// 返回输入值的两倍
     /// # 示例
     /// ```
+    /// fn example_function(x: i32) -> i32 {
+    ///     x * 2
+    /// }
     /// let result = example_function(5);
     /// assert_eq!(result, 10);
     /// ```
@@ -889,7 +894,8 @@ fn function_like_macros() {
 
     // 环境变量访问宏
     // 安全地访问编译时环境变量
-    if let Some(home) = option_env!("HOME") { // 返回 Option<&str>
+    if let Some(home) = option_env!("HOME") {
+        // 返回 Option<&str>
         println!("HOME 目录: {}", home);
     } else {
         println!("未找到 HOME 环境变量");
@@ -898,9 +904,9 @@ fn function_like_macros() {
     // 模块路径宏：获取编译时信息
     // 这些宏提供源码位置和路径信息
     println!("当前模块: {}", module_path!()); // 当前模块路径
-    println!("当前文件: {}", file!());       // 当前文件名
-    println!("当前行号: {}", line!());       // 当前行号
-    println!("当前列号: {}", column!());     // 当前列号
+    println!("当前文件: {}", file!()); // 当前文件名
+    println!("当前行号: {}", line!()); // 当前行号
+    println!("当前列号: {}", column!()); // 当前列号
 
     // 函数宏的语法和调用形式：
     // 1. 基本语法：macro_name!(token_stream)
@@ -1445,11 +1451,7 @@ mod tests {
     fn test_conditional_macro() {
         macro_rules! conditional {
             ($condition:expr, $true_expr:expr, $false_expr:expr) => {
-                if $condition {
-                    $true_expr
-                } else {
-                    $false_expr
-                }
+                if $condition { $true_expr } else { $false_expr }
             };
         }
 

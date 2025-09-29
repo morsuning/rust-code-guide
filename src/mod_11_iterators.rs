@@ -1009,6 +1009,6 @@ mod tests {
 
         let analyzer = TextAnalyzer::new("Hello world Rust".to_string());
         assert_eq!(analyzer.word_count(), 3);
-        assert_eq!(analyzer.character_count(), 15);
+        assert_eq!(analyzer.character_count(), 16);
     }
 }
