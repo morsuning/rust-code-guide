@@ -25,6 +25,7 @@ target
 
 /target
 
-# ai ide
+# IDE
 .kiro
 .claude
+.idea
