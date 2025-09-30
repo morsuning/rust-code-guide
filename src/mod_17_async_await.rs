@@ -329,22 +329,9 @@ async fn async_streams() {
     let results: Vec<i32> = numbers.collect().await;
     println!("异步流处理结果: {:?}", results);
 
-    // 异步生成器
-    async fn generate_numbers(count: usize) -> impl futures::Stream<Item = i32> {
-        let mut counter = 0i32;
-        futures::stream::unfold((), move |_| async move {
-            if counter < count as i32 {
-                let result = counter;
-                counter += 1;
-                Some((result, ()))
-            } else {
-                None
-            }
-        })
-    }
-
-    // 使用 Box::pin 替代 .boxed() 方法，需要先等待 Future 完成
-    let mut number_stream = Box::pin(generate_numbers(5).await);
+    // 异步生成器 - 使用简单的迭代器转流
+    let numbers = vec![0, 1, 2, 3, 4];
+    let mut number_stream = futures::stream::iter(numbers);
 
     while let Some(number) = number_stream.next().await {
         println!("生成的数字: {}", number);

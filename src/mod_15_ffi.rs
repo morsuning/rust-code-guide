@@ -349,10 +349,9 @@ fn callback_functions() {
 
     // 接受回调函数的 C 函数声明 (C Function Declaration with Callback)
     // 这个 C 函数接受一个值和一个回调函数，将值传递给回调函数并返回结果
-    unsafe extern "C" {
-        fn call_with_callback(value: i32, callback: CCallback) -> i32;
-    }
-
+    // 注意：在实际项目中，这些函数会在 C 库中实现
+    // 这里我们使用模拟实现来演示概念
+    
     // 定义 Rust 函数作为回调 (Rust Function as Callback)
     // #[unsafe(no_mangle)] 确保函数名在编译时不被修改
     // extern "C" 使用 C 调用约定，使 C 代码能够调用此函数
@@ -369,9 +368,8 @@ fn callback_functions() {
 
     // 使用回调函数 (Using Callback Functions)
     unsafe {
-        // 调用 C 函数，传递 Rust 函数作为回调
-        // 注意：这里使用 unsafe 因为我们调用了外部函数
-        let result = call_with_callback(21, rust_callback);
+        // 使用模拟实现而不是真实的外部函数
+        let result = simulate_call_with_callback(21, rust_callback);
         println!("回调函数调用结果: {}", result);
     }
 
@@ -558,13 +556,12 @@ fn memory_management() {
     println!("向量转换为 C 风格数组: {:p}, 长度: {}", c_slice_ptr, c_len);
     // 注意：c_vec 不再拥有数据的所有权，但仍然负责释放
 
-    // 从 C 风格数组重建向量 (Rebuilding Vector from C-style Array)
-    unsafe {
-        let rebuilt_vec = Vec::from_raw_parts(c_slice_ptr, c_len, c_len);
-        println!("重建的向量: {:?}", rebuilt_vec);
-    }
-    // from_raw_parts() 重新获得向量的所有权
-    // 当向量离开作用域时，内存会自动释放
+    // 注意：不能使用 from_raw_parts 重建向量，因为 c_vec 仍然拥有数据
+    // 这会导致双重释放错误
+    // 正确的做法是让 c_vec 自然离开作用域，或者使用 std::mem::forget
+    println!("向量数据已转换为 C 风格，但仍由 Rust 管理");
+    
+    // c_vec 离开作用域时会自动释放内存
 
     // 内存管理的黄金法则：
     // 1. 明确所有权：清楚知道哪一方拥有内存的所有权
@@ -635,20 +632,22 @@ fn error_handling() {
     // 使用 errno 机制 (Using errno Mechanism)
     // errno 是 C 标准库定义的全局错误变量
     // 它提供了一种线程安全的错误代码存储机制
-    unsafe extern "C" {
-        fn errno() -> *mut i32; // 获取 errno 变量的指针
-    }
+    // 注意：直接访问 errno 在不同平台上可能有所不同
+    // 这里我们使用一个简化的模拟实现
+    
+    // 模拟的全局错误变量
+    static mut MOCK_ERRNO: i32 = 0;
 
     #[unsafe(no_mangle)]
     pub extern "C" fn set_last_error(code: i32) {
         unsafe {
-            *errno() = code; // 设置最后的错误代码
+            MOCK_ERRNO = code; // 设置最后的错误代码
         }
     }
 
     #[unsafe(no_mangle)]
     pub extern "C" fn get_last_error() -> i32 {
-        unsafe { *errno() } // 获取最后的错误代码
+        unsafe { MOCK_ERRNO } // 获取最后的错误代码
     }
 
     unsafe {
@@ -987,18 +986,22 @@ fn practical_examples() {
         let result = sqlite3_open(filename.as_ptr(), &mut db);
         println!("SQLite 打开结果: {}", result);
 
-        let sql = CString::new("SELECT * FROM users").unwrap();
-        let mut errmsg: *mut c_char = ptr::null_mut();
+        if result == 0 {
+            let sql = CString::new("SELECT * FROM users").unwrap();
+            let mut errmsg: *mut c_char = ptr::null_mut();
 
-        let result = sqlite3_exec(db, sql.as_ptr(), None, ptr::null_mut(), &mut errmsg);
+            let result = sqlite3_exec(db, sql.as_ptr(), None, ptr::null_mut(), &mut errmsg);
 
-        if result != 0 && !errmsg.is_null() {
-            let error_msg = CStr::from_ptr(errmsg).to_str().unwrap();
-            println!("SQLite 错误: {}", error_msg);
-            sqlite3_free(errmsg as *mut std::ffi::c_void);
+            if result != 0 && !errmsg.is_null() {
+                let error_msg = CStr::from_ptr(errmsg).to_str().unwrap();
+                println!("SQLite 错误: {}", error_msg);
+                sqlite3_free(errmsg as *mut std::ffi::c_void);
+            } else {
+                println!("SQLite 查询执行成功");
+            }
+
+            sqlite3_close(db);
         }
-
-        sqlite3_close(db);
     }
 
     // 图像处理库包装器示例 (Image Processing Library Wrapper Example)
@@ -1115,26 +1118,43 @@ fn practical_examples() {
     // 4. 并发访问：多线程环境下的套接字使用
     // 5. 资源清理：确保套接字资源正确释放
 
-    unsafe extern "C" {
-        fn socket_create(domain: i32, type_: i32, protocol: i32) -> *mut Socket;
-        fn socket_connect(socket: *mut Socket, addr: *const c_char, port: i32) -> i32;
-        fn socket_send(socket: *mut Socket, data: *const c_char, len: i32) -> i32;
-        fn socket_close(socket: *mut Socket);
+    // 模拟网络 API 实现 (Mock Network API Implementation)
+    // 在实际项目中，这些函数会在 C 库中实现
+    unsafe fn mock_socket_create(_domain: i32, _type_: i32, _protocol: i32) -> *mut Socket {
+        println!("模拟创建套接字");
+        // 返回一个非空指针作为模拟句柄
+        1 as *mut Socket
+    }
+
+    unsafe fn mock_socket_connect(_socket: *mut Socket, addr: *const c_char, port: i32) -> i32 {
+        let addr_str = CStr::from_ptr(addr).to_string_lossy();
+        println!("模拟连接到 {}:{}", addr_str, port);
+        0 // 成功
+    }
+
+    unsafe fn mock_socket_send(_socket: *mut Socket, data: *const c_char, len: i32) -> i32 {
+        let data_str = CStr::from_ptr(data).to_string_lossy();
+        println!("模拟发送数据: {}", data_str);
+        len // 返回发送的字节数
+    }
+
+    unsafe fn mock_socket_close(_socket: *mut Socket) {
+        println!("模拟关闭套接字");
     }
 
     // 使用模拟的网络 API
     unsafe {
-        let socket = socket_create(2, 1, 0); // AF_INET, SOCK_STREAM
+        let socket = mock_socket_create(2, 1, 0); // AF_INET, SOCK_STREAM
         if !socket.is_null() {
             let addr = CString::new("127.0.0.1").unwrap();
-            let result = socket_connect(socket, addr.as_ptr(), 8080);
+            let result = mock_socket_connect(socket, addr.as_ptr(), 8080);
             println!("连接结果: {}", result);
 
             let message = CString::new("Hello, Server!").unwrap();
-            let sent = socket_send(socket, message.as_ptr(), message.as_bytes().len() as i32);
+            let sent = mock_socket_send(socket, message.as_ptr(), message.as_bytes().len() as i32);
             println!("发送字节数: {}", sent);
 
-            socket_close(socket);
+            mock_socket_close(socket);
         }
     }
 
@@ -1296,10 +1316,16 @@ fn safe_wrappers() {
     }
 
     // 使用安全文件包装器
-    let file = SafeFile::open("/tmp/test.txt").expect("文件打开失败");
-    let data = b"Hello, Safe World!";
-    let written = file.write(data).expect("写入失败");
-    println!("写入 {} 字节", written);
+    match SafeFile::open("/tmp/test.txt") {
+        Ok(file) => {
+            let data = b"Hello, Safe World!";
+            match file.write(data) {
+                Ok(written) => println!("写入 {} 字节", written),
+                Err(e) => println!("写入失败: {}", e),
+            }
+        }
+        Err(e) => println!("文件打开失败: {}", e),
+    }
 
     // 网络套接字的安全包装器 (Safe Socket Wrapper)
     // 封装了网络套接字的创建和管理
@@ -1376,8 +1402,10 @@ fn safe_wrappers() {
     }
 
     // 使用安全套接字包装器
-    let socket = SafeSocket::new(libc::AF_INET, libc::SOCK_STREAM, 0).expect("套接字创建失败");
-    println!("安全套接字创建成功");
+    match SafeSocket::new(libc::AF_INET, libc::SOCK_STREAM, 0) {
+        Ok(_socket) => println!("安全套接字创建成功"),
+        Err(e) => println!("套接字创建失败: {}", e),
+    }
 
     // 动态库加载的安全包装器 (Safe Dynamic Library Wrapper)
     // 封装了动态库的加载、符号查找和卸载
@@ -1430,8 +1458,10 @@ fn safe_wrappers() {
     }
 
     // 使用安全库包装器
-    let lib = SafeLibrary::open("libmath.so").expect("库加载失败");
-    println!("安全库加载成功");
+    match SafeLibrary::open("libmath.so") {
+        Ok(_lib) => println!("安全库加载成功"),
+        Err(e) => println!("库加载失败: {}", e),
+    }
 
     // 安全包装器的高级特性：
     // 1. 资源池：管理多个相同类型的资源
@@ -1495,10 +1525,13 @@ fn std_os_fd_standardization() {
         let raw_fd: RawFd = file.as_raw_fd();
         println!("原始文件描述符: {}", raw_fd);
 
-        // 从原始文件描述符创建 OwnedFd
-        // 注意：这需要 unsafe，因为我们需要确保文件描述符的有效性
+        // 正确的方式：使用 std::mem::forget 来避免 file 的 Drop
+        // 然后从原始文件描述符创建 OwnedFd
+        let raw_fd_copy = raw_fd;
+        std::mem::forget(file); // 防止 file 的 Drop 被调用
+        
         unsafe {
-            let owned_fd = OwnedFd::from_raw_fd(raw_fd);
+            let owned_fd = OwnedFd::from_raw_fd(raw_fd_copy);
             println!("OwnedFd 创建成功");
 
             // OwnedFd 可以安全地传递给其他函数
@@ -1531,8 +1564,12 @@ fn std_os_fd_standardization() {
         let raw_handle: RawHandle = file.as_raw_handle();
         println!("原始文件句柄: {:?}", raw_handle);
 
+        // 正确的方式：使用 std::mem::forget 来避免 file 的 Drop
+        let raw_handle_copy = raw_handle;
+        std::mem::forget(file); // 防止 file 的 Drop 被调用
+        
         unsafe {
-            let owned_handle = OwnedHandle::from_raw_handle(raw_handle);
+            let owned_handle = OwnedHandle::from_raw_handle(raw_handle_copy);
             println!("OwnedHandle 创建成功");
         }
     }
@@ -1569,16 +1606,11 @@ fn practical_fd_usage_unix() {
 
         // 在实际应用中，可以使用 dup2 系统调用重定向
         // 这里我们演示如何安全地操作文件描述符
-        unsafe {
-            // 模拟文件描述符操作
-            println!("将标准输出重定向到文件描述符: {}", fd);
+        println!("将标准输出重定向到文件描述符: {}", fd);
 
-            // 创建 OwnedFd 来管理文件描述符
-            let owned_fd = OwnedFd::from_raw_fd(fd);
-            println!("文件描述符现在由 OwnedFd 安全管理");
-
-            // owned_fd 离开作用域时自动清理
-        }
+        // 演示如何正确使用文件描述符
+        // 注意：在实际应用中，需要使用 dup2 来复制文件描述符
+        // 这里我们只演示概念，不实际进行重定向以避免副作用
     }
 
     // 示例 2: 进程间通信使用文件描述符
@@ -1612,16 +1644,15 @@ fn practical_fd_usage_unix() {
         // 创建一个文件
         let file = File::create("shared_file.txt").expect("文件创建失败");
 
-        // 将文件描述符转换为 OwnedFd
-        let owned_fd = unsafe { OwnedFd::from_raw_fd(file.as_raw_fd()) };
+        // 正确的文件描述符传递方式演示
+        // 注意：在实际应用中，应该使用 Unix 域套接字传递文件描述符
+        // 这里我们演示概念，不实际传递以避免资源管理问题
+        let raw_fd = file.as_raw_fd();
+        println!("文件描述符可以传递: {}", raw_fd);
 
-        // 在实际应用中，可以通过 Unix 域套接字传递文件描述符
-        // 这里演示安全的管理方式
-        println!("文件描述符已封装为 OwnedFd，可以安全传递");
-
-        // 模拟接收方使用文件描述符
-        let received_fd = owned_fd;
-        println!("接收到的文件描述符: {}", received_fd.as_raw_fd());
+        // 演示如何创建 OwnedFd 来管理文件描述符
+        // 注意：这只是为了演示，实际应用中需要更复杂的同步机制
+        println!("在实际应用中，可以使用 OwnedFd 安全管理传递的文件描述符");
     }
 
     redirect_stdio_example();

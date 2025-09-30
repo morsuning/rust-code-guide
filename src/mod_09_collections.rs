@@ -24,8 +24,12 @@ fn vector_deep_dive() {
 
     // 使用 vec! 宏：这是最常用的创建方式，编译器会推断类型
     let v2 = vec![1, 2, 3, 4, 5];
-    println!("宏创建的向量: 长度={}, 容量={}, 内容={:?}",
-             v2.len(), v2.capacity(), v2);
+    println!(
+        "宏创建的向量: 长度={}, 容量={}, 内容={:?}",
+        v2.len(),
+        v2.capacity(),
+        v2
+    );
 
     // 使用 with_capacity 预分配容量：避免频繁的内存重分配
     let mut v3 = Vec::with_capacity(10);
@@ -72,9 +76,7 @@ fn vector_deep_dive() {
 
     // 3. 消费性遍历：T，获取所有权，向量被消耗
     println!("消费性遍历:");
-    let doubled: Vec<i32> = numbers.into_iter()
-        .map(|x| x * 2)
-        .collect();
+    let doubled: Vec<i32> = numbers.into_iter().map(|x| x * 2).collect();
     println!("消费后新向量: {:?}", doubled);
     // numbers 已被消耗，不能再使用
 
@@ -116,8 +118,10 @@ fn vector_deep_dive() {
         SpreadsheetCell::Text(String::from("销售额")),
         SpreadsheetCell::Float(1234.56),
         SpreadsheetCell::Boolean(true),
-        SpreadsheetCell::Formula(String::from("SUM(A1:A3)"),
-                                   vec!["A1".to_string(), "A2".to_string(), "A3".to_string()]),
+        SpreadsheetCell::Formula(
+            String::from("SUM(A1:A3)"),
+            vec!["A1".to_string(), "A2".to_string(), "A3".to_string()],
+        ),
     ];
     println!("混合类型 Vector: {:?}", row);
 
@@ -433,8 +437,14 @@ fn hashmap_deep_dive() {
 
     impl Eq for CustomKey {}
 
-    let key1 = CustomKey { id: 1, name: "Item1".to_string() };
-    let key2 = CustomKey { id: 1, name: "Item2".to_string() };
+    let key1 = CustomKey {
+        id: 1,
+        name: "Item1".to_string(),
+    };
+    let key2 = CustomKey {
+        id: 1,
+        name: "Item2".to_string(),
+    };
 
     let mut map = HashMap::new();
     map.insert(key1, "Value1");
@@ -461,7 +471,7 @@ fn hashmap_deep_dive() {
 fn other_collections_detailed() {
     println!("=== 其他集合类型详解 ===");
 
-    use std::collections::{LinkedList, VecDeque, BTreeMap, BTreeSet, HashSet};
+    use std::collections::{BTreeMap, BTreeSet, HashSet, LinkedList, VecDeque};
 
     // LinkedList - 双向链表
     // 特点：O(1) 的插入和删除，但 O(n) 的随机访问
@@ -634,10 +644,13 @@ fn iterators_deep_dive() {
 
     // 2. iter_mut() - 可变借用
     let mut numbers2 = vec![1, 2, 3];
-    let doubled: Vec<_> = numbers2.iter_mut().map(|x| {
-        *x *= 2;
-        *x
-    }).collect();
+    let doubled: Vec<_> = numbers2
+        .iter_mut()
+        .map(|x| {
+            *x *= 2;
+            *x
+        })
+        .collect();
     println!("iter_mut() 双倍后: {:?}", numbers2);
 
     // 3. into_iter() - 消费所有权
@@ -650,40 +663,31 @@ fn iterators_deep_dive() {
     let numbers = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
     // filter - 过滤元素
-    let evens: Vec<_> = numbers.iter()
-        .filter(|&&x| x % 2 == 0)
-        .collect();
+    let evens: Vec<_> = numbers.iter().filter(|&&x| x % 2 == 0).collect();
     println!("filter(偶数): {:?}", evens);
 
     // map - 转换元素
-    let squares: Vec<_> = numbers.iter()
-        .map(|&x| x * x)
-        .collect();
+    let squares: Vec<_> = numbers.iter().map(|&x| x * x).collect();
     println!("map(平方): {:?}", squares);
 
     // take - 取前 n 个元素
-    let first_three: Vec<_> = numbers.iter()
-        .take(3)
-        .collect();
+    let first_three: Vec<_> = numbers.iter().take(3).collect();
     println!("take(3): {:?}", first_three);
 
     // skip - 跳过前 n 个元素
-    let skip_three: Vec<_> = numbers.iter()
-        .skip(3)
-        .collect();
+    let skip_three: Vec<_> = numbers.iter().skip(3).collect();
     println!("skip(3): {:?}", skip_three);
 
     // take_while - 满足条件时取元素
-    let take_while: Vec<_> = numbers.iter()
-        .take_while(|&&x| x <= 5)
-        .collect();
+    let take_while: Vec<_> = numbers.iter().take_while(|&&x| x <= 5).collect();
     println!("take_while(<=5): {:?}", take_while);
 
     // 链式操作示例
-    let result: Vec<_> = numbers.iter()
+    let result: Vec<_> = numbers
+        .iter()
         .filter(|&&x| x % 2 == 0) // 过滤偶数
-        .map(|&x| x * x)         // 计算平方
-        .take(3)                 // 取前3个
+        .map(|&x| x * x) // 计算平方
+        .take(3) // 取前3个
         .collect();
     println!("链式操作: {:?}", result);
 
@@ -801,7 +805,10 @@ fn collection_performance_optimization() {
     }
     let duration2 = start.elapsed();
     println!("  不预分配耗时: {:?}", duration2);
-    println!("  性能提升: {:.2}x", duration2.as_nanos() as f64 / duration1.as_nanos() as f64);
+    println!(
+        "  性能提升: {:.2}x",
+        duration2.as_nanos() as f64 / duration1.as_nanos() as f64
+    );
 
     // 批量操作 vs 单个操作
     let start = Instant::now();
@@ -841,32 +848,32 @@ fn collection_performance_optimization() {
     // 3. 迭代器链式优化
     println!("\n3. 迭代器链式优化:");
 
-    let large_vec: Vec<i32> = (0..1_000_000).collect();
+    let large_vec: Vec<i32> = (0..10_000).collect(); // 减小数据量避免溢出
 
     // 多次遍历
     let start = Instant::now();
-    let sum = large_vec.iter().filter(|&&x| x % 2 == 0).sum::<i32>();
+    let sum = large_vec.iter().filter(|&&x| x % 2 == 0).map(|&x| x as i64).sum::<i64>(); // 使用i64避免溢出
     let count = large_vec.iter().filter(|&&x| x % 2 == 0).count();
     let max = large_vec.iter().filter(|&&x| x % 2 == 0).max();
     let multiple_pass_duration = start.elapsed();
 
     // 单次遍历
     let start = Instant::now();
-    let (sum2, count2, max2) = large_vec.iter()
-        .filter(|&&x| x % 2 == 0)
-        .fold((0, 0, None::<i32>), |(sum, count, max), &x| {
+    let (sum2, count2, max2) = large_vec.iter().filter(|&&x| x % 2 == 0).fold(
+        (0i64, 0, None::<i32>), // 使用i64避免溢出
+        |(sum, count, max), &x| {
             let new_max = match max {
                 Some(m) => Some(m.max(x)),
                 None => Some(x),
             };
-            (sum + x, count + 1, new_max)
-        });
+            (sum + x as i64, count + 1, new_max) // 转换为i64
+        },
+    );
     let single_pass_duration = start.elapsed();
 
     println!("  多次遍历耗时: {:?}", multiple_pass_duration);
     println!("  单次遍历耗时: {:?}", single_pass_duration);
-    println!("  结果验证: sum={}, count={}, max={:?}",
-             sum, count, max);
+    println!("  结果验证: sum={}, count={}, max={:?}", sum, count, max);
 
     // 4. 内存使用优化
     println!("\n4. 内存使用优化:");
@@ -876,7 +883,11 @@ fn collection_performance_optimization() {
     vec.extend(0..10);
     println!("  优化前: 长度={}, 容量={}", vec.len(), vec.capacity());
     vec.shrink_to_fit();
-    println!("  shrink_to_fit 后: 长度={}, 容量={}", vec.len(), vec.capacity());
+    println!(
+        "  shrink_to_fit 后: 长度={}, 容量={}",
+        vec.len(),
+        vec.capacity()
+    );
 
     // 5. 查找算法选择
     println!("\n5. 查找算法选择:");
@@ -904,9 +915,18 @@ fn collection_performance_optimization() {
     let hash_result = hash_map.get(&target);
     let hash_duration = start.elapsed();
 
-    println!("  二分查找耗时: {:?}, 结果: {:?}", binary_duration, binary_result);
-    println!("  线性查找耗时: {:?}, 结果: {:?}", linear_duration, linear_result);
-    println!("  HashMap 查找耗时: {:?}, 结果: {:?}", hash_duration, hash_result);
+    println!(
+        "  二分查找耗时: {:?}, 结果: {:?}",
+        binary_duration, binary_result
+    );
+    println!(
+        "  线性查找耗时: {:?}, 结果: {:?}",
+        linear_duration, linear_result
+    );
+    println!(
+        "  HashMap 查找耗时: {:?}, 结果: {:?}",
+        hash_duration, hash_result
+    );
 
     // 6. 集合选择建议
     println!("\n6. 集合选择建议:");
@@ -1066,12 +1086,18 @@ impl EventProcessor {
     // 更新统计信息
     fn update_stats(&mut self, event: &Event) {
         // 更新用户统计
-        let user_entry = self.user_stats.entry(event.user_id.clone()).or_insert((0, 0));
+        let user_entry = self
+            .user_stats
+            .entry(event.user_id.clone())
+            .or_insert((0, 0));
         user_entry.0 += 1;
         user_entry.1 = event.timestamp;
 
         // 更新事件类型统计
-        *self.event_type_stats.entry(event.event_type.clone()).or_insert(0) += 1;
+        *self
+            .event_type_stats
+            .entry(event.event_type.clone())
+            .or_insert(0) += 1;
     }
 
     // 处理所有待处理事件
@@ -1106,11 +1132,14 @@ impl EventProcessor {
 
         // 用户活动统计（按时间排序）
         let mut user_stats: Vec<_> = self.user_stats.iter().collect();
-        user_stats.sort_by(|a, b| b.1 .1.cmp(&a.1 .1));
+        user_stats.sort_by(|a, b| b.1.1.cmp(&a.1.1));
 
         report.push_str("用户活动统计:\n");
         for (user_id, (count, timestamp)) in user_stats.iter().take(5) {
-            report.push_str(&format!("  {}: {} 事件，最后活动: {}\n", user_id, count, timestamp));
+            report.push_str(&format!(
+                "  {}: {} 事件，最后活动: {}\n",
+                user_id, count, timestamp
+            ));
         }
 
         // 队列状态
@@ -1127,7 +1156,6 @@ fn data_processing_pipeline_system() {
     use std::collections::{HashMap, HashSet, VecDeque};
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    
     // 创建模拟数据
     let generate_events = || {
         let mut events = Vec::new();
@@ -1139,9 +1167,13 @@ fn data_processing_pipeline_system() {
         for i in 0..20 {
             let event = Event {
                 id: format!("event_{}", i),
-                event_type: if i % 3 == 0 { "login".to_string() }
-                           else if i % 3 == 1 { "purchase".to_string() }
-                           else { "logout".to_string() },
+                event_type: if i % 3 == 0 {
+                    "login".to_string()
+                } else if i % 3 == 1 {
+                    "purchase".to_string()
+                } else {
+                    "logout".to_string()
+                },
                 timestamp: current_time + i,
                 user_id: format!("user_{}", i % 5),
                 data: {
@@ -1309,7 +1341,8 @@ mod tests {
     fn test_iterator_chaining() {
         let numbers = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
-        let result: Vec<i32> = numbers.iter()
+        let result: Vec<i32> = numbers
+            .iter()
             .filter(|&&x| x % 2 == 0)
             .map(|&x| x * x)
             .take(3)

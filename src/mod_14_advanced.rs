@@ -2185,9 +2185,10 @@ fn rust_2021_edition_features() {
     // 在不同上下文中的 panic! 语法
     let result: Result<i32, &str> = Err("发生错误");
 
-    // 使用 panic! 进行错误处理
+    // 使用 panic! 进行错误处理（演示用，实际应避免）
     let _value = result.unwrap_or_else(|e| {
-        panic!("错误：{}", e); // 一致的 panic 语法
+        println!("错误：{}", e); // 改为打印而不是 panic
+        -1 // 返回默认值
     });
 
     // 5. 智能提示和错误信息改进

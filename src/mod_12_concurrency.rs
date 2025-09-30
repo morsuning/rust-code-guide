@@ -157,7 +157,7 @@ fn channels() {
     let tx1 = mpsc::Sender::clone(&tx);
     let tx2 = tx.clone();
 
-    thread::spawn(move || {
+    let handle1 = thread::spawn(move || {
         let vals = vec![
             String::from("hi"),
             String::from("from"),
@@ -170,7 +170,7 @@ fn channels() {
         }
     });
 
-    thread::spawn(move || {
+    let handle2 = thread::spawn(move || {
         let vals = vec![
             String::from("more"),
             String::from("messages"),
@@ -183,6 +183,13 @@ fn channels() {
             thread::sleep(std::time::Duration::from_millis(100));
         }
     });
+
+    // 重要：必须丢弃原始的发送端，否则通道永远不会关闭
+    drop(tx);
+
+    // 等待发送线程完成
+    handle1.join().unwrap();
+    handle2.join().unwrap();
 
     // 所有发送者完成后，接收循环会自动结束
     for received in rx {
@@ -1787,128 +1794,71 @@ fn lock_free_programming() {
 
     println!("无锁计数器最终值: {}", counter.get());
 
-    // 示例2：无锁栈（Treiber Stack）
+    // 示例2：简化的无锁数据结构（使用原子操作）
+    // 注意：完整的无锁栈实现非常复杂，涉及内存回收和ABA问题
+    // 这里我们展示一个简化的概念，实际应用中建议使用成熟的库
+    
+    println!("无锁栈演示：");
+    println!("注意：完整的无锁栈实现非常复杂，涉及内存安全问题");
+    println!("实际应用中建议使用 crossbeam 等成熟的无锁数据结构库");
+    
+    // 使用原子操作实现简单的无锁计数器集合
+    use std::sync::atomic::AtomicI32;
+    
     #[derive(Debug)]
-    struct Node<T> {
-        data: T,
-        next: *mut Node<T>,
+    struct AtomicArray {
+        data: Vec<AtomicI32>,
     }
-
-    #[derive(Debug)]
-    struct LockFreeStack<T> {
-        head: AtomicPtr<Node<T>>,
-    }
-
-    impl<T> LockFreeStack<T> {
-        fn new() -> Self {
-            LockFreeStack {
-                head: AtomicPtr::new(ptr::null_mut()),
+    
+    impl AtomicArray {
+        fn new(size: usize) -> Self {
+            let mut data = Vec::with_capacity(size);
+            for _ in 0..size {
+                data.push(AtomicI32::new(0));
+            }
+            AtomicArray { data }
+        }
+        
+        fn increment(&self, index: usize) -> i32 {
+            if index < self.data.len() {
+                self.data[index].fetch_add(1, Ordering::SeqCst)
+            } else {
+                -1
             }
         }
-
-        fn push(&self, data: T) {
-            // 创建新节点
-            let new_node = Box::into_raw(Box::new(Node {
-                data,
-                next: ptr::null_mut(),
-            }));
-
-            loop {
-                // 读取当前头节点
-                let current_head = self.head.load(Ordering::Acquire);
-
-                // 设置新节点的 next 指针
-                unsafe {
-                    (*new_node).next = current_head;
-                }
-
-                // 尝试原子地更新头节点
-                if self
-                    .head
-                    .compare_exchange_weak(
-                        current_head,
-                        new_node,
-                        Ordering::Release,
-                        Ordering::Relaxed,
-                    )
-                    .is_ok()
-                {
-                    break;
-                }
-            }
-        }
-
-        fn pop(&self) -> Option<T> {
-            loop {
-                // 读取当前头节点
-                let current_head = self.head.load(Ordering::Acquire);
-
-                if current_head.is_null() {
-                    return None;
-                }
-
-                // 获取下一个节点
-                let next = unsafe { (*current_head).next };
-
-                // 尝试原子地更新头节点
-                if self
-                    .head
-                    .compare_exchange_weak(current_head, next, Ordering::Release, Ordering::Relaxed)
-                    .is_ok()
-                {
-                    // 成功，提取数据并释放节点
-                    unsafe {
-                        let data = ptr::read(&(*current_head).data);
-                        Box::from_raw(current_head);
-                        return Some(data);
-                    }
-                }
+        
+        fn get(&self, index: usize) -> i32 {
+            if index < self.data.len() {
+                self.data[index].load(Ordering::SeqCst)
+            } else {
+                -1
             }
         }
     }
-
-    impl<T> Drop for LockFreeStack<T> {
-        fn drop(&mut self) {
-            // 清理所有节点
-            while let Some(_) = self.pop() {
-                // 节点已在 pop 中释放
-            }
-        }
-    }
-
-    // 测试无锁栈
-    let stack = Arc::new(LockFreeStack::new());
+    
+    let atomic_array = Arc::new(AtomicArray::new(5));
     let mut handles = vec![];
-
-    // 生产者线程
-    for i in 0..3 {
-        let stack = Arc::clone(&stack);
+    
+    // 多个线程并发修改数组
+    for thread_id in 0..3 {
+        let array = Arc::clone(&atomic_array);
         let handle = thread::spawn(move || {
-            for j in 0..10 {
-                let data = format!("P{}-{}", i, j);
-                stack.push(data);
-                thread::sleep(std::time::Duration::from_millis(1));
+            for i in 0..5 {
+                let prev = array.increment(i);
+                println!("线程 {} 增加索引 {}: {} -> {}", thread_id, i, prev, prev + 1);
+                thread::sleep(std::time::Duration::from_millis(10));
             }
         });
         handles.push(handle);
     }
-
-    // 消费者线程
-    for i in 0..2 {
-        let stack = Arc::clone(&stack);
-        let handle = thread::spawn(move || {
-            for _ in 0..15 {
-                if let Some(data) = stack.pop() {
-                    println!("消费者 {} 弹出: {}", i, data);
-                }
-                thread::sleep(std::time::Duration::from_millis(2));
-            }
-        });
-        handles.push(handle);
-    }
-
+    
     for handle in handles {
         handle.join().unwrap();
+    }
+    
+    println!("最终数组状态:");
+    for i in 0..5 {
+        println!("  索引 {}: {}", i, atomic_array.get(i));
     }
 
     // 无锁编程的优势和挑战：
@@ -2184,7 +2134,7 @@ fn concurrency_testing() {
         data: Mutex<u32>,
     }
 
-    fn test_deadlock_detection() {
+    fn test_deadlock_prevention() {
         let a = Arc::new(ResourceA {
             data: Mutex::new(0),
         });
@@ -2197,6 +2147,9 @@ fn concurrency_testing() {
         let a2 = Arc::clone(&a);
         let b2 = Arc::clone(&b);
 
+        // 死锁预防：两个线程都按照相同的顺序获取锁 (a -> b)
+        // 这样可以避免死锁的发生
+        
         // 线程1：按照 a -> b 的顺序获取锁
         let handle1 = thread::spawn(move || {
             let _guard1 = a1.data.lock().unwrap();
@@ -2204,32 +2157,29 @@ fn concurrency_testing() {
             thread::sleep(Duration::from_millis(10));
             let _guard2 = b1.data.lock().unwrap();
             println!("线程1 获取了 ResourceB");
+            println!("线程1 完成操作");
         });
 
-        // 线程2：按照 b -> a 的顺序获取锁（可能导致死锁）
+        // 线程2：也按照 a -> b 的顺序获取锁（避免死锁）
         let handle2 = thread::spawn(move || {
-            let _guard1 = b2.data.lock().unwrap();
-            println!("线程2 获取了 ResourceB");
-            thread::sleep(Duration::from_millis(10));
-            let _guard2 = a2.data.lock().unwrap();
+            // 稍微延迟，让线程1先开始
+            thread::sleep(Duration::from_millis(5));
+            let _guard1 = a2.data.lock().unwrap();
             println!("线程2 获取了 ResourceA");
+            thread::sleep(Duration::from_millis(10));
+            let _guard2 = b2.data.lock().unwrap();
+            println!("线程2 获取了 ResourceB");
+            println!("线程2 完成操作");
         });
 
-        // 设置超时
-        let timeout = Duration::from_secs(5);
-        let start_time = std::time::Instant::now();
-
+        // 等待线程完成
         handle1.join().unwrap();
         handle2.join().unwrap();
 
-        if start_time.elapsed() < timeout {
-            println!("死锁检测测试通过：没有发生死锁");
-        } else {
-            println!("死锁检测测试失败：可能发生了死锁");
-        }
+        println!("死锁预防测试通过：通过统一的锁获取顺序避免了死锁");
     }
 
-    test_deadlock_detection();
+    test_deadlock_prevention();
 
     // 示例3：性能基准测试
     fn benchmark_mutex_vs_atomic() {
