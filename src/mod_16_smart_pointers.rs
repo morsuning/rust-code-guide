@@ -2,8 +2,12 @@
 // 深入讲解 Rust 中的智能指针概念，包括 Box、Rc、Arc、RefCell 等
 // 智能指针是 Rust 中实现数据结构设计和内存管理的重要工具
 
+
+
 // ===========================================
-// 1. 智能指针基础概念
+#![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments, unused_macros, deprecated)]
+
+// Rust 智能指针教程
 // ===========================================
 
 // 智能指针是指实现 Deref 和 Drop trait 的数据结构

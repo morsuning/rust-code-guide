@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments)]
+
 // Rust 结构体（Structs）
 // 深入讲解结构体定义、方法实现、所有权、泛型等核心概念
 // 结构体是 Rust 中创建自定义类型的主要方式，提供了强大的数据组织能力

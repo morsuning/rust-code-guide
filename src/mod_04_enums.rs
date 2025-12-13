@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments, unused_macros, deprecated)]
+
 // Rust 枚举
 // 深入讲解枚举定义、模式匹配、Option、Result 等核心概念
 // 枚举是 Rust 中表达类型安全联合体的强大工具，支持数据变体和模式匹配

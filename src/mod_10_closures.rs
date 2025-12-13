@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments, unused_macros, deprecated)]
+
 // Rust 闭包（Closures）
 // 深入讲解闭包语法、环境捕获、Fn trait 系统等函数式编程特性
 

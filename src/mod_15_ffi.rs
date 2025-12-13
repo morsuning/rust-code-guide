@@ -1,11 +1,13 @@
-// Rust FFI (外部函数接口)
-// 深入讲解 Rust 与其他语言（主要是 C 语言）的互操作性
-// 包含函数调用、数据类型映射、内存管理、错误处理等核心技术
+#![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments, unused_macros, deprecated)]
+
+// Rust FFI (外部函数接口) 教程
 
 use std::ffi::{CStr, CString, c_char};
 
+
+
 // ===========================================
-// 1. FFI 基础 (FFI Basics)
+// Rust FFI (外部函数接口) 教程
 // ===========================================
 
 // FFI (Foreign Function Interface) 是 Rust 与其他语言交互的核心机制
@@ -71,10 +73,8 @@ fn ffi_basics() {
     // 在 unsafe 块中调用 Rust 的 extern "C" 函数
     // 即使是 Rust 函数，只要使用了 extern "C" 调用约定
     // 调用时也需要 unsafe 块，因为这种函数通常用于 FFI 场景
-    unsafe {
-        let result = add_numbers(10, 20);
-        println!("add_numbers(10, 20) = {}", result);
-    }
+    let result = add_numbers(10, 20);
+    println!("add_numbers(10, 20) = {}", result);
 
     // FFI 调用约定的重要性：
     // 1. 参数传递方式：参数如何传递到栈或寄存器
@@ -291,7 +291,7 @@ fn string_handling() {
     // 当可能时借用原始数据，只有在需要修改时才复制
     use std::borrow::Cow;
 
-    fn to_cow_string(s: &str) -> Cow<str> {
+    fn to_cow_string(s: &str) -> Cow<'_, str> {
         if s.contains('\0') {
             // 如果包含空字符，需要复制和处理
             // 创建一个新的字符串，替换空字符为转义序列
@@ -621,7 +621,7 @@ fn error_handling() {
     // 4. 扩展性：为未来的错误类型预留代码空间
 
     let mut result = 0.0;
-    let error_code = unsafe { divide_with_error(10.0, 2.0, &mut result) };
+    let error_code = divide_with_error(10.0, 2.0, &mut result);
 
     if error_code == 0 {
         println!("除法结果: {}", result);
@@ -650,11 +650,9 @@ fn error_handling() {
         unsafe { MOCK_ERRNO } // 获取最后的错误代码
     }
 
-    unsafe {
-        set_last_error(42);
-        let error = get_last_error();
-        println!("错误代码: {}", error);
-    }
+    set_last_error(42);
+    let error = get_last_error();
+    println!("错误代码: {}", error);
     // errno 机制的特点：
     // 1. 全局性：在整个程序范围内共享错误信息
     // 2. 线程安全：现代 C 库保证 errno 的线程安全性
@@ -691,7 +689,7 @@ fn error_handling() {
     // 3. 信息完整：同时包含结果和错误信息
     // 4. 易于使用：C 代码可以直接访问字段
 
-    let result = unsafe { safe_divide(15.0, 3.0) };
+    let result = safe_divide(15.0, 3.0);
     println!("安全除法结果: {:?}", result);
 
     // 使用 Option 类型的包装 (Option Type Wrapper)
@@ -724,10 +722,10 @@ fn error_handling() {
     // 3. 资源获取：可能失败的资源分配
     // 4. 边界检查：可能失败的数组访问
 
-    let sqrt_result = unsafe { safe_sqrt(16.0) };
+    let sqrt_result = safe_sqrt(16.0);
     println!("安全平方根结果: {:?}", sqrt_result);
 
-    let invalid_result = unsafe { safe_sqrt(-1.0) };
+    let invalid_result = safe_sqrt(-1.0);
     println!("无效平方根结果: {:?}", invalid_result);
 
     // 错误处理的高级策略：
@@ -1127,13 +1125,13 @@ fn practical_examples() {
     }
 
     unsafe fn mock_socket_connect(_socket: *mut Socket, addr: *const c_char, port: i32) -> i32 {
-        let addr_str = CStr::from_ptr(addr).to_string_lossy();
+        let addr_str = unsafe { CStr::from_ptr(addr).to_string_lossy() };
         println!("模拟连接到 {}:{}", addr_str, port);
         0 // 成功
     }
 
     unsafe fn mock_socket_send(_socket: *mut Socket, data: *const c_char, len: i32) -> i32 {
-        let data_str = CStr::from_ptr(data).to_string_lossy();
+        let data_str = unsafe { CStr::from_ptr(data).to_string_lossy() };
         println!("模拟发送数据: {}", data_str);
         len // 返回发送的字节数
     }

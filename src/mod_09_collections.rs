@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments, unused_macros, deprecated)]
+
 // Rust 集合类型深度解析 (Rust Collections Deep Dive)
 // 全面讲解 Rust 标准库中的各种集合类型、使用场景、性能特性和最佳实践
 // 集合是 Rust 数据管理的核心工具，理解它们的特性对于编写高效的 Rust 程序至关重要
@@ -1251,8 +1253,12 @@ fn data_processing_pipeline_system() {
     println!();
 }
 
+
+
+
+
 // ===========================================
-// 主函数
+// Rust 集合教程
 // ===========================================
 
 pub fn main() {

@@ -33,86 +33,86 @@ rust-code-guide/
 
 ### 基础特性
 
-- [变量和可变性](src/01_basics.rs)
-- [数据类型](src/01_basics.rs)
-- [函数](src/01_basics.rs)
-- [注释](src/01_basics.rs)
-- [控制流](src/01_basics.rs)
+- [变量和可变性](src/mod_01_basics.rs)
+- [数据类型](src/mod_01_basics.rs)
+- [函数](src/mod_01_basics.rs)
+- [注释](src/mod_01_basics.rs)
+- [控制流](src/mod_01_basics.rs)
 
 ### 核心概念
 
-- [所有权](src/02_ownership.rs)
-- [引用和借用](src/02_ownership.rs)
-- [切片](src/02_ownership.rs)
+- [所有权](src/mod_02_ownership.rs)
+- [引用和借用](src/mod_02_ownership.rs)
+- [切片](src/mod_02_ownership.rs)
 
 ### 复合类型
 
-- [结构体](src/03_structs.rs)
-- [枚举](src/04_enums.rs)
-- [模式匹配](src/05_pattern_matching.rs)
+- [结构体](src/mod_03_structs.rs)
+- [枚举](src/mod_04_enums.rs)
+- [模式匹配](src/mod_05_pattern_matching.rs)
 
 ### 错误处理
 
-- [Option 类型](src/06_error_handling.rs)
-- [Result 类型](src/06_error_handling.rs)
-- [panic! 和错误传播](src/06_error_handling.rs)
+- [Option 类型](src/mod_06_error_handling.rs)
+- [Result 类型](src/mod_06_error_handling.rs)
+- [panic! 和错误传播](src/mod_06_error_handling.rs)
 
 ### 泛型系统
 
-- [泛型](src/07_generics.rs)
-- [特征](src/08_traits.rs)
-- [特征对象](src/08_traits.rs)
+- [泛型](src/mod_07_generics.rs)
+- [特征](src/mod_08_traits.rs)
+- [特征对象](src/mod_08_traits.rs)
 
 ### 集合类型
 
-- [Vector](src/09_collections.rs)
-- [String](src/09_collections.rs)
-- [HashMap](src/09_collections.rs)
+- [Vector](src/mod_09_collections.rs)
+- [String](src/mod_09_collections.rs)
+- [HashMap](src/mod_09_collections.rs)
 
 ### 函数式编程
 
-- [闭包](src/10_closures.rs)
-- [迭代器](src/11_iterators.rs)
+- [闭包](src/mod_10_closures.rs)
+- [迭代器](src/mod_11_iterators.rs)
 
 ### 并发编程
 
-- [线程](src/12_concurrency.rs)
-- [通道](src/12_concurrency.rs)
-- [共享状态](src/12_concurrency.rs)
+- [线程](src/mod_12_concurrency.rs)
+- [通道](src/mod_12_concurrency.rs)
+- [共享状态](src/mod_12_concurrency.rs)
 
 ### 宏系统
 
-- [声明式宏](src/13_macros.rs)
-- [过程宏](src/13_macros.rs)
+- [声明式宏](src/mod_13_macros.rs)
+- [过程宏](src/mod_13_macros.rs)
 
 ### 高级特性
 
-- [不安全 Rust](src/14_advanced.rs)
-- [生命周期](src/14_advanced.rs)
-- [外部函数接口](src/15_ffi.rs)
+- [不安全 Rust](src/mod_14_advanced.rs)
+- [生命周期](src/mod_14_advanced.rs)
+- [外部函数接口](src/mod_15_ffi.rs)
 
 ### 智能指针
 
-- [Box 智能指针](src/16_smart_pointers.rs)
-- [Rc 和 Arc 引用计数](src/16_smart_pointers.rs)
-- [RefCell 和内部可变性](src/16_smart_pointers.rs)
-- [Weak 指针和循环引用](src/16_smart_pointers.rs)
+- [Box 智能指针](src/mod_16_smart_pointers.rs)
+- [Rc 和 Arc 引用计数](src/mod_16_smart_pointers.rs)
+- [RefCell 和内部可变性](src/mod_16_smart_pointers.rs)
+- [Weak 指针和循环引用](src/mod_16_smart_pointers.rs)
 
 ### 异步编程
 
-- [Future 和异步基础](src/17_async_await.rs)
-- [async/await 语法](src/17_async_await.rs)
-- [异步运行时和执行器](src/17_async_await.rs)
-- [异步 I/O 操作](src/17_async_await.rs)
-- [Stream 和异步迭代](src/17_async_await.rs)
+- [Future 和异步基础](src/mod_17_async_await.rs)
+- [async/await 语法](src/mod_17_async_await.rs)
+- [异步运行时和执行器](src/mod_17_async_await.rs)
+- [异步 I/O 操作](src/mod_17_async_await.rs)
+- [Stream 和异步迭代](src/mod_17_async_await.rs)
 
 ### 面向对象编程
 
-- [封装和可见性控制](src/18_oop_features.rs)
-- [继承的替代方案](src/18_oop_features.rs)
-- [多态和 Trait 对象](src/18_oop_features.rs)
-- [对象安全和生命周期](src/18_oop_features.rs)
-- [设计模式实现](src/18_oop_features.rs)
+- [封装和可见性控制](src/mod_18_oop_features.rs)
+- [继承的替代方案](src/mod_18_oop_features.rs)
+- [多态和 Trait 对象](src/mod_18_oop_features.rs)
+- [对象安全和生命周期](src/mod_18_oop_features.rs)
+- [设计模式实现](src/mod_18_oop_features.rs)
 
 ## 版本特性追踪
 
@@ -354,6 +354,16 @@ rust-code-guide/
 - `const` 特性全面发展
 - 编译器优化和开发者体验提升
 
+### Rust 1.91 (2025-10-30)
+
+- `const` 上下文中支持 `&mut`
+- `std::sync::Exclusive` 同步原语
+
+### Rust 1.92 (2025-12-11)
+
+- 异步闭包 (`async_closure`) 稳定化
+- `impl Trait` 在类型别名中 (TAIT) 完全稳定
+
 ## 如何使用
 
 本项目中的每个模块都是独立的 Rust 代码示例，主要用于学习和参考。
@@ -362,21 +372,21 @@ rust-code-guide/
 
 直接阅读相应的 `.rs` 文件来学习特定主题：
 
-- `src/01_basics.rs` - 基础语法
-- `src/02_ownership.rs` - 所有权和借用
-- `src/03_structs.rs` - 结构体
-- `src/04_enums.rs` - 枚举
-- `src/05_pattern_matching.rs` - 模式匹配
-- `src/06_error_handling.rs` - 错误处理
-- `src/07_generics.rs` - 泛型
-- `src/08_traits.rs` - 特征
-- `src/09_collections.rs` - 集合类型
-- `src/10_closures.rs` - 闭包
-- `src/11_iterators.rs` - 迭代器
-- `src/12_concurrency.rs` - 并发编程
-- `src/13_macros.rs` - 宏系统
-- `src/14_advanced.rs` - 高级特性
-- `src/15_ffi.rs` - 外部函数接口
+- `src/mod_01_basics.rs` - 基础语法
+- `src/mod_02_ownership.rs` - 所有权和借用
+- `src/mod_03_structs.rs` - 结构体
+- `src/mod_04_enums.rs` - 枚举
+- `src/mod_05_pattern_matching.rs` - 模式匹配
+- `src/mod_06_error_handling.rs` - 错误处理
+- `src/mod_07_generics.rs` - 泛型
+- `src/mod_08_traits.rs` - 特征
+- `src/mod_09_collections.rs` - 集合类型
+- `src/mod_10_closures.rs` - 闭包
+- `src/mod_11_iterators.rs` - 迭代器
+- `src/mod_12_concurrency.rs` - 并发编程
+- `src/mod_13_macros.rs` - 宏系统
+- `src/mod_14_advanced.rs` - 高级特性
+- `src/mod_15_ffi.rs` - 外部函数接口
 
 ### 运行测试
 
@@ -398,20 +408,20 @@ cargo doc --open
 
 建议按照以下顺序学习，每个模块都包含详细的代码示例和注释说明：
 
-1. **基础语法** - 从 `01_basics.rs` 开始
-2. **所有权系统** - 学习 `02_ownership.rs`
-3. **复合类型** - 掌握 `03_structs.rs` 和 `04_enums.rs`
-4. **模式匹配** - 学习 `05_pattern_matching.rs`
-5. **错误处理** - 掌握 `06_error_handling.rs`
-6. **泛型和特征** - 学习 `07_generics.rs` 和 `08_traits.rs`
-7. **集合类型** - 掌握 `09_collections.rs`
-8. **函数式编程** - 学习 `10_closures.rs` 和 `11_iterators.rs`
-9. **并发编程** - 掌握 `12_concurrency.rs`
-10. **宏系统** - 学习 `13_macros.rs`
-11. **高级特性** - 掌握 `14_advanced.rs` 和 `15_ffi.rs`
-12. **智能指针** - 学习 `16_smart_pointers.rs`
-13. **异步编程** - 学习 `17_async_await.rs`
-14. **面向对象编程** - 掌握 `18_oop_features.rs`
+1. **基础语法** - 从 `mod_01_basics.rs` 开始
+2. **所有权系统** - 学习 `mod_02_ownership.rs`
+3. **复合类型** - 掌握 `mod_03_structs.rs` 和 `mod_04_enums.rs`
+4. **模式匹配** - 学习 `mod_05_pattern_matching.rs`
+5. **错误处理** - 掌握 `mod_06_error_handling.rs`
+6. **泛型和特征** - 学习 `mod_07_generics.rs` 和 `mod_08_traits.rs`
+7. **集合类型** - 掌握 `mod_09_collections.rs`
+8. **函数式编程** - 学习 `mod_10_closures.rs` 和 `mod_11_iterators.rs`
+9. **并发编程** - 掌握 `mod_12_concurrency.rs`
+10. **宏系统** - 学习 `mod_13_macros.rs`
+11. **高级特性** - 掌握 `mod_14_advanced.rs` 和 `mod_15_ffi.rs`
+12. **智能指针** - 学习 `mod_16_smart_pointers.rs`
+13. **异步编程** - 学习 `mod_17_async_await.rs`
+14. **面向对象编程** - 掌握 `mod_18_oop_features.rs`
 
 ## 项目特点
 

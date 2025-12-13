@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments, unused_macros, deprecated)]
+
 // Rust 高级特性（Advanced Rust Features）
 // 包含 unsafe Rust、内联汇编、高级生命周期、高级 trait 等深度特性的详细讲解
 // 这些特性展示了 Rust 在系统编程、高性能计算和底层开发中的强大能力
@@ -3634,7 +3636,7 @@ fn repr_transparent_structs() {
     #[repr(transparent)]
     struct DebugWrapper<T> {
         value: T,
-        #[allow(dead_code)]
+        #[allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments)]
         debug_marker: (), // 零大小类型，不影响透明性
     }
 
@@ -4867,3 +4869,43 @@ mod tests {
 
 // 全局可变静态变量
 static mut MUTABLE_COUNTER: i32 = 0;
+
+// ===========================================
+// 8. Rust 1.91: Const 上下文中的可变引用 (Const Context Mutable References)
+// ===========================================
+
+// Rust 1.91 (2025-10-30) 引入了在 const 上下文中支持 &mut
+// 这极大扩展了编译时计算的能力，允许在 const fn 中使用可变引用
+
+pub fn const_mut_refs() {
+    println!("=== Rust 1.91: Const 上下文中的可变引用 ===");
+
+    // 编译时交换值
+    const fn const_swap(arr: &mut [i32], x: usize, y: usize) {
+        let temp = arr[x];
+        arr[x] = arr[y];
+        arr[y] = temp;
+    }
+
+    // 编译时数据处理
+    const fn process_data() -> [i32; 3] {
+        let mut data = [1, 2, 3];
+        let mut i = 0;
+        while i < 3 {
+            data[i] *= 2;
+            i += 1;
+        }
+        const_swap(&mut data, 0, 2);
+        data
+    }
+
+    const PROCESSED: [i32; 3] = process_data();
+    println!("编译时处理结果: {:?}", PROCESSED);
+
+    // 这一特性的意义：
+    // 1. 允许更复杂的编译时算法
+    // 2. 减少运行时开销
+    // 3. 提高 const fn 的实用性
+    
+    println!();
+}

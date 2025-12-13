@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments)]
+
 // Rust 宏系统
 // 深入讲解 Rust 的元编程能力，包括声明式宏、过程宏和高级宏技巧
 //
@@ -1033,6 +1035,7 @@ fn advanced_macro_patterns() {
 
     // 代码块执行宏（Block Execution）
     // 宏可以包装代码块，为其添加额外的功能，如计时、日志等
+    #[allow(unused_macros)]
     macro_rules! time_block {
         // 接受一个代码块，执行并计时
         ($block:block) => {

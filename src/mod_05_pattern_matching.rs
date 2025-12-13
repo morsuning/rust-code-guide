@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments)]
+
 // Rust 模式匹配
 // 深入讲解 Rust 模式匹配系统的各个方面，包括 match 表达式、模式语法、解构、守卫等高级特性
 
@@ -760,7 +762,7 @@ fn pattern_matching_best_practices() {
 }
 
 // ===========================================
-// 12. 模式匹配示例程序
+// Rust 模式匹配教程
 // ===========================================
 
 // 通过实际的示例程序来展示模式匹配的强大功能

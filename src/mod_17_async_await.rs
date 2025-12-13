@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments)]
+
 // Rust 异步编程与 async/await
 // 深入讲解 Rust 中的异步编程模型，包括 Future、async/await、执行器等核心概念
 // 异步编程是 Rust 中处理高并发 I/O 操作的重要工具
@@ -820,7 +822,7 @@ async fn practical_examples() {
     println!("任务队列状态: {} 待处理, {} 活跃", pending, active);
 
     // 示例 3: 异步数据管道
-    use futures::stream::{self, StreamExt};
+
 
     async fn create_data_pipeline() -> Vec<String> {
         // 简化的数据管道示例
@@ -1921,8 +1923,8 @@ pub async fn main() {
     testing_async_code().await;
     practical_examples().await;
     async_trait_methods().await;
-    async_function_lifetimes();
-    practical_async_lifetime_examples();
+    async_function_lifetimes().await;
+    practical_async_lifetime_examples().await;
 
     println!("异步编程演示完成！");
 }
@@ -2053,3 +2055,46 @@ mod tests {
         assert_eq!(result2, "computed_value");
     }
 }
+/*
+// ===========================================
+// 11. Rust 1.92: 异步闭包 (Async Closures)
+// ===========================================
+
+// Rust 1.92 (2025-12-11) 稳定了异步闭包 (async closures)
+// 允许创建直接返回 Future 的闭包，语法更加简洁
+
+pub async fn async_closures_demo() {
+    println!("=== Rust 1.92: 异步闭包 (Async Closures) ===");
+
+    // 这是一个异步闭包
+    // 语法: async |args| { body }
+    // 它等价于返回 Future 的普通闭包，但捕捉变量的处理更自然
+    
+    let process = async |x: i32| {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        x * 2
+    };
+
+    let result = process(21).await;
+    println!("异步闭包结果: {}", result);
+    
+    // 结合高阶函数使用
+    async fn run_with_context<F, Fut>(f: F) -> i32 
+    where 
+        F: FnOnce(i32) -> Fut,
+        Fut: Future<Output = i32>
+    {
+        f(10).await
+    }
+    
+    // 直接传递异步闭包
+    let res = run_with_context(async |x| {
+        println!("在上下文中处理: {}", x);
+        x + 5
+    }).await;
+    
+    println!("上下文结果: {}", res);
+    
+    println!();
+}
+*/

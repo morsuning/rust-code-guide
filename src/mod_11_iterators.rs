@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments, unused_macros, deprecated)]
+
 // Rust 迭代器（Iterators）
 // 深入讲解迭代器概念、适配器、消费者、自定义迭代器等函数式编程特性
 

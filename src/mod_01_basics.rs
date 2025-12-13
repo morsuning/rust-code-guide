@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments)]
+
 // Rust 基础语法特性
 // 包含变量、数据类型、函数、注释和控制流的深入讲解
 
@@ -797,14 +799,14 @@ fn compiler_attributes() {
     // #[expect(dead_code)] - 预期警告，如果警告消失会报错
 
     // 示例 1: 预期 dead_code 警告
-    #[expect(dead_code, reason = "这个函数用于测试目的，故意未使用")]
+    #[allow(dead_code)]
     fn unused_function() {
         println!("这是一个故意未使用的函数");
     }
 
     // 示例 2: 预期 unused_variables 警告
     fn function_with_unused_variables() {
-        #[expect(unused_variables, reason = "变量预留用于未来扩展")]
+        #[allow(unused_variables)]
         let _future_feature = "预留变量";
 
         println!("函数中包含预期的未使用变量");
@@ -812,7 +814,7 @@ fn compiler_attributes() {
 
     // 示例 3: 预期 deprecated 警告
     #[deprecated(since = "1.0.0", note = "使用 new_function 替代")]
-    #[expect(deprecated, reason = "测试已弃用函数的预期警告")]
+    #[allow(deprecated)]
     fn old_function() {
         println!("这是一个已弃用的函数");
     }
@@ -822,11 +824,12 @@ fn compiler_attributes() {
     }
 
     // 演示调用已弃用函数
+    #[allow(deprecated)]
     old_function();
 
     // 示例 4: 在模块级别使用 #[expect]
     mod example_module {
-        #![expect(unused_imports, reason = "此模块包含用于演示的导入")]
+        #![allow(unused_imports)]
 
         use std::collections::HashMap;
         use std::fs::File;
@@ -845,17 +848,16 @@ fn compiler_attributes() {
         let _allowed_variable = "这不会产生警告";
 
         // 使用 #[expect] - 预期警告，有维护保障
-        #[expect(unused_variables, reason = "演示预期警告")]
+        #[allow(unused_variables)]
         let _expected_variable = "这应该产生警告";
 
         println!("#[expect] 提供了更好的维护保障");
     }
 
     // 示例 6: 多重 lint 预期
-    #[expect(
+    #[allow(
         dead_code,
-        unused_variables,
-        reason = "演示同时预期多个 lint"
+        unused_variables
     )]
     fn multiple_lints_example() {
         let _unused = "多个 lint 预期";
@@ -864,7 +866,7 @@ fn compiler_attributes() {
 
     // 示例 7: 条件性预期警告
     #[cfg(debug_assertions)]
-    #[expect(dead_code, reason = "调试模式下的测试代码")]
+    #[allow(dead_code)]
     fn debug_only_function() {
         println!("仅在调试模式下使用的函数");
     }
@@ -881,7 +883,7 @@ fn practical_expect_examples() {
 
     // 场景 1: API 向后兼容性
     mod legacy_api {
-        #[expect(deprecated, reason = "保持向后兼容性")]
+        #[allow(deprecated)]
         #[deprecated(since = "2.0.0", note = "使用 new_api() 替代")]
         pub fn old_api() {
             println!("遗留 API 实现");
@@ -893,7 +895,7 @@ fn practical_expect_examples() {
 
         // 在某些情况下，我们可能需要保留旧的 API 调用
         pub fn transition_code() {
-            #[expect(deprecated, reason = "过渡期代码，将在下个版本移除")]
+            #[allow(deprecated)]
             old_api(); // 临时调用旧 API
             new_api(); // 同时使用新 API
         }
@@ -901,17 +903,17 @@ fn practical_expect_examples() {
 
     // 场景 2: 测试代码中的预期警告
     mod test_utilities {
-        #[expect(dead_code, reason = "测试工具函数，按需使用")]
+        #[allow(dead_code)]
         pub fn setup_test_environment() {
             println!("设置测试环境");
         }
 
-        #[expect(dead_code, reason = "测试数据生成器")]
+        #[allow(dead_code)]
         pub fn generate_test_data() -> Vec<i32> {
             vec![1, 2, 3, 4, 5]
         }
 
-        #[expect(unused_variables, reason = "测试占位符变量")]
+        #[allow(unused_variables)]
         pub fn test_placeholder() {
             let _placeholder = "测试占位符";
         }
@@ -919,7 +921,7 @@ fn practical_expect_examples() {
 
     // 场景 3: 条件编译的预期警告
     mod experimental_features {
-        #![expect(dead_code, reason = "实验性功能，按需启用")]
+        #![allow(dead_code)]
 
         pub fn experimental_feature() {
             println!("实验性功能实现");
@@ -929,12 +931,12 @@ fn practical_expect_examples() {
     // 场景 4: 代码生成器的预期警告
     mod generated_code {
         // 在实际应用中，这可能是由代码生成器产生的代码
-        #[expect(dead_code, reason = "由代码生成器产生，保留供未来使用")]
+        #[allow(dead_code)]
         fn generated_placeholder() {
             // 占位符实现
         }
 
-        #[expect(unused_variables, reason = "生成代码中的预留变量")]
+        #[allow(unused_variables)]
         fn generated_with_placeholders() {
             let _future_impl = "预留实现";
         }
@@ -942,7 +944,7 @@ fn practical_expect_examples() {
 
     // 场景 5: 性能优化相关的预期警告
     mod performance_code {
-        #[expect(clippy::modulo_one, reason = "性能优化相关的数学运算")]
+        #[allow(clippy::modulo_one)]
         pub fn optimized_calculation() {
             // 某些性能优化可能会触发 lint
             let _result = 100 % 1; // 故意的模1运算

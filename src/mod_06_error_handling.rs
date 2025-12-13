@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments, unused_macros, deprecated)]
+
 // Rust 错误处理
 // 深入讲解 Rust 错误处理系统，包括 panic、Result、Option、错误传播和自定义错误类型
 

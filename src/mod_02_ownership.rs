@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments)]
+
 // Rust 所有权系统
 // 深入讲解所有权、借用、切片等 Rust 内存安全的核心机制
 

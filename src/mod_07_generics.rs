@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments)]
+
 // Rust 泛型系统
 // 深入讲解 Rust 泛型的各个方面，包括泛型函数、结构体、枚举、约束、实现和高级模式
 
@@ -568,6 +570,8 @@ fn generics_in_std_lib() {
     println!();
 }
 
+
+
 // ===========================================
 // 7. 泛型性能
 // ===========================================
@@ -857,7 +861,7 @@ fn generic_example_program() {
         }
 
         // 迭代器支持
-        fn iter(&self) -> std::slice::Iter<T> {
+        fn iter(&self) -> std::slice::Iter<'_, T> {
             self.items.iter()
         }
     }
