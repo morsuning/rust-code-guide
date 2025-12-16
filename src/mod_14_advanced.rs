@@ -1992,7 +1992,7 @@ fn const_generic_parameters() {
 }
 
 // ===========================================
-// 12. Rust 2021 Edition 新特性（Rust 2021 Edition Features）
+// 13. Rust 2021 Edition 新特性（Rust 2021 Edition Features）
 // ===========================================
 
 // Rust 2021 Edition 是 Rust 语言的第三个主要版本，于 2021 年 10 月随 Rust 1.56 发布
@@ -2240,7 +2240,7 @@ fn rust_2021_edition_features() {
 }
 
 // ===========================================
-// 13. Rust 1.70+ OnceLock 和 OnceCell（OnceLock and OnceCell）
+// 14. Rust 1.70+ OnceLock 和 OnceCell（OnceLock and OnceCell）
 // ===========================================
 
 // OnceLock 和 OnceCell 是 Rust 1.70 引入的重要类型
@@ -2505,6 +2505,13 @@ fn once_lock_and_once_cell() {
 // 随着Rust语言的不断发展，const函数和泛型系统在最新版本中获得了显著的增强
 // 这些改进极大地扩展了编译时计算的能力，提高了代码的性能和类型安全性
 // 本节涵盖了Rust 1.86到1.90版本中最重要的const函数和泛型增强功能
+// 
+// 版本特性概览 (Version Feature Overview):
+// - Rust 1.86: const函数中的字符串操作 (String operations in const contexts)
+// - Rust 1.87: 匿名管道 (Anonymous pipes), 安全架构原语 (Safe architecture intrinsics)
+// - Rust 1.88: Let chains (if let &&), 裸函数 (Naked functions)
+// - Rust 1.89: const泛型参数显式推断 (Explicitly inferred const arguments)
+// - Rust 1.90: LLD链接器默认启用 (LLD default), Workspace publish
 
 // 最新const函数改进的核心价值：
 // 1. 更强大的编译时计算：支持更复杂的逻辑和操作
@@ -2520,6 +2527,7 @@ fn latest_const_and_generic_enhancements() {
     // 最新的Rust版本扩展了const函数的能力，支持更复杂的编译时计算
 
     // const函数中的字符串操作
+    // [Rust 1.86] 支持在const上下文中使用更多字符串操作方法
     const fn string_operations() -> &'static str {
         // 在编译时进行字符串处理
         const INPUT: &str = "Hello, World!";
@@ -2569,6 +2577,7 @@ fn latest_const_and_generic_enhancements() {
     println!("条件编译值：{}", CONDITIONAL_VALUE);
 
     // 2. const泛型增强（Const Generic Enhancements）
+    // [Rust 1.89] 支持显式推断const参数 (Explicitly Inferred Const Arguments)
     // const泛型允许在类型级别使用编译时常量，提供更强大的抽象能力
 
     // 动态数组大小验证
@@ -3107,7 +3116,7 @@ fn advanced_example_program() {
 }
 
 // ===========================================
-// 14. Rust 1.80 #[cfg(accessible)] 配置谓词
+// 17. Rust 1.80 #[cfg(accessible)] 配置谓词
 // ===========================================
 
 // Rust 1.80 引入了 #[cfg(accessible)] 配置谓词，这是一个强大的条件编译特性
@@ -3568,7 +3577,7 @@ fn practical_cfg_accessible_examples() {
 */
 
 // ===========================================
-// 15. Rust 1.82 #[repr(transparent)] 对结构体支持
+// 18. Rust 1.82 #[repr(transparent)] 对结构体支持
 // ===========================================
 
 // Rust 1.82 完善了对结构体的 #[repr(transparent)] 支持，这是一个重要的内存布局控制特性
@@ -4015,6 +4024,46 @@ fn practical_transparent_examples() {
     }
 
     println!("实际应用示例演示完成");
+}
+
+// ===========================================
+// 19. Rust 1.91: Const 上下文中的可变引用 (Const Context Mutable References)
+// ===========================================
+
+// Rust 1.91 (2025-10-30) 引入了在 const 上下文中支持 &mut
+// 这极大扩展了编译时计算的能力，允许在 const fn 中使用可变引用
+
+pub fn const_mut_refs() {
+    println!("=== Rust 1.91: Const 上下文中的可变引用 ===");
+
+    // 编译时交换值
+    const fn const_swap(arr: &mut [i32], x: usize, y: usize) {
+        let temp = arr[x];
+        arr[x] = arr[y];
+        arr[y] = temp;
+    }
+
+    // 编译时数据处理
+    const fn process_data() -> [i32; 3] {
+        let mut data = [1, 2, 3];
+        let mut i = 0;
+        while i < 3 {
+            data[i] *= 2;
+            i += 1;
+        }
+        const_swap(&mut data, 0, 2);
+        data
+    }
+
+    const PROCESSED: [i32; 3] = process_data();
+    println!("编译时处理结果: {:?}", PROCESSED);
+
+    // 这一特性的意义：
+    // 1. 允许更复杂的编译时算法
+    // 2. 减少运行时开销
+    // 3. 提高 const fn 的实用性
+    
+    println!();
 }
 
 // ===========================================
@@ -4869,43 +4918,3 @@ mod tests {
 
 // 全局可变静态变量
 static mut MUTABLE_COUNTER: i32 = 0;
-
-// ===========================================
-// 8. Rust 1.91: Const 上下文中的可变引用 (Const Context Mutable References)
-// ===========================================
-
-// Rust 1.91 (2025-10-30) 引入了在 const 上下文中支持 &mut
-// 这极大扩展了编译时计算的能力，允许在 const fn 中使用可变引用
-
-pub fn const_mut_refs() {
-    println!("=== Rust 1.91: Const 上下文中的可变引用 ===");
-
-    // 编译时交换值
-    const fn const_swap(arr: &mut [i32], x: usize, y: usize) {
-        let temp = arr[x];
-        arr[x] = arr[y];
-        arr[y] = temp;
-    }
-
-    // 编译时数据处理
-    const fn process_data() -> [i32; 3] {
-        let mut data = [1, 2, 3];
-        let mut i = 0;
-        while i < 3 {
-            data[i] *= 2;
-            i += 1;
-        }
-        const_swap(&mut data, 0, 2);
-        data
-    }
-
-    const PROCESSED: [i32; 3] = process_data();
-    println!("编译时处理结果: {:?}", PROCESSED);
-
-    // 这一特性的意义：
-    // 1. 允许更复杂的编译时算法
-    // 2. 减少运行时开销
-    // 3. 提高 const fn 的实用性
-    
-    println!();
-}

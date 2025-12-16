@@ -4,10 +4,8 @@
 // 深入讲解 Rust 中 trait 的定义、实现、高级用法和最佳实践
 // Trait 是 Rust 实现抽象和多态的核心机制，也是类型安全的基础
 
-
-
 // ===========================================
-// Rust 特征 (Traits) 教程的本质与定义 (Trait Essence and Definition)
+// 1. Rust 特征 (Traits) 的本质与定义 (Trait Essence and Definition)
 // ===========================================
 
 // Trait 是 Rust 中定义共享行为的抽象机制
@@ -1570,7 +1568,53 @@ fn comprehensive_graphics_system() {
     println!();
 }
 
+// ===========================================
+// 11. Rust 1.92: Type Alias Impl Trait (TAIT)
+// ===========================================
 
+// Rust 1.92 完全稳定了 Type Alias Impl Trait (TAIT)
+// 允许在类型别名中使用 impl Trait，常用于隐藏具体类型或简化复杂类型（如 Future）
+
+/*
+pub fn tait_demo() {
+    println!("=== Rust 1.92: Type Alias Impl Trait (TAIT) ===");
+
+    // 定义一个不透明类型别名
+    type MyIterator = impl Iterator<Item = i32>;
+
+    fn make_iter(n: i32) -> MyIterator {
+        (0..n).map(|x| x * 2)
+    }
+
+    let iter = make_iter(5);
+    for x in iter {
+        print!("{} ", x);
+    }
+    println!();
+
+    // 在 Trait 中使用
+    trait Container {
+        type Item;
+        type Iter: Iterator<Item = Self::Item>;
+        fn items(&self) -> Self::Iter;
+    }
+    
+    struct MyVec(Vec<i32>);
+    
+    impl Container for MyVec {
+        type Item = i32;
+        // 使用 TAIT 简化返回类型
+        type Iter = impl Iterator<Item = i32>;
+        
+        fn items(&self) -> Self::Iter {
+            self.0.clone().into_iter()
+        }
+    }
+    
+    println!("TAIT 使得隐藏具体实现细节变得非常简单，特别是在涉及闭包或 Future 时。");
+    println!();
+}
+*/
 
 // ===========================================
 // 主函数
@@ -1805,51 +1849,3 @@ mod tests {
         p.outline_print();
     }
 }
-
-/*
-// ===========================================
-// 7. Rust 1.92: Type Alias Impl Trait (TAIT)
-// ===========================================
-
-// Rust 1.92 完全稳定了 Type Alias Impl Trait (TAIT)
-// 允许在类型别名中使用 impl Trait，常用于隐藏具体类型或简化复杂类型（如 Future）
-
-pub fn tait_demo() {
-    println!("=== Rust 1.92: Type Alias Impl Trait (TAIT) ===");
-
-    // 定义一个不透明类型别名
-    type MyIterator = impl Iterator<Item = i32>;
-
-    fn make_iter(n: i32) -> MyIterator {
-        (0..n).map(|x| x * 2)
-    }
-
-    let iter = make_iter(5);
-    for x in iter {
-        print!("{} ", x);
-    }
-    println!();
-
-    // 在 Trait 中使用
-    trait Container {
-        type Item;
-        type Iter: Iterator<Item = Self::Item>;
-        fn items(&self) -> Self::Iter;
-    }
-    
-    struct MyVec(Vec<i32>);
-    
-    impl Container for MyVec {
-        type Item = i32;
-        // 使用 TAIT 简化返回类型
-        type Iter = impl Iterator<Item = i32>;
-        
-        fn items(&self) -> Self::Iter {
-            self.0.clone().into_iter()
-        }
-    }
-    
-    println!("TAIT 使得隐藏具体实现细节变得非常简单，特别是在涉及闭包或 Future 时。");
-    println!();
-}
-*/

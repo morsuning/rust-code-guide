@@ -757,27 +757,7 @@ fn practical_examples() {
 }
 
 // ===========================================
-// 主函数
-// ===========================================
-
-pub fn main() {
-    println!("Rust 基础语法演示");
-    println!("=================");
-
-    variables_and_mutability();
-    data_types();
-    functions();
-    comments_example();
-    control_flow();
-    let_else_statement();
-    practical_examples();
-    compiler_attributes();
-
-    println!("基础语法演示完成！");
-}
-
-// ===========================================
-// 13. Rust 1.78 #[expect(lint)] 属性
+// 8. Rust 1.78 #[expect(lint)] 属性
 // ===========================================
 
 // Rust 1.78 引入了 #[expect(lint)] 属性，这是一个重要的编译器改进
@@ -952,6 +932,26 @@ fn practical_expect_examples() {
     }
 
     println!("实际应用示例演示完成");
+}
+
+// ===========================================
+// 主函数
+// ===========================================
+
+pub fn main() {
+    println!("Rust 基础语法演示");
+    println!("=================");
+
+    variables_and_mutability();
+    data_types();
+    functions();
+    comments_example();
+    control_flow();
+    let_else_statement();
+    practical_examples();
+    compiler_attributes();
+
+    println!("基础语法演示完成！");
 }
 
 // ===========================================

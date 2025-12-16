@@ -1,13 +1,9 @@
 #![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments, unused_macros, deprecated)]
 
-// Rust FFI (外部函数接口) 教程
-
 use std::ffi::{CStr, CString, c_char};
 
-
-
 // ===========================================
-// Rust FFI (外部函数接口) 教程
+// 1. Rust FFI (外部函数接口) 基础
 // ===========================================
 
 // FFI (Foreign Function Interface) 是 Rust 与其他语言交互的核心机制

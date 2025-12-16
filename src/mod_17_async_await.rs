@@ -849,7 +849,7 @@ async fn practical_examples() {
 }
 
 // ===========================================
-// 9. Rust 1.85 异步 trait 方法改进
+// 11. Rust 1.85 异步 trait 方法改进
 // ===========================================
 
 // Rust 1.85 引入了对异步 trait 方法的重大改进，使得在 trait 中定义和使用异步方法变得更加自然和直观
@@ -1404,7 +1404,7 @@ async fn practical_async_trait_examples() {
 }
 
 // ===========================================
-// 10. Rust 1.86 异步函数生命周期改进
+// 12. Rust 1.86 异步函数生命周期改进
 // ===========================================
 
 // Rust 1.86 引入了异步函数生命周期的重要改进，使得异步函数的生命周期处理更加灵活和直观
@@ -1904,6 +1904,48 @@ async fn practical_async_lifetime_examples() {
 }
 
 // ===========================================
+// 13. Rust 1.92: 异步闭包 (Async Closures)
+// ===========================================
+
+// Rust 1.92 (2025-12-11) 稳定了异步闭包 (async closures)
+// 允许创建直接返回 Future 的闭包，语法更加简洁
+
+pub async fn async_closures_demo() {
+    println!("=== Rust 1.92: 异步闭包 (Async Closures) ===");
+
+    // 这是一个异步闭包
+    // 语法: async |args| { body }
+    // 它等价于返回 Future 的普通闭包，但捕捉变量的处理更自然
+    
+    let process = async |x: i32| {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        x * 2
+    };
+
+    let result = process(21).await;
+    println!("异步闭包结果: {}", result);
+    
+    // 结合高阶函数使用
+    async fn run_with_context<F, Fut>(f: F) -> i32 
+    where 
+        F: FnOnce(i32) -> Fut,
+        Fut: Future<Output = i32>
+    {
+        f(10).await
+    }
+    
+    // 直接传递异步闭包
+    let res = run_with_context(async |x| {
+        println!("在上下文中处理: {}", x);
+        x + 5
+    }).await;
+    
+    println!("上下文结果: {}", res);
+    
+    println!();
+}
+
+// ===========================================
 // 主函数
 // ===========================================
 
@@ -2055,46 +2097,3 @@ mod tests {
         assert_eq!(result2, "computed_value");
     }
 }
-/*
-// ===========================================
-// 11. Rust 1.92: 异步闭包 (Async Closures)
-// ===========================================
-
-// Rust 1.92 (2025-12-11) 稳定了异步闭包 (async closures)
-// 允许创建直接返回 Future 的闭包，语法更加简洁
-
-pub async fn async_closures_demo() {
-    println!("=== Rust 1.92: 异步闭包 (Async Closures) ===");
-
-    // 这是一个异步闭包
-    // 语法: async |args| { body }
-    // 它等价于返回 Future 的普通闭包，但捕捉变量的处理更自然
-    
-    let process = async |x: i32| {
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        x * 2
-    };
-
-    let result = process(21).await;
-    println!("异步闭包结果: {}", result);
-    
-    // 结合高阶函数使用
-    async fn run_with_context<F, Fut>(f: F) -> i32 
-    where 
-        F: FnOnce(i32) -> Fut,
-        Fut: Future<Output = i32>
-    {
-        f(10).await
-    }
-    
-    // 直接传递异步闭包
-    let res = run_with_context(async |x| {
-        println!("在上下文中处理: {}", x);
-        x + 5
-    }).await;
-    
-    println!("上下文结果: {}", res);
-    
-    println!();
-}
-*/

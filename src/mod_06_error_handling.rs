@@ -960,7 +960,7 @@ fn error_handling_example_program() {
 }
 
 // ===========================================
-// 9. Rust 1.76+ core::error::Error trait 改进（Enhanced Error Trait）
+// 10. Rust 1.76+ core::error::Error trait 改进（Enhanced Error Trait）
 // ===========================================
 
 // Rust 1.76 开始对 core::error::Error trait 进行了重大改进

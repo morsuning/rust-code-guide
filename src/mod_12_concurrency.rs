@@ -445,7 +445,6 @@ fn atomic_operations() {
 // - 通知机制：线程可以通知等待的线程条件已改变
 // - 虚假唤醒：线程可能在未被通知的情况下被唤醒，需要重新检查条件
 
-
 fn condition_variables() {
     println!("=== 条件变量 ===");
 
@@ -2474,6 +2473,54 @@ fn concurrency_example_program() {
 }
 
 // ===========================================
+// 15. Rust 1.91: Sync Exclusive
+// ===========================================
+
+// Rust 1.91 引入了 std::sync::Exclusive<T>
+// 这是一个同步原语，提供对 T 的独占访问，相当于编译时的 Mutex
+// 它实现了 Sync，即使 T 只是 Send
+
+pub fn sync_exclusive() {
+    println!("=== Rust 1.91: Sync Exclusive ===");
+
+    // std::sync::Exclusive 是一个包装器
+    // 它只允许拥有 Exclusive<T> 的所有者访问 T
+    // 因为它拥有 T，所以它可以在线程间安全传递（实现了 Sync）
+    
+    // 模拟 Rust 1.91 的 Exclusive (如果标准库尚未提供，这里是概念演示)
+    // 注意：在实际 Rust 1.91 中，这位于 std::sync::Exclusive
+    struct Exclusive<T: ?Sized> {
+        inner: T,
+    }
+    
+    impl<T> Exclusive<T> {
+        pub const fn new(t: T) -> Exclusive<T> {
+            Exclusive { inner: t }
+        }
+        
+        pub fn get_mut(&mut self) -> &mut T {
+            &mut self.inner
+        }
+    }
+    
+    // Exclusive 实现了 Sync，只要 T 是 Sized
+    // 这是因为要访问 inner，必须拥有 Exclusive 的 &mut 引用
+    // 而 &mut 引用本身就是互斥的
+    unsafe impl<T: ?Sized> Sync for Exclusive<T> {}
+    
+    let mut ex = Exclusive::new(42);
+    
+    // 独占访问
+    let val = ex.get_mut();
+    *val += 1;
+    
+    println!("Exclusive 值: {}", ex.inner);
+    
+    println!("Exclusive<T> 的主要用途是适配既有的 Send 类型为 Sync，用于特定并发场景。");
+    println!();
+}
+
+// ===========================================
 // 主函数
 // ===========================================
 
@@ -2623,52 +2670,4 @@ mod tests {
         assert_eq!(map.get(&"key_3".to_string()), Some(3));
         assert_eq!(map.get(&"key_5".to_string()), None);
     }
-}
-
-// ===========================================
-// 8. Rust 1.91: Sync Exclusive
-// ===========================================
-
-// Rust 1.91 引入了 std::sync::Exclusive<T>
-// 这是一个同步原语，提供对 T 的独占访问，相当于编译时的 Mutex
-// 它实现了 Sync，即使 T 只是 Send
-
-pub fn sync_exclusive() {
-    println!("=== Rust 1.91: Sync Exclusive ===");
-
-    // std::sync::Exclusive 是一个包装器
-    // 它只允许拥有 Exclusive<T> 的所有者访问 T
-    // 因为它拥有 T，所以它可以在线程间安全传递（实现了 Sync）
-    
-    // 模拟 Rust 1.91 的 Exclusive (如果标准库尚未提供，这里是概念演示)
-    // 注意：在实际 Rust 1.91 中，这位于 std::sync::Exclusive
-    struct Exclusive<T: ?Sized> {
-        inner: T,
-    }
-    
-    impl<T> Exclusive<T> {
-        pub const fn new(t: T) -> Exclusive<T> {
-            Exclusive { inner: t }
-        }
-        
-        pub fn get_mut(&mut self) -> &mut T {
-            &mut self.inner
-        }
-    }
-    
-    // Exclusive 实现了 Sync，只要 T 是 Sized
-    // 这是因为要访问 inner，必须拥有 Exclusive 的 &mut 引用
-    // 而 &mut 引用本身就是互斥的
-    unsafe impl<T: ?Sized> Sync for Exclusive<T> {}
-    
-    let mut ex = Exclusive::new(42);
-    
-    // 独占访问
-    let val = ex.get_mut();
-    *val += 1;
-    
-    println!("Exclusive 值: {}", ex.inner);
-    
-    println!("Exclusive<T> 的主要用途是适配既有的 Send 类型为 Sync，用于特定并发场景。");
-    println!();
 }

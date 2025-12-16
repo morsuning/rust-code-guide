@@ -1,13 +1,10 @@
-// Rust 面向对象特性
-// 深入讲解 Rust 中实现面向对象编程的各种模式和技术
-// 基于《The Rust Programming Language》第 19 章内容
-
-
-
-// ===========================================
 #![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments, unused_macros, deprecated)]
 
-// Rust 面向对象特性教程
+// Rust 面向对象特性
+// 深入讲解 Rust 中实现面向对象编程的各种模式和技术
+
+// ===========================================
+// 1. Rust 面向对象特性
 // ===========================================
 
 // Rust 虽然不是传统的面向对象语言，但提供了强大的机制来实现 OOP 概念

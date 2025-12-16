@@ -1223,7 +1223,7 @@ fn enum_example_program() {
 }
 
 // ===========================================
-// 12. Rust 1.62+ 枚举增强特性（Enhanced Enum Features）
+// 13. Rust 1.62+ 枚举增强特性（Enhanced Enum Features）
 // ===========================================
 
 // Rust 1.62 引入了重要的枚举增强特性，特别是 `#[default]` 属性
