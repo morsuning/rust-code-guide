@@ -4,7 +4,12 @@ version = "1.0.0"
 edition = "2024"
 
 [dependencies]
-tokio = { version = "1.48", features = ["full"] }
+tokio = { version = "1.49", features = ["full"] }
 futures = "0.3"
 twox-hash = "2.1.2"
 rand = "0.9.2"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
