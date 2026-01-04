@@ -1,4 +1,5 @@
 #![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments, unused_macros, deprecated)]
+use std::arch::asm;
 
 // Rust 高级特性（Advanced Rust Features）
 // 包含 unsafe Rust、内联汇编、高级生命周期、高级 trait 等深度特性的详细讲解
@@ -516,7 +517,7 @@ fn inline_assembly() {
             in("ecx") 0u32,
             options(nomem, nostack, preserves_flags)
         );
-        has_sse2 = has_sse2 != 0;
+        // has_sse2 = has_sse2 != 0;
     }
     println!("CPU 支持 SSE2: {}", has_sse2);
 
