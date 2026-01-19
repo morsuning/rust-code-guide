@@ -92,6 +92,41 @@ fn ownership_rules() {
     // - 复制：用于小的栈分配数据，复制成本低廉
 
     println!();
+
+    // ===========================================
+    // 如何辨别 Copy 还是 Move
+    // ===========================================
+    // 很多初学者对于变量赋值时到底是发生 Copy 还是 Move 感到困惑
+    // 这里有三种主要的方法来辨别：
+
+    // 方法 1：查阅文档（最权威）
+    // 查看该类型的文档，看它是否实现了 Copy trait。
+    // 一般来说，标量类型（Scalar Types）都是 Copy 的。
+    // 例如：i32, bool, char, f64 都实现了 Copy
+    // String, Vec<T> 没有实现 Copy
+
+    // 方法 2：观察编译器行为（最直接）
+    // 尝试在赋值后继续使用原变量。如果编译报错 "borrow of moved value"，则是 Move 语义。
+    println!("--- 辨别 Copy vs Move ---");
+    let s = String::from("test");
+    let _s_copy = s;
+    // println!("{}", s); // 如果这行代码报错，说明是 Move
+
+    let i = 10;
+    let _i_copy = i;
+    println!("{}", i); // 这行代码正常运行，说明是 Copy
+
+    // 方法 3：代码检测（编程方式）
+    // 我们可以编写一个辅助函数来在编译时检查类型是否实现了 Copy
+    fn is_copy<T: Copy>() {
+        println!("{} is Copy", std::any::type_name::<T>());
+    }
+
+    // is_copy::<String>(); // 这行代码会导致编译错误，因为 String 没有实现 Copy
+    is_copy::<i32>();       // 编译通过
+    is_copy::<bool>();      // 编译通过
+
+    println!("------------------------");
 }
 
 // ===========================================
