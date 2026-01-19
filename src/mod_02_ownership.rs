@@ -546,7 +546,6 @@ struct DiffRef<'a, 'b> {
 
 fn multiple_refs_demo() {
     let s1 = String::from("long lived");
-    let r1;
     {
         let s2 = String::from("short");
         
