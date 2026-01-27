@@ -92,6 +92,41 @@ fn ownership_rules() {
     // - 复制：用于小的栈分配数据，复制成本低廉
 
     println!();
+
+    // ===========================================
+    // 如何辨别 Copy 还是 Move
+    // ===========================================
+    // 很多初学者对于变量赋值时到底是发生 Copy 还是 Move 感到困惑
+    // 这里有三种主要的方法来辨别：
+
+    // 方法 1：查阅文档（最权威）
+    // 查看该类型的文档，看它是否实现了 Copy trait。
+    // 一般来说，标量类型（Scalar Types）都是 Copy 的。
+    // 例如：i32, bool, char, f64 都实现了 Copy
+    // String, Vec<T> 没有实现 Copy
+
+    // 方法 2：观察编译器行为（最直接）
+    // 尝试在赋值后继续使用原变量。如果编译报错 "borrow of moved value"，则是 Move 语义。
+    println!("--- 辨别 Copy vs Move ---");
+    let s = String::from("test");
+    let _s_copy = s;
+    // println!("{}", s); // 如果这行代码报错，说明是 Move
+
+    let i = 10;
+    let _i_copy = i;
+    println!("{}", i); // 这行代码正常运行，说明是 Copy
+
+    // 方法 3：代码检测（编程方式）
+    // 我们可以编写一个辅助函数来在编译时检查类型是否实现了 Copy
+    fn is_copy<T: Copy>() {
+        println!("{} is Copy", std::any::type_name::<T>());
+    }
+
+    // is_copy::<String>(); // 这行代码会导致编译错误，因为 String 没有实现 Copy
+    is_copy::<i32>();       // 编译通过
+    is_copy::<bool>();      // 编译通过
+
+    println!("------------------------");
 }
 
 // ===========================================
@@ -333,6 +368,32 @@ fn slices() {
     // 3. 提供了灵活的数据访问方式
     // 4. 编译时和运行时的边界检查
 
+
+    // 切片在多线程中的使用：
+    // 用户常问：我能把切片传递给线程吗？
+    // 答案：不能直接传给 std::thread::spawn，但可以使用 std::thread::scope。
+    
+    // 1. std::thread::spawn 的限制
+    // spawn 要求闭包和其捕获的数据具有 'static 生命周期。
+    // 切片通常是对局部数据的引用，生命周期较短，不满足 'static 要求。
+    // 试图这样做会导致编译错误："borrowed value does not live long enough"。
+
+    // 2. 解决方案：std::thread::scope (Rust 1.63+)
+    // 作用域线程保证线程在作用域结束前完成，因此可以安全地借用局部变量（包括切片）。
+    
+    /*
+    let numbers = vec![1, 2, 3];
+    let slice = &numbers[..];
+
+    std::thread::scope(|s| {
+        s.spawn(|| {
+            // 这里可以安全地使用 slice，因为 scope 保证线程
+            // 会在 numbers 被销毁前结束
+            println!("在线程中使用切片: {:?}", slice);
+        });
+    });
+    */
+
     // 数组切片
     let a = [1, 2, 3, 4, 5];
     let slice = &a[1..3]; // [2, 3]
@@ -391,6 +452,35 @@ fn lifetimes() {
     // 3. 如果有多个输入生命周期参数，但其中一个是 &self 或 &mut self，
     //    那么 self 的生命周期被赋予所有输出生命周期参数
 
+    // 生命周期省略规则详解及示例：
+
+    // 规则 1：为每个引用参数分配生命周期
+    // 为了通过编译，编译器会为每个引用参数自动添加生命周期参数
+    // 原代码：fn foo(x: &i32)
+    // 编译器推断：fn foo<'a>(x: &'a i32)
+    // 原代码：fn bar(x: &i32, y: &i32)
+    // 编译器推断：fn bar<'a, 'b>(x: &'a i32, y: &'b i32)
+
+    // 规则 2：输入生命周期赋给输出
+    // 如果只有一个输入生命周期参数，那么它被赋予所有输出生命周期参数
+    // 原代码：fn return_x(x: &i32) -> &i32
+    // 编译器推断：fn return_x<'a>(x: &'a i32) -> &'a i32
+    // 这意味着返回值的生命周期与参数 x 的生命周期相同
+
+    // 规则 3：方法中的生命周期
+    // 如果有多个输入生命周期参数，但其中一个是 &self 或 &mut self，
+    // 那么 self 的生命周期被赋予所有输出生命周期参数
+    // 原代码：
+    // impl Struct {
+    //     fn method(&self, x: &str) -> &str { ... }
+    // }
+    // 编译器推断：
+    // impl Struct {
+    //     fn method<'a, 'b>(&'a self, x: &'b str) -> &'a str { ... }
+    // }
+    // 这意味着方法的返回值生命周期与 self（即对象实例）的生命周期相同，
+    // 而不是参数 x 的生命周期。这是这是非常合理的默认行为。
+
     // 生命周期的实际应用：
     let novel = String::from("Call me Ishmael. Some years ago...");
     let first_sentence = novel.split('.').next().unwrap();
@@ -433,6 +523,45 @@ fn longest<'a>(x: &'a str, y: &'a str) -> &'a str {
 #[derive(Debug)]
 struct ImportantExcerpt<'a> {
     part: &'a str,
+}
+
+// 结构体中的多重引用示例
+// 1. 多个字段共享同一个生命周期 'a
+// 这意味着 x 和 y 的生命周期都必须至少覆盖 'a
+// 且 'a 不能超过它们两者中较短的那个生命周期
+#[derive(Debug)]
+struct DoubleRef<'a> {
+    x: &'a str,
+    y: &'a str,
+}
+
+// 2. 多个字段拥有不同的生命周期 'a 和 'b
+// 这里 x 和 y 的生命周期是独立的，互相不影响
+// 当引用的来源不同且生命周期差异较大时，这种方式更灵活
+#[derive(Debug)]
+struct DiffRef<'a, 'b> {
+    x: &'a str,
+    y: &'b str,
+}
+
+fn multiple_refs_demo() {
+    let s1 = String::from("long lived");
+    {
+        let s2 = String::from("short");
+        
+        // 使用 DiffRef，分别引用 s1 和 s2
+        // 这是允许的，因为 'a 和 'b 是独立的
+        let diff = DiffRef { x: &s1, y: &s2 }; 
+        println!("DiffRef: {:?}", diff);
+
+        // 如果使用 DoubleRef，所有字段必须满足同一个生命周期 'a
+        // 这里 'a 被推断为较短的 s2 的生命周期
+        let same = DoubleRef { x: &s1, y: &s2 };
+        println!("DoubleRef: {:?}", same);
+        
+        // 当离开此作用域，s2 被释放，same 也失效
+        // 但 s1 还是有效的，如果是 DiffRef 且只使用了 x 字段，可能还有机会继续使用（取决于具体用法）
+    }
 }
 
 // ===========================================
