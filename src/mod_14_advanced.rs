@@ -1,4 +1,12 @@
-#![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments, unused_macros, deprecated)]
+#![allow(
+    dead_code,
+    unused_variables,
+    unused_imports,
+    unused_mut,
+    unused_assignments,
+    unused_macros,
+    deprecated
+)]
 use std::arch::asm;
 
 // Rust 高级特性（Advanced Rust Features）
@@ -236,15 +244,24 @@ fn mutable_static_variables() {
     // 访问可变静态变量必须在 unsafe 块中
     // 这提醒程序员他们正在处理可能导致数据竞争的操作
     unsafe {
-        println!("可变静态变量 MUTABLE_COUNTER: {}", std::ptr::addr_of!(MUTABLE_COUNTER).read());
+        println!(
+            "可变静态变量 MUTABLE_COUNTER: {}",
+            std::ptr::addr_of!(MUTABLE_COUNTER).read()
+        );
 
         // 修改可变静态变量
         // 这种操作在多线程环境中是不安全的
         MUTABLE_COUNTER += 1;
-        println!("修改后的 MUTABLE_COUNTER: {}", std::ptr::addr_of!(MUTABLE_COUNTER).read());
+        println!(
+            "修改后的 MUTABLE_COUNTER: {}",
+            std::ptr::addr_of!(MUTABLE_COUNTER).read()
+        );
 
         MUTABLE_COUNTER += 1;
-        println!("再次修改后的 MUTABLE_COUNTER: {}", std::ptr::addr_of!(MUTABLE_COUNTER).read());
+        println!(
+            "再次修改后的 MUTABLE_COUNTER: {}",
+            std::ptr::addr_of!(MUTABLE_COUNTER).read()
+        );
     }
 
     // 可变静态变量的风险：
@@ -2355,8 +2372,7 @@ fn once_lock_and_once_cell() {
 
     // 获取数据库连接（单例）- 使用更安全的方式
     fn get_db_connection() -> &'static DatabaseConnection {
-        DB_CONNECTION
-            .get_or_init(|| DatabaseConnection::new("postgresql://localhost:5432/mydb"))
+        DB_CONNECTION.get_or_init(|| DatabaseConnection::new("postgresql://localhost:5432/mydb"))
     }
 
     let conn1 = get_db_connection();
@@ -2506,7 +2522,7 @@ fn once_lock_and_once_cell() {
 // 随着Rust语言的不断发展，const函数和泛型系统在最新版本中获得了显著的增强
 // 这些改进极大地扩展了编译时计算的能力，提高了代码的性能和类型安全性
 // 本节涵盖了Rust 1.86到1.90版本中最重要的const函数和泛型增强功能
-// 
+//
 // 版本特性概览 (Version Feature Overview):
 // - Rust 1.86: const函数中的字符串操作 (String operations in const contexts)
 // - Rust 1.87: 匿名管道 (Anonymous pipes), 安全架构原语 (Safe architecture intrinsics)
@@ -3646,7 +3662,13 @@ fn repr_transparent_structs() {
     #[repr(transparent)]
     struct DebugWrapper<T> {
         value: T,
-        #[allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments)]
+        #[allow(
+            dead_code,
+            unused_variables,
+            unused_imports,
+            unused_mut,
+            unused_assignments
+        )]
         debug_marker: (), // 零大小类型，不影响透明性
     }
 
@@ -4063,7 +4085,123 @@ pub fn const_mut_refs() {
     // 1. 允许更复杂的编译时算法
     // 2. 减少运行时开销
     // 3. 提高 const fn 的实用性
-    
+
+    println!();
+}
+
+// ===========================================
+// 20. Rust 1.92-1.95 底层能力补充
+// ===========================================
+
+// 本节补充 1.92 到 1.95 期间与底层开发、延迟初始化和性能提示相关的特性：
+// - Rust 1.92: 在安全代码里对 union 字段创建原始指针
+// - Rust 1.93: asm! 内允许 #[cfg] / #[cfg_attr]
+// - Rust 1.94: LazyCell / LazyLock 的 get、get_mut、force_mut
+// - Rust 1.95: std::hint::cold_path
+//
+// 这些内容都比较“底层”，第一次接触时可能会觉得分散。
+// 但它们其实围绕的是一个共同主题：
+// Rust 在持续补齐系统编程里常见、但以前表达起来不够顺手的细节能力。
+//
+// 阅读这一节时，建议重点观察：
+// 1. 哪些地方仍然需要 unsafe
+// 2. 哪些地方语言和标准库已经帮你把原先麻烦的操作变得更自然
+// 3. 这些 API 分别对应哪类真实工程问题
+
+fn recent_low_level_improvements() {
+    println!("=== Rust 1.92-1.95 底层能力补充 ===");
+
+    // Rust 1.92: 在安全代码里对 union 字段创建原始指针
+    //
+    // 这里定义一个典型的 C 风格包头：
+    // - `raw` 表示把整块内存看成一个 32 位整数
+    // - `bytes` 表示把同一块内存按字节观察
+    //
+    // union 常见于协议解析、FFI、驱动和寄存器映射。
+    #[repr(C)]
+    union PacketHeader {
+        raw: u32,
+        bytes: [u8; 4],
+    }
+
+    // `&raw const header.bytes` 的含义是：
+    // “我只是想取得这个字段的原始地址，并不在这里直接读取它”。
+    //
+    // 注意区分两件事：
+    // 1. 取地址
+    // 2. 解引用读取内容
+    //
+    // 真正解引用仍然是 unsafe，因为程序员必须自己保证读取这个 union 字段是合法的。
+    let header = PacketHeader { raw: 0x12345678 };
+    let bytes_ptr = &raw const header.bytes;
+    let bytes = unsafe { *bytes_ptr };
+    println!("union 原始字节视图: {bytes:02X?}");
+
+    // Rust 1.94: LazyCell / LazyLock 的访问 API 更完整了
+    //
+    // 这两个类型都表示“懒初始化”：
+    // - LazyCell: 单线程版本
+    // - LazyLock: 线程安全版本
+    //
+    // 新增的 `get` / `get_mut` / `force_mut` 让我们可以更精细地观察和控制初始化状态。
+    use std::cell::LazyCell;
+    use std::sync::LazyLock;
+
+    // `get` 不会触发初始化，只是问一句：“里面已经有值了吗？”
+    // 由于我们还没真正访问过闭包，所以这里得到 None。
+    let mut local_cache = LazyCell::new(|| vec![1, 2, 3]);
+    println!("LazyCell 初始化前 get: {:?}", LazyCell::get(&local_cache));
+    // `force_mut` 会在必要时先完成初始化，然后直接返回可变引用。
+    // 这很适合“第一次创建对象后，还要立刻继续补内容”的写法。
+    LazyCell::force_mut(&mut local_cache).push(4);
+    println!("LazyCell 初始化后 get: {:?}", LazyCell::get(&local_cache));
+
+    // LazyLock 是多线程版本，常见于全局配置、全局缓存和共享字典。
+    // 这里同样先观察初始化状态，再强制初始化并继续修改结果。
+    let mut banner = LazyLock::new(|| String::from("rust"));
+    println!("LazyLock 初始化前 get: {:?}", LazyLock::get(&banner));
+    LazyLock::force_mut(&mut banner).push_str("-1.94");
+    println!("LazyLock 初始化后内容: {}", LazyLock::force(&banner));
+
+    // Rust 1.95: `std::hint::cold_path`
+    //
+    // “cold path” 表示极少进入的路径，例如：
+    // - 罕见错误
+    // - 保底 fallback
+    // - 理论上不应该发生，但仍要处理的异常情况
+    //
+    // 调用这个函数不会改变程序行为，
+    // 它更像是告诉编译器：“这条分支很冷门，可以按低频路径优化。”
+    let config_parse_result: Result<u16, _> = "not-a-port".parse();
+    if config_parse_result.is_err() {
+        std::hint::cold_path();
+        println!("cold_path: 进入低频错误分支");
+    }
+
+    // Rust 1.93: `asm!` 内部可以使用 `#[cfg]`
+    //
+    // 这意味着你现在可以在同一个 asm! 调用里，根据 target_feature 决定是否插入某条指令。
+    // 以前做这件事往往要把整段汇编拆成多个版本。
+    //
+    // 对新手来说，重点理解：
+    // - `#[cfg]` 是编译期选择，不是运行期 if
+    // - 最终进入程序的汇编指令，只包含条件成立时保留下来的那些行
+    #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
+    unsafe {
+        asm!(
+            "nop",
+            #[cfg(target_feature = "sse2")]
+            "nop",
+            options(nomem, nostack, preserves_flags),
+        );
+        println!("asm! 内部的 #[cfg] 指令分支已执行");
+    }
+
+    // 小结：
+    // 1. union 原始指针让“只取地址”这种底层操作表达得更清晰
+    // 2. LazyCell / LazyLock 的新 API 让懒初始化更可观察、可变
+    // 3. cold_path 用来标注低频分支
+    // 4. asm! 内部 #[cfg] 让平台差异更容易维护
     println!();
 }
 
@@ -4092,6 +4230,8 @@ pub fn main() {
     cfg_accessible_predicate();
     repr_transparent_structs();
     latest_const_and_generic_enhancements();
+    const_mut_refs();
+    recent_low_level_improvements();
     advanced_example_program();
 
     println!("高级特性演示完成！");
@@ -4914,6 +5054,33 @@ mod tests {
         // 再次访问应该返回缓存的值
         let db_url2 = config.database_url.get_or_init(|| panic!("不应该执行"));
         assert_eq!(db_url.as_ptr(), db_url2.as_ptr());
+    }
+
+    #[test]
+    fn test_recent_low_level_improvements() {
+        #[repr(C)]
+        union Bytes {
+            raw: u32,
+            bytes: [u8; 4],
+        }
+
+        let value = Bytes { raw: 0xAABBCCDD };
+        let ptr = &raw const value.bytes;
+        let bytes = unsafe { *ptr };
+        assert_eq!(bytes.len(), 4);
+
+        use std::cell::LazyCell;
+        use std::sync::LazyLock;
+
+        let mut cell = LazyCell::new(|| vec![1, 2]);
+        assert!(LazyCell::get(&cell).is_none());
+        LazyCell::force_mut(&mut cell).push(3);
+        assert_eq!(LazyCell::get(&cell), Some(&vec![1, 2, 3]));
+
+        let mut lock = LazyLock::new(|| String::from("stable"));
+        assert!(LazyLock::get(&lock).is_none());
+        LazyLock::force_mut(&mut lock).push('!');
+        assert_eq!(LazyLock::force(&lock), "stable!");
     }
 }
 

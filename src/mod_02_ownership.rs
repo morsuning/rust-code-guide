@@ -1,4 +1,10 @@
-#![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments)]
+#![allow(
+    dead_code,
+    unused_variables,
+    unused_imports,
+    unused_mut,
+    unused_assignments
+)]
 
 // Rust 所有权系统
 // 深入讲解所有权、借用、切片等 Rust 内存安全的核心机制
@@ -105,15 +111,15 @@ fn ownership_and_functions() {
     println!("=== 所有权与函数 ===");
 
     // 函数参数的所有权转移
-    let s = String::from("hello");  // s 进入作用域
-    takes_ownership(s);             // s 的值移动到函数里
+    let s = String::from("hello"); // s 进入作用域
+    takes_ownership(s); // s 的值移动到函数里
 
     // println!("{}", s);           // 编译错误：s 不再有效
     // 这是因为 String 类型没有实现 Copy trait，所以发生移动
 
-    let x = 5;                      // x 进入作用域
-    makes_copy(x);                  // x 移动到函数里，但 i32 是 Copy 的
-    println!("复制后的值: {}", x);   // x 仍然有效
+    let x = 5; // x 进入作用域
+    makes_copy(x); // x 移动到函数里，但 i32 是 Copy 的
+    println!("复制后的值: {}", x); // x 仍然有效
 
     // 函数调用时的所有权变化：
     // 1. 传递给函数的变量会发生移动（如果类型没有实现 Copy）
@@ -153,11 +159,11 @@ fn return_values_and_scope() {
     println!("=== 返回值与作用域 ===");
 
     // 从函数返回所有权
-    let s1 = gives_ownership();         // gives_ownership 将返回值移动给 s1
+    let s1 = gives_ownership(); // gives_ownership 将返回值移动给 s1
 
-    let s2 = String::from("hello");     // s2 进入作用域
-    let s3 = takes_and_gives_back(s2);  // s2 被移动到函数中，
-                                        // 函数返回值移动给 s3
+    let s2 = String::from("hello"); // s2 进入作用域
+    let s3 = takes_and_gives_back(s2); // s2 被移动到函数中，
+    // 函数返回值移动给 s3
     // println!("{}", s2);              // 编译错误：s2 不再有效
 
     println!("返回的字符串: {} {}", s1, s3);
@@ -306,7 +312,7 @@ fn slices() {
 
     let hello = &s[0..5]; // [start..end] 包含 start，不包含 end
     let world = &s[6..11]; // 从索引 6 到 11
-    let all = &s[..];      // 整个字符串的切片
+    let all = &s[..]; // 整个字符串的切片
 
     println!("字符串切片: {} {} {}", hello, world, all);
 
@@ -421,11 +427,7 @@ fn lifetimes() {
 // 带有显式生命周期注解的函数
 // 生命周期 'a 表示两个引用和返回值的生命周期必须相同或更长
 fn longest<'a>(x: &'a str, y: &'a str) -> &'a str {
-    if x.len() > y.len() {
-        x
-    } else {
-        y
-    }
+    if x.len() > y.len() { x } else { y }
 }
 
 // 结构体中的生命周期

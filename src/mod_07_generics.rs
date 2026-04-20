@@ -1,4 +1,10 @@
-#![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments)]
+#![allow(
+    dead_code,
+    unused_variables,
+    unused_imports,
+    unused_mut,
+    unused_assignments
+)]
 
 // Rust 泛型系统
 // 深入讲解 Rust 泛型的各个方面，包括泛型函数、结构体、枚举、约束、实现和高级模式
@@ -40,11 +46,11 @@ fn generic_functions() {
     // 多个泛型参数：函数可以有多个类型参数
     // 这使得函数可以处理不同类型的组合
     fn pick<T, U>(t: T, u: U) -> T {
-        t  // 返回第一个参数的类型
+        t // 返回第一个参数的类型
     }
 
-    let number = pick(10, "hello");         // T 是 i32，U 是 &str
-    let string = pick("world", 3.14);        // T 是 &str，U 是 f64
+    let number = pick(10, "hello"); // T 是 i32，U 是 &str
+    let string = pick("world", 3.14); // T 是 &str，U 是 f64
     println!("选择结果: {} {}", number, string);
 
     // 泛型函数的约束：通过 trait bounds 限制类型参数
@@ -53,9 +59,9 @@ fn generic_functions() {
         println!("调试打印: {:?}", item);
     }
 
-    print_debug(42);                          // i32 实现了 Debug
-    print_debug("hello");                     // &str 实现了 Debug
-    print_debug(vec![1, 2, 3]);             // Vec<i32> 实现了 Debug
+    print_debug(42); // i32 实现了 Debug
+    print_debug("hello"); // &str 实现了 Debug
+    print_debug(vec![1, 2, 3]); // Vec<i32> 实现了 Debug
 
     // 泛型函数的设计考虑：
     // 1. 类型参数应该具有语义意义
@@ -91,9 +97,12 @@ fn generic_structs() {
     }
 
     // 同一个结构体可以用于不同的类型
-    let integer = Point { x: 5, y: 10 };      // Point<i32>
-    let float = Point { x: 1.0, y: 4.0 };      // Point<f64>
-    let text = Point { x: "hello", y: "world" }; // Point<&str>
+    let integer = Point { x: 5, y: 10 }; // Point<i32>
+    let float = Point { x: 1.0, y: 4.0 }; // Point<f64>
+    let text = Point {
+        x: "hello",
+        y: "world",
+    }; // Point<&str>
 
     println!("整数点: {:?}", integer);
     println!("浮点点: {:?}", float);
@@ -107,9 +116,18 @@ fn generic_structs() {
         second: U,
     }
 
-    let pair1 = Pair { first: 1, second: 2.0 };        // Pair<i32, f64>
-    let pair2 = Pair { first: "hello", second: 'a' };    // Pair<&str, char>
-    let pair3 = Pair { first: vec![1, 2], second: 42 }; // Pair<Vec<i32>, i32>
+    let pair1 = Pair {
+        first: 1,
+        second: 2.0,
+    }; // Pair<i32, f64>
+    let pair2 = Pair {
+        first: "hello",
+        second: 'a',
+    }; // Pair<&str, char>
+    let pair3 = Pair {
+        first: vec![1, 2],
+        second: 42,
+    }; // Pair<Vec<i32>, i32>
 
     println!("混合对1: {:?}", pair1);
     println!("混合对2: {:?}", pair2);
@@ -175,7 +193,10 @@ fn generic_enums() {
     let some_char: Option<char> = Some('e');
     let absent_number: Option<i32> = None;
 
-    println!("Option 示例: {:?} {:?} {:?}", some_number, some_char, absent_number);
+    println!(
+        "Option 示例: {:?} {:?} {:?}",
+        some_number, some_char, absent_number
+    );
 
     // 标准库中的泛型枚举：Result<T, E>
     // Result<T, E> 表示操作可能成功或失败的情况
@@ -187,9 +208,9 @@ fn generic_enums() {
     // 自定义泛型枚举：根据需求设计
     #[derive(Debug)]
     enum Container<T> {
-        Empty,           // 空容器，不包含值
-        Value(T),        // 包含一个值
-        Pair(T, T),      // 包含两个相同类型的值
+        Empty,      // 空容器，不包含值
+        Value(T),   // 包含一个值
+        Pair(T, T), // 包含两个相同类型的值
     }
 
     let empty: Container<i32> = Container::Empty;
@@ -201,8 +222,8 @@ fn generic_enums() {
     // 复杂泛型枚举：多个类型参数
     #[derive(Debug)]
     enum Result<T, E> {
-        Ok(T),           // 成功，包含类型 T 的值
-        Err(E),          // 失败，包含类型 E 的错误
+        Ok(T),  // 成功，包含类型 T 的值
+        Err(E), // 失败，包含类型 E 的错误
     }
 
     let ok_result: Result<String, std::io::Error> = Result::Ok("Success".to_string());
@@ -272,15 +293,15 @@ fn generic_constraints() {
         }
     }
 
-    compare_and_print(5, 5);        // i32 实现了 Debug 和 PartialEq
+    compare_and_print(5, 5); // i32 实现了 Debug 和 PartialEq
     compare_and_print("hello", "world"); // &str 也实现了这些 traits
 
     // 使用 where 子句：对于复杂的约束，where 子句更清晰
     // where 子句可以提高复杂约束的可读性
     fn advanced_function<T, U>(t: T, u: U)
     where
-        T: std::fmt::Debug + Clone,        // T 必须可调试和克隆
-        U: std::fmt::Debug + Clone,        // U 也必须可调试和克隆
+        T: std::fmt::Debug + Clone, // T 必须可调试和克隆
+        U: std::fmt::Debug + Clone, // U 也必须可调试和克隆
     {
         println!("高级函数: {:?} {:?}", t, u);
     }
@@ -291,8 +312,8 @@ fn generic_constraints() {
     // 多重约束：类型参数可以实现多个 traits
     // 这为泛型代码提供了丰富的功能保证
     fn display_and_clone<T: std::fmt::Display + Clone>(item: T) -> (String, T) {
-        let display = item.to_string();     // 使用 Display trait
-        let cloned = item.clone();          // 使用 Clone trait
+        let display = item.to_string(); // 使用 Display trait
+        let cloned = item.clone(); // 使用 Clone trait
         (display, cloned)
     }
 
@@ -306,13 +327,9 @@ fn generic_constraints() {
     // 泛型类型参数可以与生命周期参数结合使用
     fn longest<'a, T>(x: &'a T, y: &'a T) -> &'a T
     where
-        T: PartialOrd,                      // T 必须可比较
+        T: PartialOrd, // T 必须可比较
     {
-        if x > y {
-            x
-        } else {
-            y
-        }
+        if x > y { x } else { y }
     }
 
     let num1 = 5;
@@ -328,12 +345,17 @@ fn generic_constraints() {
     // 常用的标准库约束：
     fn common_constraints_example<T>()
     where
-        T: std::fmt::Debug +           // 可调试打印
-          std::fmt::Display +          // 可显示
-          std::clone::Clone +          // 可克隆
-          std::cmp::PartialEq +        // 可比较相等性
-          std::cmp::PartialOrd +       // 可比较大小
-          std::marker::Copy,           // 可按位复制
+        T: std::fmt::Debug
+            + // 可调试打印
+            std::fmt::Display
+            + // 可显示
+            std::clone::Clone
+            + // 可克隆
+            std::cmp::PartialEq
+            + // 可比较相等性
+            std::cmp::PartialOrd
+            + // 可比较大小
+            std::marker::Copy, // 可按位复制
     {
         println!("这是一个具有多种约束的泛型函数");
     }
@@ -481,11 +503,8 @@ fn generics_in_std_lib() {
     // Vec<T>：动态大小的数组，可以存储任意类型
     let numbers: Vec<i32> = vec![1, 2, 3, 4, 5];
     let strings: Vec<&str> = vec!["hello", "world", "rust"];
-    let any_type: Vec<Box<dyn std::fmt::Debug>> = vec![
-        Box::new(42),
-        Box::new("hello"),
-        Box::new(vec![1, 2, 3]),
-    ];
+    let any_type: Vec<Box<dyn std::fmt::Debug>> =
+        vec![Box::new(42), Box::new("hello"), Box::new(vec![1, 2, 3])];
 
     println!("数字向量: {:?}", numbers);
     println!("字符串向量: {:?}", strings);
@@ -587,7 +606,7 @@ fn generic_performance() {
     }
 
     // 编译时会为具体类型生成专门版本
-    let int_result = generic_max(5, 10);        // 生成 generic_max_i32 版本
+    let int_result = generic_max(5, 10); // 生成 generic_max_i32 版本
     let float_result = generic_max(3.14, 2.71); // 生成 generic_max_f64 版本
     let string_result = generic_max("apple", "banana"); // 生成 generic_max_str 版本
 
@@ -624,8 +643,14 @@ fn generic_performance() {
         second: T,
     }
 
-    println!("GenericPair<i32> 大小: {}", std::mem::size_of::<GenericPair<i32>>());
-    println!("GenericPair<f64> 大小: {}", std::mem::size_of::<GenericPair<f64>>());
+    println!(
+        "GenericPair<i32> 大小: {}",
+        std::mem::size_of::<GenericPair<i32>>()
+    );
+    println!(
+        "GenericPair<f64> 大小: {}",
+        std::mem::size_of::<GenericPair<f64>>()
+    );
 
     // 编译时优化：泛型代码可以享受所有的编译器优化
     fn generic_sum<T: std::ops::Add<Output = T> + Copy>(values: &[T]) -> T {
@@ -679,7 +704,7 @@ fn advanced_generic_patterns() {
     // 关联类型：trait 中的类型占位符
     // 关联类型使得 trait 更加灵活和表达力强
     trait Container {
-        type Item;                          // 关联类型
+        type Item; // 关联类型
         fn get(&self) -> Self::Item;
         fn set(&mut self, item: Self::Item);
     }
@@ -689,7 +714,7 @@ fn advanced_generic_patterns() {
     }
 
     impl<T: Clone> Container for NumberContainer<T> {
-        type Item = T;                       // 指定关联类型
+        type Item = T; // 指定关联类型
 
         fn get(&self) -> Self::Item {
             self.value.clone()
@@ -708,13 +733,20 @@ fn advanced_generic_patterns() {
     // 泛型默认参数：为类型参数提供默认值
     // 这使得泛型类型更加易用
     #[derive(Debug)]
-    struct Pair<T = i32> {                   // T 默认为 i32
+    struct Pair<T = i32> {
+        // T 默认为 i32
         first: T,
         second: T,
     }
 
-    let default_pair = Pair { first: 5, second: 10 };  // 使用默认类型 i32
-    let string_pair = Pair { first: "hello", second: "world" }; // 显式指定 &str
+    let default_pair = Pair {
+        first: 5,
+        second: 10,
+    }; // 使用默认类型 i32
+    let string_pair = Pair {
+        first: "hello",
+        second: "world",
+    }; // 显式指定 &str
 
     println!("默认参数对: {:?} {:?}", default_pair, string_pair);
 
@@ -787,11 +819,8 @@ fn advanced_generic_patterns() {
 
     // 存在性类型（existential types）：
     // 使用 dyn Trait 表示动态分发的对象
-    let trait_objects: Vec<Box<dyn std::fmt::Debug>> = vec![
-        Box::new(42),
-        Box::new("hello"),
-        Box::new(vec![1, 2, 3]),
-    ];
+    let trait_objects: Vec<Box<dyn std::fmt::Debug>> =
+        vec![Box::new(42), Box::new("hello"), Box::new(vec![1, 2, 3])];
 
     for obj in trait_objects {
         println!("Trait 对象: {:?}", obj);
@@ -891,8 +920,8 @@ fn generic_example_program() {
 
     impl<K, V> Cache<K, V>
     where
-        K: std::hash::Hash + Eq + Clone,    // 键类型必须可哈希、相等和克隆
-        V: Clone,                            // 值类型必须可克隆
+        K: std::hash::Hash + Eq + Clone, // 键类型必须可哈希、相等和克隆
+        V: Clone,                        // 值类型必须可克隆
     {
         fn new(capacity: usize) -> Self {
             Cache {
@@ -907,7 +936,7 @@ fn generic_example_program() {
 
         fn set(&mut self, key: K, value: V) {
             if self.data.len() >= self.capacity {
-                self.data.clear();  // 简单的清理策略
+                self.data.clear(); // 简单的清理策略
             }
             self.data.insert(key, value);
         }
@@ -938,7 +967,10 @@ fn generic_example_program() {
     // 测试容量限制
     cache.set("key4".to_string(), 400);
     println!("添加 key4 后的缓存大小: {}", cache.size());
-    println!("key1 是否还在缓存中: {}", cache.contains_key(&"key1".to_string()));
+    println!(
+        "key1 是否还在缓存中: {}",
+        cache.contains_key(&"key1".to_string())
+    );
 
     // 示例 3：泛型事件处理器
     // 展示如何使用泛型实现事件处理系统
@@ -968,7 +1000,9 @@ fn generic_example_program() {
 
     impl<T> Processor<T> {
         fn new() -> Self {
-            Processor { handlers: Vec::new() }
+            Processor {
+                handlers: Vec::new(),
+            }
         }
 
         fn add_handler<H: EventHandler<T> + 'static>(&mut self, handler: H) {
@@ -1003,7 +1037,11 @@ fn generic_example_program() {
 
     impl<T> Config<T> {
         fn new(name: String, value: T, description: String) -> Self {
-            Config { name, value, description }
+            Config {
+                name,
+                value,
+                description,
+            }
         }
 
         fn get(&self) -> &T {
@@ -1017,12 +1055,14 @@ fn generic_example_program() {
 
     // 配置管理器
     struct ConfigManager {
-        configs: Vec<Box<dyn std::any::Any>>,  // 使用 Any 存储不同类型的配置
+        configs: Vec<Box<dyn std::any::Any>>, // 使用 Any 存储不同类型的配置
     }
 
     impl ConfigManager {
         fn new() -> Self {
-            ConfigManager { configs: Vec::new() }
+            ConfigManager {
+                configs: Vec::new(),
+            }
         }
 
         fn add_config<T: 'static>(&mut self, config: Config<T>) {
@@ -1030,7 +1070,8 @@ fn generic_example_program() {
         }
 
         fn get_config<T: 'static>(&self, name: &str) -> Option<&Config<T>> {
-            self.configs.iter()
+            self.configs
+                .iter()
                 .filter_map(|config| config.downcast_ref::<Config<T>>())
                 .find(|config| config.name == name)
         }
@@ -1038,12 +1079,28 @@ fn generic_example_program() {
 
     // 使用配置系统
     let mut manager = ConfigManager::new();
-    manager.add_config(Config::new("timeout".to_string(), 30, "连接超时时间".to_string()));
-    manager.add_config(Config::new("max_connections".to_string(), 100, "最大连接数".to_string()));
-    manager.add_config(Config::new("debug_mode".to_string(), true, "调试模式".to_string()));
+    manager.add_config(Config::new(
+        "timeout".to_string(),
+        30,
+        "连接超时时间".to_string(),
+    ));
+    manager.add_config(Config::new(
+        "max_connections".to_string(),
+        100,
+        "最大连接数".to_string(),
+    ));
+    manager.add_config(Config::new(
+        "debug_mode".to_string(),
+        true,
+        "调试模式".to_string(),
+    ));
 
     if let Some(timeout_config) = manager.get_config::<i32>("timeout") {
-        println!("超时配置: {} = {}", timeout_config.name, timeout_config.get());
+        println!(
+            "超时配置: {} = {}",
+            timeout_config.name,
+            timeout_config.get()
+        );
     }
 
     if let Some(debug_config) = manager.get_config::<bool>("debug_mode") {

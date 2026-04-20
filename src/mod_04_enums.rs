@@ -1,4 +1,12 @@
-#![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments, unused_macros, deprecated)]
+#![allow(
+    dead_code,
+    unused_variables,
+    unused_imports,
+    unused_mut,
+    unused_assignments,
+    unused_macros,
+    deprecated
+)]
 
 // Rust 枚举
 // 深入讲解枚举定义、模式匹配、Option、Result 等核心概念
@@ -21,8 +29,8 @@ fn basic_enums() {
     // 变体也采用大驼峰命名法
     #[derive(Debug)]
     enum IpAddrKind {
-        V4,    // IPv4 地址类型
-        V6,    // IPv6 地址类型
+        V4, // IPv4 地址类型
+        V6, // IPv6 地址类型
     }
 
     // 枚举的本质：定义了一个新的类型，该类型的值只能是预定义的变体之一
@@ -99,10 +107,10 @@ fn enums_with_data() {
     // 4. 每个变体可以有不同的数据结构和类型
 
     // 创建带数据的枚举实例：为每个变体提供相应的数据
-    let q = Message::Quit;                           // 单元变体
-    let m = Message::Move { x: 12, y: 24 };         // 结构体变体
-    let w = Message::Write(String::from("hello"));    // 元组变体
-    let c = Message::ChangeColor(0, 255, 255);        // 元组变体
+    let q = Message::Quit; // 单元变体
+    let m = Message::Move { x: 12, y: 24 }; // 结构体变体
+    let w = Message::Write(String::from("hello")); // 元组变体
+    let c = Message::ChangeColor(0, 255, 255); // 元组变体
 
     // 为枚举实现方法：使用 impl 块
     // 枚举的方法可以访问和操作枚举实例的数据
@@ -121,8 +129,8 @@ fn enums_with_data() {
         fn get_message_type(&self) -> &'static str {
             match self {
                 Message::Quit => "Quit",
-                Message::Move { .. } => "Move",          // 使用 .. 忽略字段
-                Message::Write(_) => "Write",            // 使用 _ 忽略数据
+                Message::Move { .. } => "Move", // 使用 .. 忽略字段
+                Message::Write(_) => "Write",   // 使用 _ 忽略数据
                 Message::ChangeColor(..) => "ChangeColor", // 使用 .. 忽略多个字段
             }
         }
@@ -189,11 +197,14 @@ fn option_enum() {
     // }
 
     // 使用 Option 包装不同的数据类型
-    let some_number = Some(5);                      // Option<i32>
-    let some_string = Some("a string");              // Option<&str>
-    let absent_number: Option<i32> = None;           // 明确指定类型的 None
+    let some_number = Some(5); // Option<i32>
+    let some_string = Some("a string"); // Option<&str>
+    let absent_number: Option<i32> = None; // 明确指定类型的 None
 
-    println!("Option 值: {:?} {:?} {:?}", some_number, some_string, absent_number);
+    println!(
+        "Option 值: {:?} {:?} {:?}",
+        some_number, some_string, absent_number
+    );
 
     // Option 的核心价值：类型安全地处理可能为空的值
     // 相比其他语言中的空指针，Option 在编译时就能防止空引用错误
@@ -201,8 +212,8 @@ fn option_enum() {
     // 使用 match 处理 Option：穷尽所有可能的情况
     fn plus_one(x: Option<i32>) -> Option<i32> {
         match x {
-            None => None,                           // 没有值，返回 None
-            Some(i) => Some(i + 1),                 // 有值，进行加法运算
+            None => None,           // 没有值，返回 None
+            Some(i) => Some(i + 1), // 有值，进行加法运算
         }
     }
 
@@ -228,9 +239,9 @@ fn option_enum() {
     // 6. and_then()：链式处理 Option
 
     // 演示 Option 方法的使用
-    let value = some_number.unwrap();                    // 5
-    let default_value = absent_number.unwrap_or(0);       // 0
-    let mapped_value = some_number.map(|x| x * 2);        // Some(10)
+    let value = some_number.unwrap(); // 5
+    let default_value = absent_number.unwrap_or(0); // 0
+    let mapped_value = some_number.map(|x| x * 2); // Some(10)
 
     println!("unwrap: {}", value);
     println!("unwrap_or: {}", default_value);
@@ -239,9 +250,9 @@ fn option_enum() {
     // Option 与错误处理的结合
     fn safe_divide(numerator: i32, denominator: i32) -> Option<i32> {
         if denominator == 0 {
-            None                                    // 除零错误
+            None // 除零错误
         } else {
-            Some(numerator / denominator)            // 成功结果
+            Some(numerator / denominator) // 成功结果
         }
     }
 
@@ -286,15 +297,15 @@ fn result_enum() {
     // 使用 Result 表达可能失败的操作
     fn divide(numerator: f64, denominator: f64) -> Result<f64, String> {
         if denominator == 0.0 {
-            Err(String::from("Cannot divide by zero"))    // 错误情况
+            Err(String::from("Cannot divide by zero")) // 错误情况
         } else {
-            Ok(numerator / denominator)                   // 成功情况
+            Ok(numerator / denominator) // 成功情况
         }
     }
 
     // 执行除法操作
-    let result1 = divide(10.0, 2.0);     // 成功
-    let result2 = divide(10.0, 0.0);     // 失败
+    let result1 = divide(10.0, 2.0); // 成功
+    let result2 = divide(10.0, 0.0); // 失败
 
     // 使用 match 处理 Result：处理所有可能的结果
     match result1 {
@@ -317,10 +328,10 @@ fn result_enum() {
     // 7. and_then()：链式处理 Result
 
     // 使用 unwrap 和 expect
-    let value = divide(10.0, 2.0).unwrap();           // 5.0
+    let value = divide(10.0, 2.0).unwrap(); // 5.0
     println!("unwrap 结果: {}", value);
 
-    let value = divide(10.0, 2.0).expect("除法失败");  // 5.0
+    let value = divide(10.0, 2.0).expect("除法失败"); // 5.0
     println!("expect 结果: {}", value);
 
     // 演示 unwrap_or 的使用
@@ -331,7 +342,7 @@ fn result_enum() {
     // ? 操作符是 Rust 中最常用的错误处理语法糖
     fn process_number(num: f64) -> Result<String, String> {
         let doubled = num * 2.0;
-        let result = divide(doubled, 2.0)?;    // 如果失败，立即返回错误
+        let result = divide(doubled, 2.0)?; // 如果失败，立即返回错误
         Ok(format!("处理结果: {}", result))
     }
 
@@ -352,7 +363,7 @@ fn result_enum() {
     }
 
     fn get_adult_category(age: i32) -> Result<String, String> {
-        let valid_age = validate_age(age)?;          // 验证年龄
+        let valid_age = validate_age(age)?; // 验证年龄
         let category = if valid_age >= 18 {
             "成年人"
         } else {
@@ -405,10 +416,10 @@ fn enum_pattern_matching() {
 
     #[derive(Debug)]
     enum Coin {
-        Penny,                      // 便士
-        Nickel,                     // 镍币
-        Dime,                        // 一角硬币
-        Quarter(UsState),            // 25美分硬币（包含州信息）
+        Penny,            // 便士
+        Nickel,           // 镍币
+        Dime,             // 一角硬币
+        Quarter(UsState), // 25美分硬币（包含州信息）
     }
 
     // 模式匹配：根据硬币类型返回其价值
@@ -446,10 +457,10 @@ fn enum_pattern_matching() {
     // 更复杂的模式匹配示例
     #[derive(Debug)]
     enum Shape {
-        Circle(f64),                    // 圆形（半径）
-        Rectangle(f64, f64),            // 矩形（宽高）
-        Triangle(f64, f64, f64),        // 三角形（三边）
-        Point,                          // 点
+        Circle(f64),             // 圆形（半径）
+        Rectangle(f64, f64),     // 矩形（宽高）
+        Triangle(f64, f64, f64), // 三角形（三边）
+        Point,                   // 点
     }
 
     fn describe_shape(shape: Shape) -> String {
@@ -500,14 +511,15 @@ fn wildcard_patterns() {
     match dice_roll {
         3 => add_fancy_hat(),
         7 => remove_fancy_hat(),
-        _ => reroll(),           // 匹配除了 3 和 7 之外的所有值
+        _ => reroll(), // 匹配除了 3 和 7 之外的所有值
     }
 
     // 使用 .. 忽略元组中的剩余值
     let numbers = (2, 4, 8, 16, 32);
 
     match numbers {
-        (first, .., last) => {    // 只关心第一个和最后一个值
+        (first, .., last) => {
+            // 只关心第一个和最后一个值
             println!("第一个: {}, 最后一个: {}", first, last);
         }
     }
@@ -523,7 +535,8 @@ fn wildcard_patterns() {
     let point = Point { x: 1, y: 2, z: 3 };
 
     match point {
-        Point { x, .. } => {     // 只关心 x 字段
+        Point { x, .. } => {
+            // 只关心 x 字段
             println!("点的 x 坐标: {}", x);
         }
     }
@@ -541,7 +554,7 @@ fn wildcard_patterns() {
 
     match message {
         Message::Write(text) => println!("写入消息: {}", text),
-        _ => println!("其他类型的消息"),  // 匹配所有其他消息类型
+        _ => println!("其他类型的消息"), // 匹配所有其他消息类型
     }
 
     // 通配符的最佳实践：
@@ -668,7 +681,9 @@ fn at_binding() {
 
     // 使用 @ 绑定：在匹配范围的同时绑定值到变量
     match msg {
-        Message::Hello { id: id_variable @ 3..=7 } => {
+        Message::Hello {
+            id: id_variable @ 3..=7,
+        } => {
             // id_variable 被绑定到实际的 id 值
             println!("找到范围内的 id: {}", id_variable);
         }
@@ -723,7 +738,10 @@ fn at_binding() {
     let point = Point { x: 10, y: 20 };
 
     match point {
-        Point { x: x_val @ 5..=15, y: y_val @ 15..=25 } => {
+        Point {
+            x: x_val @ 5..=15,
+            y: y_val @ 15..=25,
+        } => {
             println!("点在目标区域内: ({}, {})", x_val, y_val);
         }
         Point { x, y } => {
@@ -758,9 +776,9 @@ fn enums_and_ownership() {
 
     #[derive(Debug)]
     enum Data {
-        Text(String),      // 拥有字符串数据
-        Number(i32),       // 拥有整数数据
-        Boolean(bool),     // 拥有布尔数据
+        Text(String),  // 拥有字符串数据
+        Number(i32),   // 拥有整数数据
+        Boolean(bool), // 拥有布尔数据
     }
 
     // 枚举变体拥有数据
@@ -915,20 +933,45 @@ fn enum_implementation() {
 
     // 演示红绿灯系统
     let mut light = TrafficLight::new();
-    println!("当前信号灯: {:?} - {} - 颜色: {} - 停止: {} - 可通行: {} - 持续时间: {}秒",
-             light, light.description(), light.color(), light.is_stop(), light.can_pass(), light.duration());
+    println!(
+        "当前信号灯: {:?} - {} - 颜色: {} - 停止: {} - 可通行: {} - 持续时间: {}秒",
+        light,
+        light.description(),
+        light.color(),
+        light.is_stop(),
+        light.can_pass(),
+        light.duration()
+    );
 
     light = light.next();
-    println!("下一个信号灯: {:?} - {} - 颜色: {} - 停止: {} - 可通行: {} - 持续时间: {}秒",
-             light, light.description(), light.color(), light.is_stop(), light.can_pass(), light.duration());
+    println!(
+        "下一个信号灯: {:?} - {} - 颜色: {} - 停止: {} - 可通行: {} - 持续时间: {}秒",
+        light,
+        light.description(),
+        light.color(),
+        light.is_stop(),
+        light.can_pass(),
+        light.duration()
+    );
 
     light = light.next();
-    println!("下一个信号灯: {:?} - {} - 颜色: {} - 停止: {} - 可通行: {} - 持续时间: {}秒",
-             light, light.description(), light.color(), light.is_stop(), light.can_pass(), light.duration());
+    println!(
+        "下一个信号灯: {:?} - {} - 颜色: {} - 停止: {} - 可通行: {} - 持续时间: {}秒",
+        light,
+        light.description(),
+        light.color(),
+        light.is_stop(),
+        light.can_pass(),
+        light.duration()
+    );
 
     // 演示时间模拟
     let future_light = TrafficLight::new().after_duration(40);
-    println!("40秒后的信号灯: {:?} - {}", future_light, future_light.description());
+    println!(
+        "40秒后的信号灯: {:?} - {}",
+        future_light,
+        future_light.description()
+    );
 
     // 枚举实现的优势：
     // 1. 封装性：将数据和操作封装在一起
@@ -971,9 +1014,9 @@ fn enums_and_generics() {
     // 自定义泛型枚举
     #[derive(Debug)]
     enum Container<T, E> {
-        Item(T),        // 包含任意类型 T 的项
-        Error(E),       // 包含任意错误类型 E 的错误
-        Empty,          // 空容器
+        Item(T),  // 包含任意类型 T 的项
+        Error(E), // 包含任意错误类型 E 的错误
+        Empty,    // 空容器
     }
 
     // 使用泛型枚举
@@ -1063,7 +1106,11 @@ fn enums_and_generics() {
     let left_value: Either<String, i32> = Either::Left(String::from("Left value"));
     let right_value: Either<String, i32> = Either::Right(42);
 
-    println!("Left? {} Right? {}", left_value.is_left(), left_value.is_right());
+    println!(
+        "Left? {} Right? {}",
+        left_value.is_left(),
+        left_value.is_right()
+    );
     println!("Left value: {:?}", left_value.left());
     println!("Right value: {:?}", right_value.right());
 
@@ -1095,10 +1142,10 @@ fn enum_example_program() {
     // 定义 HTTP 状态码枚举
     #[derive(Debug, Clone, PartialEq)]
     enum HttpStatus {
-        Ok,                         // 200 OK
-        NotFound,                   // 404 Not Found
-        BadRequest,                 // 400 Bad Request
-        InternalServerError,        // 500 Internal Server Error
+        Ok,                  // 200 OK
+        NotFound,            // 404 Not Found
+        BadRequest,          // 400 Bad Request
+        InternalServerError, // 500 Internal Server Error
     }
 
     // 为 HTTP 状态码实现方法
@@ -1173,10 +1220,17 @@ fn enum_example_program() {
 
     // 处理所有响应
     for response in responses {
-        println!("HTTP {}: {} - 类别: {} - 成功: {} - 客户端错误: {} - 服务器错误: {} - 应重试: {} - 用户消息: {}",
-                 response.code(), response.message(), response.category(),
-                 response.is_success(), response.is_client_error(), response.is_server_error(),
-                 response.should_retry(), response.user_message());
+        println!(
+            "HTTP {}: {} - 类别: {} - 成功: {} - 客户端错误: {} - 服务器错误: {} - 应重试: {} - 用户消息: {}",
+            response.code(),
+            response.message(),
+            response.category(),
+            response.is_success(),
+            response.is_client_error(),
+            response.is_server_error(),
+            response.should_retry(),
+            response.user_message()
+        );
     }
 
     // 模拟 HTTP 请求处理
@@ -1196,7 +1250,12 @@ fn enum_example_program() {
     println!("\n=== 模拟 HTTP 请求 ===");
     for url in urls {
         let status = simulate_http_request(url);
-        println!("请求 '{}' -> HTTP {} ({})", url, status.code(), status.message());
+        println!(
+            "请求 '{}' -> HTTP {} ({})",
+            url,
+            status.code(),
+            status.message()
+        );
 
         // 根据状态码采取不同的处理逻辑
         match status {
@@ -1244,9 +1303,9 @@ fn enhanced_enum_features() {
     // 这在使用 `..` 模式或 `Default` trait 时特别有用
 
     #[derive(Debug, PartialEq, Default, Copy, Clone)]
-    #[repr(u16)]  // 确保底层类型一致，便于默认值处理
+    #[repr(u16)] // 确保底层类型一致，便于默认值处理
     enum HttpStatus {
-        #[default]  // 标记为默认变体
+        #[default] // 标记为默认变体
         Ok = 200,
         BadRequest = 400,
         NotFound = 404,
@@ -1271,7 +1330,7 @@ fn enhanced_enum_features() {
             HttpStatus::BadRequest => "请求格式错误",
             HttpStatus::NotFound => "资源不存在",
             HttpStatus::InternalServerError => "服务器内部错误",
-            _ => "请求成功",  // 匹配剩余情况，包括 #[default] 标记的变体
+            _ => "请求成功", // 匹配剩余情况，包括 #[default] 标记的变体
         }
     }
 
@@ -1281,7 +1340,7 @@ fn enhanced_enum_features() {
             HttpStatus::BadRequest => "请求格式错误",
             HttpStatus::NotFound => "资源不存在",
             HttpStatus::InternalServerError => "服务器内部错误",
-            HttpStatus::Ok => "请求成功",  // 明确匹配默认变体
+            HttpStatus::Ok => "请求成功", // 明确匹配默认变体
         }
     }
 
@@ -1299,7 +1358,7 @@ fn enhanced_enum_features() {
     // 3. 在结构体中使用带有默认值的枚举
     #[derive(Debug)]
     struct ApiResponse {
-        status: HttpStatus,  // 使用带有默认值的枚举
+        status: HttpStatus, // 使用带有默认值的枚举
         message: String,
     }
 
@@ -1307,7 +1366,7 @@ fn enhanced_enum_features() {
     impl Default for ApiResponse {
         fn default() -> Self {
             ApiResponse {
-                status: HttpStatus::default(),  // 使用枚举的默认值
+                status: HttpStatus::default(), // 使用枚举的默认值
                 message: String::from("OK"),
             }
         }
@@ -1319,7 +1378,7 @@ fn enhanced_enum_features() {
     // 4. 配置管理中的默认值应用
     #[derive(Debug, PartialEq, Default)]
     enum LogLevel {
-        #[default]  // 默认日志级别
+        #[default] // 默认日志级别
         Info,
         Debug,
         Warn,
@@ -1335,7 +1394,7 @@ fn enhanced_enum_features() {
     impl Default for AppConfig {
         fn default() -> Self {
             AppConfig {
-                log_level: LogLevel::default(),  // 使用默认日志级别
+                log_level: LogLevel::default(), // 使用默认日志级别
                 max_connections: 100,
             }
         }
@@ -1348,7 +1407,7 @@ fn enhanced_enum_features() {
     // 5. 状态机中的默认状态
     #[derive(Debug, PartialEq, Default)]
     enum ConnectionState {
-        #[default]  // 默认状态
+        #[default] // 默认状态
         Disconnected,
         Connecting,
         Connected,
@@ -1365,7 +1424,7 @@ fn enhanced_enum_features() {
     impl Default for NetworkManager {
         fn default() -> Self {
             NetworkManager {
-                state: ConnectionState::default(),  // 从默认状态开始
+                state: ConnectionState::default(), // 从默认状态开始
                 retry_count: 0,
             }
         }
@@ -1377,9 +1436,9 @@ fn enhanced_enum_features() {
     // 6. 在 API 版本管理中的应用
     #[derive(Debug, PartialEq, Default)]
     enum ApiVersion {
-        #[default]  // 默认使用最新版本
+        #[default] // 默认使用最新版本
         V2,
-        V1,  // 旧版本
+        V1, // 旧版本
     }
 
     #[derive(Debug)]
@@ -1391,7 +1450,7 @@ fn enhanced_enum_features() {
     impl Default for ApiRequest {
         fn default() -> Self {
             ApiRequest {
-                version: ApiVersion::default(),  // 默认使用最新 API 版本
+                version: ApiVersion::default(), // 默认使用最新 API 版本
                 endpoint: String::from("/"),
             }
         }

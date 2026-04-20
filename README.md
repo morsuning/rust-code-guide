@@ -2,7 +2,9 @@
 
 > 注：建议使用最新版本的Rust工具链查看和阅读本项目，本项目默认你使用了全新安装的工具链，并未修改任何编译配置等，因此部分预览和实验性等需要对编译器进行特殊设置的特性必要时已经被注释以保证全部代码都可以通过编译
 
-基于《The Rust Programming Language》书籍的 Rust 语言特性完整教程，并补充完善了截止Rust 1.92版本的所有新增语言特性，包含所有 Rust 版本特性的代码示例和详细注释。
+基于《The Rust Programming Language》书籍的 Rust 语言特性完整教程，并补充完善了截止 Rust 1.95 版本的所有新增语言特性，包含所有 Rust 版本特性的代码示例和详细注释。
+
+建议有一定编程经验的读者阅读本指南，本指南不适合编程初学者（即Rust为打算学习的第一门编程语言）。
 
 ## 项目结构
 
@@ -52,6 +54,7 @@ rust-code-guide/
 - [结构体](src/mod_03_structs.rs)
 - [枚举](src/mod_04_enums.rs)
 - [模式匹配](src/mod_05_pattern_matching.rs)
+- [if let 守卫（Rust 1.95）](src/mod_05_pattern_matching.rs)
 
 ### 错误处理
 
@@ -70,6 +73,7 @@ rust-code-guide/
 - [Vector](src/mod_09_collections.rs)
 - [String](src/mod_09_collections.rs)
 - [HashMap](src/mod_09_collections.rs)
+- [最新集合 API（Rust 1.92-1.95）](src/mod_09_collections.rs)
 
 ### 函数式编程
 
@@ -81,17 +85,20 @@ rust-code-guide/
 - [线程](src/mod_12_concurrency.rs)
 - [通道](src/mod_12_concurrency.rs)
 - [共享状态](src/mod_12_concurrency.rs)
+- [RwLock 降级与原子更新 API](src/mod_12_concurrency.rs)
 
 ### 宏系统
 
 - [声明式宏](src/mod_13_macros.rs)
 - [过程宏](src/mod_13_macros.rs)
+- [cfg_select! 宏（Rust 1.95）](src/mod_13_macros.rs)
 
 ### 高级特性
 
 - [不安全 Rust](src/mod_14_advanced.rs)
 - [生命周期](src/mod_14_advanced.rs)
 - [外部函数接口](src/mod_15_ffi.rs)
+- [底层能力补充（Rust 1.92-1.95）](src/mod_14_advanced.rs)
 
 ### 智能指针
 
@@ -99,6 +106,7 @@ rust-code-guide/
 - [Rc 和 Arc 引用计数](src/mod_16_smart_pointers.rs)
 - [RefCell 和内部可变性](src/mod_16_smart_pointers.rs)
 - [Weak 指针和循环引用](src/mod_16_smart_pointers.rs)
+- [零初始化智能指针分配（Rust 1.92）](src/mod_16_smart_pointers.rs)
 
 ### 异步编程
 
@@ -363,8 +371,39 @@ rust-code-guide/
 
 ### Rust 1.92 (2025-12-11)
 
-- 异步闭包 (`async_closure`) 稳定化
-- `impl Trait` 在类型别名中 (TAIT) 完全稳定
+- Cargo 新增 `[build] build-dir`
+- `proc_macro::TokenStream` 支持 `Extend<TokenTree>` / `Extend<TokenStream>`
+- 安全代码中允许对 `union` 字段创建原始指针
+- `RwLockWriteGuard::downgrade`
+- `BTreeMap::Entry::insert_entry`
+- `Box` / `Rc` / `Arc::new_zeroed`
+
+### Rust 1.93 (2026-01-22)
+
+- `asm!` 支持 `#[cfg]` / `#[cfg_attr]`
+- `extern "system"` 支持 C 风格变参
+- `Vec::into_raw_parts` / `String::into_raw_parts`
+- `VecDeque::pop_front_if` / `pop_back_if`
+- `fmt::from_fn`
+
+### Rust 1.94 (2026-03-05)
+
+- `slice::array_windows`
+- `Iterator::next_chunk`
+- `Peekable::next_if_map`
+- `LazyCell` / `LazyLock` 新增 `get` / `get_mut` / `force_mut`
+- 原始标识符匹配器可匹配更多关键字
+
+### Rust 1.95 (2026-04-16)
+
+- `if let` guards
+- `cfg_select!` 宏
+- `Vec::push_mut` / `insert_mut`
+- `VecDeque::push_front_mut` / `push_back_mut` / `insert_mut`
+- 原子类型的 `update` / `try_update`
+- `std::hint::cold_path`
+- `BTreeMap` / `BTreeSet` 游标 API
+- 路径段关键字可在 `use` 中重命名
 
 ## 如何使用
 

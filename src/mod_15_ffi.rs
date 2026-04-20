@@ -1,4 +1,12 @@
-#![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments, unused_macros, deprecated)]
+#![allow(
+    dead_code,
+    unused_variables,
+    unused_imports,
+    unused_mut,
+    unused_assignments,
+    unused_macros,
+    deprecated
+)]
 
 use std::ffi::{CStr, CString, c_char};
 
@@ -347,7 +355,7 @@ fn callback_functions() {
     // 这个 C 函数接受一个值和一个回调函数，将值传递给回调函数并返回结果
     // 注意：在实际项目中，这些函数会在 C 库中实现
     // 这里我们使用模拟实现来演示概念
-    
+
     // 定义 Rust 函数作为回调 (Rust Function as Callback)
     // #[unsafe(no_mangle)] 确保函数名在编译时不被修改
     // extern "C" 使用 C 调用约定，使 C 代码能够调用此函数
@@ -556,7 +564,7 @@ fn memory_management() {
     // 这会导致双重释放错误
     // 正确的做法是让 c_vec 自然离开作用域，或者使用 std::mem::forget
     println!("向量数据已转换为 C 风格，但仍由 Rust 管理");
-    
+
     // c_vec 离开作用域时会自动释放内存
 
     // 内存管理的黄金法则：
@@ -630,7 +638,7 @@ fn error_handling() {
     // 它提供了一种线程安全的错误代码存储机制
     // 注意：直接访问 errno 在不同平台上可能有所不同
     // 这里我们使用一个简化的模拟实现
-    
+
     // 模拟的全局错误变量
     static mut MOCK_ERRNO: i32 = 0;
 
@@ -1523,7 +1531,7 @@ fn std_os_fd_standardization() {
         // 然后从原始文件描述符创建 OwnedFd
         let raw_fd_copy = raw_fd;
         std::mem::forget(file); // 防止 file 的 Drop 被调用
-        
+
         unsafe {
             let owned_fd = OwnedFd::from_raw_fd(raw_fd_copy);
             println!("OwnedFd 创建成功");
@@ -1561,7 +1569,7 @@ fn std_os_fd_standardization() {
         // 正确的方式：使用 std::mem::forget 来避免 file 的 Drop
         let raw_handle_copy = raw_handle;
         std::mem::forget(file); // 防止 file 的 Drop 被调用
-        
+
         unsafe {
             let owned_handle = OwnedHandle::from_raw_handle(raw_handle_copy);
             println!("OwnedHandle 创建成功");
@@ -1699,6 +1707,75 @@ fn network_fd_usage() {
 }
 
 // ===========================================
+// 11. Rust 1.92-1.93 FFI 原始部件增强
+// ===========================================
+
+// 这些版本补齐了多组和底层缓冲区 / ABI 直接相关的能力：
+// - Rust 1.93: extern "system" 支持 C 风格变参
+// - Rust 1.93: Vec::into_raw_parts / String::into_raw_parts
+//
+// FFI 对新手最容易混淆的地方通常有两个：
+// 1. 调用约定到底是谁来决定的
+// 2. 容器拆成裸指针之后，内存所有权到底还归谁
+//
+// 下面这两个示例正好分别对应这两个问题。
+
+fn latest_ffi_updates() {
+    println!("=== Rust 1.92-1.93 FFI 原始部件增强 ===");
+
+    // Rust 1.93: `extern "system"` 支持 C 风格变参
+    //
+    // `extern "system"` 表示“采用当前平台系统 API 默认使用的调用约定”。
+    // 它和 `extern "C"` 很像，但并不总是完全相同。
+    //
+    // 这里我们没有真正去调用系统函数，
+    // 而是先通过函数指针类型说明：Rust 现在可以稳定表达
+    // “system ABI + 可变参数” 这种签名。
+    type SystemVariadicPrinter = unsafe extern "system" fn(*const c_char, ...) -> i32;
+    println!(
+        "extern \"system\" 变参函数指针大小: {}",
+        std::mem::size_of::<SystemVariadicPrinter>()
+    );
+
+    // Rust 1.93: `Vec::into_raw_parts`
+    //
+    // 它会把 Vec 拆成三部分：
+    // 1. 指针 `ptr`
+    // 2. 当前长度 `len`
+    // 3. 当前容量 `cap`
+    //
+    // 这在 FFI 中非常常见，因为 C / C++ API 往往就认识这些原始部件。
+    //
+    // 重要理解：
+    // 调用 `into_raw_parts` 之后，原来的 Vec 已经不再由 Rust 自动回收，
+    // 因为你已经把它的堆分配“拆走”了。
+    let numbers = vec![10_i32, 20, 30];
+    let (ptr, len, cap) = numbers.into_raw_parts();
+    // 这里立刻用 `from_raw_parts` 重建回来，是为了演示一个安全闭环。
+    // 实际项目里，这一步可能发生在外部库回调回来之后，或者在资源释放阶段。
+    let rebuilt = unsafe { Vec::from_raw_parts(ptr, len, cap) };
+    println!("Vec::into_raw_parts 往返结果: {rebuilt:?}");
+
+    // `String::into_raw_parts` 的思路完全一样。
+    // 因为 String 本质上就是一块 UTF-8 字节缓冲区，
+    // 所以它也可以拆成指针、长度和容量。
+    //
+    // 常见使用场景：
+    // 1. 把字符串缓冲区交给底层系统填写
+    // 2. 与要求裸缓冲区的库对接
+    // 3. 自己管理分配与释放边界
+    let message = String::from("ffi-buffer");
+    let (ptr, len, cap) = message.into_raw_parts();
+    let rebuilt = unsafe { String::from_raw_parts(ptr, len, cap) };
+    println!("String::into_raw_parts 往返结果: {rebuilt}");
+
+    // 对新手最关键的提醒：
+    // `from_raw_parts` 必须和原始分配方式严格匹配。
+    // 如果指针、长度、容量有任何不一致，就会触发未定义行为。
+    println!();
+}
+
+// ===========================================
 // 主函数
 // ===========================================
 
@@ -1716,6 +1793,7 @@ pub fn main() {
     practical_examples();
     safe_wrappers();
     std_os_fd_standardization();
+    latest_ffi_updates();
 
     println!("FFI 演示完成！");
 }
@@ -1865,6 +1943,19 @@ mod tests {
         let initial_count = unsafe { get_ffi_counter() };
         unsafe { increment_ffi_counter() };
         assert_eq!(unsafe { get_ffi_counter() }, initial_count + 1);
+    }
+
+    #[test]
+    fn test_latest_ffi_raw_parts_roundtrip() {
+        let values = vec![1_u8, 2, 3, 4];
+        let (ptr, len, cap) = values.into_raw_parts();
+        let rebuilt = unsafe { Vec::from_raw_parts(ptr, len, cap) };
+        assert_eq!(rebuilt, vec![1, 2, 3, 4]);
+
+        let text = String::from("ffi");
+        let (ptr, len, cap) = text.into_raw_parts();
+        let rebuilt = unsafe { String::from_raw_parts(ptr, len, cap) };
+        assert_eq!(rebuilt, "ffi");
     }
 }
 

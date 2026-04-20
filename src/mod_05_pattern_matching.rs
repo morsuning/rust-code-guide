@@ -1,4 +1,10 @@
-#![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments)]
+#![allow(
+    dead_code,
+    unused_variables,
+    unused_imports,
+    unused_mut,
+    unused_assignments
+)]
 
 // Rust 模式匹配
 // 深入讲解 Rust 模式匹配系统的各个方面，包括 match 表达式、模式语法、解构、守卫等高级特性
@@ -87,8 +93,8 @@ fn pattern_syntax() {
     // 范围模式只适用于实现了 PartialOrd 特征的类型
     let x = 7;
     match x {
-        1..=5 => println!("1 到 5 之间"),      // 包含边界：1, 2, 3, 4, 5
-        6..=10 => println!("6 到 10 之间"),    // 包含边界：6, 7, 8, 9, 10
+        1..=5 => println!("1 到 5 之间"),   // 包含边界：1, 2, 3, 4, 5
+        6..=10 => println!("6 到 10 之间"), // 包含边界：6, 7, 8, 9, 10
         _ => println!("其他"),
     }
 
@@ -119,8 +125,8 @@ fn destructuring_patterns() {
 
     let p = Point { x: 0, y: 7 };
     match p {
-        Point { x, y: 0 } => println!("在 x 轴上: {}", x),       // 匹配 y 坐标为 0 的点
-        Point { x: 0, y } => println!("在 y 轴上: {}", y),       // 匹配 x 坐标为 0 的点
+        Point { x, y: 0 } => println!("在 x 轴上: {}", x), // 匹配 y 坐标为 0 的点
+        Point { x: 0, y } => println!("在 y 轴上: {}", y), // 匹配 x 坐标为 0 的点
         Point { x, y } => println!("在其他位置: ({}, {})", x, y), // 匹配其他所有情况
     }
 
@@ -135,9 +141,9 @@ fn destructuring_patterns() {
 
     let msg = Message::ChangeColor(0, 160, 255);
     match msg {
-        Message::Quit => println!("退出消息"),                              // 无数据的枚举变体
-        Message::Move { x, y } => println!("移动消息: ({}, {})", x, y),      // 结构体风格的枚举变体
-        Message::Write(text) => println!("写入消息: {}", text),              // 包含单个值的枚举变体
+        Message::Quit => println!("退出消息"), // 无数据的枚举变体
+        Message::Move { x, y } => println!("移动消息: ({}, {})", x, y), // 结构体风格的枚举变体
+        Message::Write(text) => println!("写入消息: {}", text), // 包含单个值的枚举变体
         Message::ChangeColor(r, g, b) => println!("颜色消息: RGB({}, {}, {})", r, g, b), // 元组风格的枚举变体
     }
 
@@ -222,9 +228,9 @@ fn match_guards() {
     // 守卫让我们能够表达模式本身无法表达的复杂条件
     let x = Some(5);
     match x {
-        Some(n) if n < 5 => println!("小于 5: {}", n),       // 守卫：n < 5
-        Some(n) if n == 5 => println!("等于 5: {}", n),      // 守卫：n == 5
-        Some(n) => println!("大于 5: {}", n),               // 没有守卫的默认情况
+        Some(n) if n < 5 => println!("小于 5: {}", n), // 守卫：n < 5
+        Some(n) if n == 5 => println!("等于 5: {}", n), // 守卫：n == 5
+        Some(n) => println!("大于 5: {}", n),          // 没有守卫的默认情况
         None => println!("None"),
     }
 
@@ -232,7 +238,7 @@ fn match_guards() {
     let x = 4;
     let y = false;
     match x {
-        4 | 5 | 6 if y => println!("4, 5 或 6 且 y 为 true"),  // 守卫应用于整个模式组
+        4 | 5 | 6 if y => println!("4, 5 或 6 且 y 为 true"), // 守卫应用于整个模式组
         4 | 5 | 6 => println!("4, 5 或 6 但 y 为 false"),     // 没有守卫的同一组模式
         _ => println!("其他"),
     }
@@ -279,7 +285,9 @@ fn at_binding() {
 
     let msg = Message::Hello { id: 5 };
     match msg {
-        Message::Hello { id: id_variable @ 3..=7 } => {
+        Message::Hello {
+            id: id_variable @ 3..=7,
+        } => {
             // id_variable 被绑定到实际的 id 值，但只在 id 在 3..=7 范围内时匹配
             println!("找到 id 在范围内: {}", id_variable);
         }
@@ -510,7 +518,7 @@ fn advanced_pattern_matching() {
     match person {
         Person {
             name,
-            age: age @ 25..=35,      // @ 绑定年龄范围
+            age: age @ 25..=35,            // @ 绑定年龄范围
             address: Address { city, .. }, // 只关心城市，忽略其他字段
         } => {
             println!("匹配到 {} 岁，住在 {} 的 {}", age, city, name);
@@ -521,11 +529,7 @@ fn advanced_pattern_matching() {
     // 切片模式：处理数组和切片的特定模式
     // 切片模式在处理固定大小的数据时非常有用
     // 演示不同大小的切片
-    let slices = vec![
-        &[1, 2, 3, 4, 5] as &[i32],
-        &[42],
-        &[],
-    ];
+    let slices = vec![&[1, 2, 3, 4, 5] as &[i32], &[42], &[]];
 
     for slice in slices {
         match slice {
@@ -609,8 +613,8 @@ fn matches_macro() {
     let has_network_error = matches!(&error_status, Status::Error(msg) if msg.contains("网络"));
     let has_file_error = matches!(&error_status, Status::Error(msg) if msg.contains("文件"));
 
-    println!("网络错误: {}", has_network_error);  // false
-    println!("文件错误: {}", has_file_error);      // true
+    println!("网络错误: {}", has_network_error); // false
+    println!("文件错误: {}", has_file_error); // true
 
     // matches! 在实际编程中的应用场景
     // 场景 1：输入验证
@@ -618,8 +622,8 @@ fn matches_macro() {
         matches!(age, 18..=120)
     }
 
-    println!("年龄 25 有效: {}", validate_age(25));   // true
-    println!("年龄 15 有效: {}", validate_age(15));   // false
+    println!("年龄 25 有效: {}", validate_age(25)); // true
+    println!("年龄 15 有效: {}", validate_age(15)); // false
     println!("年龄 150 有效: {}", validate_age(150)); // false
 
     // 场景 2：状态检查
@@ -630,8 +634,14 @@ fn matches_macro() {
     let terminal_status = Status::Success;
     let non_terminal_status = Status::Pending;
 
-    println!("成功状态是终端状态: {}", is_terminal_status(&terminal_status));       // true
-    println!("等待状态是终端状态: {}", is_terminal_status(&non_terminal_status));    // false
+    println!(
+        "成功状态是终端状态: {}",
+        is_terminal_status(&terminal_status)
+    ); // true
+    println!(
+        "等待状态是终端状态: {}",
+        is_terminal_status(&non_terminal_status)
+    ); // false
 
     // 场景 3：数据类型检查
     // 注意：serde_json 是一个外部依赖 crate，需要添加到 Cargo.toml 才能使用
@@ -654,8 +664,8 @@ fn matches_macro() {
     let string_value = JsonValue::String("hello".to_string());
     let number_value = JsonValue::Number(42);
 
-    println!("字符串值: {}", matches!(string_value, JsonValue::String(_)));    // true
-    println!("数字值: {}", matches!(number_value, JsonValue::String(_)));     // false
+    println!("字符串值: {}", matches!(string_value, JsonValue::String(_))); // true
+    println!("数字值: {}", matches!(number_value, JsonValue::String(_))); // false
 
     // matches! 与 if 表达式的对比
     // 传统的 if let 方式需要更多的代码
@@ -665,11 +675,7 @@ fn matches_macro() {
     let is_some_positive = matches!(value, Some(x) if x > 0);
 
     // 传统的 if let 方式（更冗长）
-    let is_some_positive_traditional = if let Some(x) = value {
-        x > 0
-    } else {
-        false
-    };
+    let is_some_positive_traditional = if let Some(x) = value { x > 0 } else { false };
 
     println!("matches! 方式: {}", is_some_positive);
     println!("传统方式: {}", is_some_positive_traditional);
@@ -691,7 +697,126 @@ fn matches_macro() {
 }
 
 // ===========================================
-// 12. 模式匹配最佳实践
+// 12. Rust 1.95 if let 守卫 (if let guards)
+// ===========================================
+
+// Rust 1.95 稳定了 if let 守卫，允许在 match 分支守卫中继续执行模式匹配
+// 这让“先匹配主模式，再对守卫中的值做二次解构/验证”更自然
+//
+// 这个特性主要解决什么问题？
+// 1. 以前 match guard 通常只能写普通布尔条件，例如 `if x > 0`
+// 2. 如果想在 guard 里继续做一次“模式匹配式校验”，代码会比较绕
+// 3. 现在可以直接写 `if let Ok(v) = parse(...)`，把“分支筛选”和“二次匹配”写在一起
+//
+// 典型使用场景：
+// 1. 协议消息解析
+// 2. 命令行和 DSL 解析
+// 3. AST / JSON / 配置结构的多层解构
+//
+// 学习时要记住：
+// 1. guard 是“分支额外条件”，不是独立分支
+// 2. guard 失败时，会继续尝试后续 match 分支
+// 3. guard 里如果借用了数据，要注意不要和所有权移动冲突
+
+fn if_let_guards() {
+    println!("=== Rust 1.95 if let 守卫 ===");
+
+    // 这里定义一个简单的事件枚举，模拟真实程序里经常出现的消息流。
+    // `Message` 分支里真正有用的数据在 payload 中，而 payload 还需要进一步解析。
+    // 这正是 if let guards 的典型用武之地。
+    #[derive(Debug)]
+    enum Event {
+        Message {
+            user_id: u64,
+            payload: Option<String>,
+        },
+        Heartbeat,
+    }
+
+    // 这个辅助函数负责把消息文本解析成命令。
+    //
+    // 成功条件：
+    // 1. 必须以 `/cmd:` 开头
+    // 2. 去掉前缀后不能为空
+    //
+    // 返回 `&str` 而不是 `String` 的原因是：
+    // 我们这里只是借用原字符串中的一段内容，不需要重新分配新字符串。
+    fn parse_command(payload: &str) -> Result<&str, &'static str> {
+        payload
+            .strip_prefix("/cmd:")
+            .map(str::trim)
+            .filter(|command| !command.is_empty())
+            .ok_or("不是合法命令")
+    }
+
+    // 三种测试数据分别对应三种情况：
+    // 1. 合法命令
+    // 2. 普通文本
+    // 3. 非消息类型
+    let events = vec![
+        Event::Message {
+            user_id: 7,
+            payload: Some("/cmd:deploy".to_string()),
+        },
+        Event::Message {
+            user_id: 8,
+            payload: Some("plain-text".to_string()),
+        },
+        Event::Heartbeat,
+    ];
+
+    for event in events {
+        // 这个 match 是本节最核心的演示：
+        // - 先判断是不是 Message
+        // - 再判断 payload 是否存在
+        // - 最后在 guard 中继续尝试把 payload 解析成命令
+        //
+        // 这里特意对 `event` 使用借用匹配：`match &event`。
+        // 这样做的原因是：
+        // 1. guard 里需要借用 payload 去调用 `parse_command`
+        // 2. 如果按值匹配，编辑器里的 linter 往往会把“借用 + 后续分支继续取值”识别成冲突
+        // 3. 改成借用匹配后，整段逻辑更稳定，也更适合新手理解
+        let description = match &event {
+            Event::Message {
+                user_id,
+                payload: Some(payload),
+            } if let Ok(command) = parse_command(payload) => {
+                // 因为整个 match 都是在借用 `event`，这里的 `payload` 也是借用值。
+                // 所以我们可以安全地在 guard 中读取它，而不会移动原始字符串。
+                format!("用户 {user_id} 发送了命令：{command}")
+            }
+            Event::Message {
+                user_id,
+                payload: Some(payload),
+            } => {
+                // 进入这个分支说明：
+                // 1. 事件确实是 Message
+                // 2. payload 也确实存在
+                // 3. 但是上一个分支的 guard 没通过，也就是它不是合法命令
+                format!("用户 {user_id} 发送普通文本：{payload}")
+            }
+            Event::Message {
+                user_id,
+                payload: None,
+            } => {
+                // 这类分支在真实项目中也很常见：
+                // “消息结构存在，但里面缺少真正业务数据”。
+                format!("用户 {user_id} 发送了空消息")
+            }
+            Event::Heartbeat => "收到心跳包".to_string(),
+        };
+
+        // 打印结果，便于读者对照理解每个分支实际命中的条件。
+        println!("{description}");
+    }
+
+    // 小结：
+    // if let guards 的最大价值，不是增加能力，而是让“复杂分支筛选”仍然保持线性可读。
+    println!();
+}
+
+// ===========================================
+// 13. 模式匹配最佳实践
 // ===========================================
 
 // 掌握模式匹配的最佳实践对于编写高质量 Rust 代码至关重要
@@ -789,7 +914,13 @@ fn pattern_matching_example_program() {
         }
     }
 
-    let operations = vec![('+', 10, 5), ('-', 10, 5), ('*', 10, 5), ('/', 10, 2), ('/', 10, 0)];
+    let operations = vec![
+        ('+', 10, 5),
+        ('-', 10, 5),
+        ('*', 10, 5),
+        ('/', 10, 2),
+        ('/', 10, 0),
+    ];
 
     for (op, a, b) in operations {
         match calculate(op, a, b) {
@@ -837,10 +968,13 @@ fn pattern_matching_example_program() {
             ("port", ConfigValue::Number(port)) => format!("端口: {}", port),
             ("debug", ConfigValue::Boolean(debug)) => format!("调试模式: {}", debug),
             ("features", ConfigValue::List(features)) => {
-                let feature_names: Vec<String> = features.iter().map(|f| match f {
-                    ConfigValue::String(name) => name.clone(),
-                    _ => "unknown".to_string(),
-                }).collect();
+                let feature_names: Vec<String> = features
+                    .iter()
+                    .map(|f| match f {
+                        ConfigValue::String(name) => name.clone(),
+                        _ => "unknown".to_string(),
+                    })
+                    .collect();
                 format!("特性: {}", feature_names.join(", "))
             }
             (key, value) => format!("未知配置 {}: {:?}", key, value),
@@ -851,10 +985,13 @@ fn pattern_matching_example_program() {
         ("host", ConfigValue::String("localhost".to_string())),
         ("port", ConfigValue::Number(8080)),
         ("debug", ConfigValue::Boolean(true)),
-        ("features", ConfigValue::List(vec![
-            ConfigValue::String("auth".to_string()),
-            ConfigValue::String("logging".to_string()),
-        ])),
+        (
+            "features",
+            ConfigValue::List(vec![
+                ConfigValue::String("auth".to_string()),
+                ConfigValue::String("logging".to_string()),
+            ]),
+        ),
     ];
 
     for (key, value) in config {
@@ -890,6 +1027,7 @@ pub fn main() {
     pattern_matching_ownership();
     advanced_pattern_matching();
     matches_macro();
+    if_let_guards();
     pattern_matching_best_practices();
     pattern_matching_example_program();
 
@@ -1020,7 +1158,10 @@ mod tests {
         };
 
         let result = match person {
-            Person { name, age: age @ 25..=35 } => format!("{}: {}", name, age),
+            Person {
+                name,
+                age: age @ 25..=35,
+            } => format!("{}: {}", name, age),
             Person { name, age } => format!("{}: {} (其他年龄)", name, age),
         };
         assert_eq!(result, "Alice: 30");
@@ -1029,11 +1170,7 @@ mod tests {
     #[test]
     fn test_slice_patterns() {
         // 测试多元素切片
-        let slices = vec![
-            &[1, 2, 3, 4, 5] as &[i32],
-            &[42],
-            &[],
-        ];
+        let slices = vec![&[1, 2, 3, 4, 5] as &[i32], &[42], &[]];
 
         for slice in slices {
             match slice {
@@ -1099,13 +1236,30 @@ mod tests {
         let is_some_positive_matches = matches!(value, Some(x) if x > 0);
 
         // 使用传统方式
-        let is_some_positive_traditional = if let Some(x) = value {
-            x > 0
-        } else {
-            false
-        };
+        let is_some_positive_traditional = if let Some(x) = value { x > 0 } else { false };
 
         assert_eq!(is_some_positive_matches, is_some_positive_traditional);
         assert!(is_some_positive_matches);
+    }
+
+    #[test]
+    fn test_if_let_guards() {
+        fn parse_even(input: &str) -> Result<i32, &'static str> {
+            let value = input.parse::<i32>().map_err(|_| "parse error")?;
+            if value % 2 == 0 {
+                Ok(value)
+            } else {
+                Err("odd")
+            }
+        }
+
+        let input = Some("24");
+        let result = match input {
+            Some(raw) if let Ok(value) = parse_even(raw) => value / 2,
+            Some(_) => 0,
+            None => -1,
+        };
+
+        assert_eq!(result, 12);
     }
 }

@@ -1,4 +1,12 @@
-#![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments, unused_macros, deprecated)]
+#![allow(
+    dead_code,
+    unused_variables,
+    unused_imports,
+    unused_mut,
+    unused_assignments,
+    unused_macros,
+    deprecated
+)]
 
 // Rust 智能指针 (Smart Pointers)
 // 深入讲解 Rust 中的智能指针概念，包括 Box、Rc、Arc、RefCell 等
@@ -12,11 +20,11 @@
 // 它们的行为类似于指针但拥有额外的元数据和功能
 // 智能指针的核心价值在于提供更灵活的内存管理方式
 
+use std::cell::{Ref, RefCell, RefMut};
+use std::collections::LinkedList;
+use std::ops::{Deref, DerefMut};
 use std::rc::{Rc, Weak};
 use std::sync::{Arc, Mutex};
-use std::cell::{RefCell, Ref, RefMut};
-use std::ops::{Deref, DerefMut};
-use std::collections::LinkedList;
 
 fn smart_pointer_concepts() {
     println!("=== 智能指针基础概念 ===");
@@ -486,8 +494,7 @@ fn arc_smart_pointer() {
     use std::sync::Arc;
     use std::thread;
 
-    let data = Arc::new(vec
-![1, 2, 3, 4, 5]);
+    let data = Arc::new(vec![1, 2, 3, 4, 5]);
 
     let mut handles = vec![];
 
@@ -648,8 +655,12 @@ fn smart_pointer_combinations() {
     }
 
     let animals: Vec<Box<dyn Animal>> = vec![
-        Box::new(Dog { name: "旺财".to_string() }),
-        Box::new(Cat { name: "咪咪".to_string() }),
+        Box::new(Dog {
+            name: "旺财".to_string(),
+        }),
+        Box::new(Cat {
+            name: "咪咪".to_string(),
+        }),
     ];
 
     for animal in animals {
@@ -775,7 +786,10 @@ fn practical_examples() {
 
     impl Observer for LoggingObserver {
         fn update(&self, subject: &Subject) {
-            println!("日志观察器 [{}]: 状态变更为 {}", self.log_file, subject.state);
+            println!(
+                "日志观察器 [{}]: 状态变更为 {}",
+                self.log_file, subject.state
+            );
         }
     }
 
@@ -847,6 +861,60 @@ fn practical_examples() {
 }
 
 // ===========================================
+// 11. Rust 1.92 零初始化智能指针分配
+// ===========================================
+
+// Rust 1.92 为 Box、Rc、Arc 提供了 new_zeroed
+// 这让“先分配一块全零内存，再在确认初始化完成后 assume_init”成为标准库支持的流程
+//
+// 这类 API 的使用动机通常是：
+// 1. 我想先拿到一块堆内存
+// 2. 之后再通过底层逻辑、FFI 或逐步写入把它初始化完成
+// 3. 我不想一开始就构造一个完整值再移动到堆上
+//
+// 但它也比普通 `new` 更危险，因为“所有字节都为 0”并不一定是一个合法值。
+// 所以这节的重点不只是“怎么用”，还包括“什么时候不能乱用”。
+
+fn zeroed_allocations() {
+    println!("=== Rust 1.92 零初始化智能指针分配 ===");
+
+    // `Box::new_zeroed()`：
+    // 在堆上分配足够容纳 `u32` 的内存，并把所有字节清零。
+    //
+    // 返回值还不是普通的 `Box<u32>`，
+    // 而是一个“可能尚未完全初始化”的中间状态，因此最后要 `assume_init()`。
+    //
+    // 这里是安全的，因为 `u32` 的全零位模式就是合法值 `0`。
+    let boxed = Box::<u32>::new_zeroed();
+    let boxed = unsafe { boxed.assume_init() };
+    println!("Box::new_zeroed -> {}", boxed);
+
+    // `Rc::new_zeroed()`：
+    // 用于单线程共享所有权场景。
+    // 示例里仍然选一个“全零合法”的基础整数类型，避免误导新手。
+    let rc = Rc::<u16>::new_zeroed();
+    let rc = unsafe { rc.assume_init() };
+    println!("Rc::new_zeroed -> {}", rc);
+
+    // `Arc::new_zeroed()`：
+    // 与 Rc 类似，但面向多线程共享所有权。
+    // 如果某些共享数据需要“先分配，再初始化，再共享”，这个 API 会很有价值。
+    let arc = Arc::<u8>::new_zeroed();
+    let arc = unsafe { arc.assume_init() };
+    println!("Arc::new_zeroed -> {}", arc);
+
+    // 非常重要的警告：
+    // 下面这些类型通常不能随便用 `new_zeroed + assume_init`：
+    // 1. 引用类型 `&T`
+    // 2. `bool`
+    // 3. 具有内部不变量的结构体
+    // 4. 依赖特定标签值的枚举
+    //
+    // 原因是：全零位模式不一定是这些类型的合法值。
+    println!();
+}
+
+// ===========================================
 // 主函数
 // ===========================================
 
@@ -862,6 +930,7 @@ pub fn main() {
     refcell_smart_pointer();
     weak_reference();
     arc_smart_pointer();
+    zeroed_allocations();
     smart_pointer_combinations();
     practical_examples();
 
@@ -910,9 +979,7 @@ mod tests {
         let data = Arc::new(42);
         let data_clone = Arc::clone(&data);
 
-        let handle = thread::spawn(move || {
-            *data_clone
-        });
+        let handle = thread::spawn(move || *data_clone);
 
         assert_eq!(handle.join().unwrap(), 42);
     }
@@ -921,7 +988,7 @@ mod tests {
     fn test_cache_functionality() {
         // 简化的缓存测试
         use std::collections::HashMap;
-        
+
         let mut cache = HashMap::new();
         cache.insert("key1".to_string(), "value1".to_string());
 
@@ -936,12 +1003,12 @@ mod tests {
             size: usize,
             used: usize,
         }
-        
+
         impl SimplePool {
             fn new(size: usize) -> Self {
                 SimplePool { size, used: 0 }
             }
-            
+
             fn allocate(&mut self) -> Option<usize> {
                 if self.used < self.size {
                     let addr = self.used;
@@ -951,12 +1018,12 @@ mod tests {
                     None
                 }
             }
-            
+
             fn stats(&self) -> (usize, usize) {
                 (self.size - self.used, self.used)
             }
         }
-        
+
         let mut pool = SimplePool::new(5);
         let addr1 = pool.allocate();
         let addr2 = pool.allocate();
@@ -974,19 +1041,34 @@ mod tests {
         struct SimpleSubject {
             state: String,
         }
-        
+
         impl SimpleSubject {
             fn new(state: String) -> Self {
                 SimpleSubject { state }
             }
-            
+
             fn set_state(&mut self, new_state: String) {
                 self.state = new_state;
             }
         }
-        
+
         let mut subject = SimpleSubject::new("test".to_string());
         subject.set_state("updated".to_string());
         assert_eq!(subject.state, "updated".to_string());
+    }
+
+    #[test]
+    fn test_zeroed_allocations() {
+        let boxed = Box::<u32>::new_zeroed();
+        let boxed = unsafe { boxed.assume_init() };
+        assert_eq!(*boxed, 0);
+
+        let rc = Rc::<u16>::new_zeroed();
+        let rc = unsafe { rc.assume_init() };
+        assert_eq!(*rc, 0);
+
+        let arc = Arc::<u8>::new_zeroed();
+        let arc = unsafe { arc.assume_init() };
+        assert_eq!(*arc, 0);
     }
 }

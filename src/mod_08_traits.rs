@@ -1,4 +1,12 @@
-#![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments, unused_macros, deprecated)]
+#![allow(
+    dead_code,
+    unused_variables,
+    unused_imports,
+    unused_mut,
+    unused_assignments,
+    unused_macros,
+    deprecated
+)]
 
 // Rust 特征系统 (Traits)
 // 深入讲解 Rust 中 trait 的定义、实现、高级用法和最佳实践
@@ -177,9 +185,7 @@ fn default_implementation_and_override() {
         fn process(&self, data: &str) -> String {
             // 高级处理：根据配置决定是否移除数字
             if self.remove_numbers {
-                data.chars()
-                    .filter(|&c| !c.is_numeric())
-                    .collect()
+                data.chars().filter(|&c| !c.is_numeric()).collect()
             } else {
                 data.to_string()
             }
@@ -190,9 +196,7 @@ fn default_implementation_and_override() {
             // 先调用默认的预处理（trim）
             let cleaned = data.trim().to_string();
             // 额外的清理：移除多余的空格
-            cleaned.split_whitespace()
-                .collect::<Vec<_>>()
-                .join(" ")
+            cleaned.split_whitespace().collect::<Vec<_>>().join(" ")
         }
 
         // 重写后处理方法，添加时间戳
@@ -208,13 +212,21 @@ fn default_implementation_and_override() {
 
     // 测试不同的处理器
     let simple_processor = SimpleTextProcessor;
-    let advanced_processor = AdvancedTextProcessor { remove_numbers: true };
+    let advanced_processor = AdvancedTextProcessor {
+        remove_numbers: true,
+    };
 
     let test_data = "  Hello World 123  ";
 
     println!("原始数据: '{}'", test_data);
-    println!("简单处理器结果: '{}'", simple_processor.full_process(test_data));
-    println!("高级处理器结果: '{}'", advanced_processor.full_process(test_data));
+    println!(
+        "简单处理器结果: '{}'",
+        simple_processor.full_process(test_data)
+    );
+    println!(
+        "高级处理器结果: '{}'",
+        advanced_processor.full_process(test_data)
+    );
 
     // 默认实现的优势：
     // 1. 代码复用：避免在每个实现中重复相同的逻辑
@@ -303,9 +315,13 @@ fn trait_bounds_and_generic_constraints() {
             // 比较两个点的距离原点的距离
             let dist1 = (self.x * self.x + self.y * self.y) as f64;
             let dist2 = (other.x * other.x + other.y * other.y) as f64;
-            if dist1 > dist2 { 1 }
-            else if dist1 < dist2 { -1 }
-            else { 0 }
+            if dist1 > dist2 {
+                1
+            } else if dist1 < dist2 {
+                -1
+            } else {
+                0
+            }
         }
     }
 
@@ -435,8 +451,10 @@ fn trait_objects_and_dynamic_dispatch() {
 
     impl Drawable for Circle {
         fn draw(&self) {
-            println!("🔵 绘制圆形: 位置({:.1}, {:.1}), 半径{:.1}, 颜色{}",
-                     self.x, self.y, self.radius, self.color);
+            println!(
+                "🔵 绘制圆形: 位置({:.1}, {:.1}), 半径{:.1}, 颜色{}",
+                self.x, self.y, self.radius, self.color
+            );
         }
 
         fn area(&self) -> f64 {
@@ -463,8 +481,10 @@ fn trait_objects_and_dynamic_dispatch() {
 
     impl Drawable for Rectangle {
         fn draw(&self) {
-            println!("🔲 绘制矩形: 位置({:.1}, {:.1}), 尺寸{:.1}x{:.1}, 颜色{}",
-                     self.x, self.y, self.width, self.height, self.color);
+            println!(
+                "🔲 绘制矩形: 位置({:.1}, {:.1}), 尺寸{:.1}x{:.1}, 颜色{}",
+                self.x, self.y, self.width, self.height, self.color
+            );
         }
 
         fn area(&self) -> f64 {
@@ -488,8 +508,12 @@ fn trait_objects_and_dynamic_dispatch() {
 
     impl std::fmt::Debug for ShapeManager {
         fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-            write!(f, "ShapeManager {{ shapes: [{} shapes], total_area: {:.2} }}",
-                   self.shapes.len(), self.total_area)
+            write!(
+                f,
+                "ShapeManager {{ shapes: [{} shapes], total_area: {:.2} }}",
+                self.shapes.len(),
+                self.total_area
+            )
         }
     }
 
@@ -522,15 +546,21 @@ fn trait_objects_and_dynamic_dispatch() {
 
         // 获取图形描述
         fn get_descriptions(&self) -> Vec<String> {
-            self.shapes.iter()
+            self.shapes
+                .iter()
                 .map(|shape| shape.description())
                 .collect()
         }
 
         // 查找最大图形
         fn find_largest(&self) -> Option<&dyn Drawable> {
-            self.shapes.iter()
-                .max_by(|a, b| a.area().partial_cmp(&b.area()).unwrap_or(std::cmp::Ordering::Equal))
+            self.shapes
+                .iter()
+                .max_by(|a, b| {
+                    a.area()
+                        .partial_cmp(&b.area())
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
                 .map(|boxed| boxed.as_ref())
         }
     }
@@ -538,13 +568,23 @@ fn trait_objects_and_dynamic_dispatch() {
     // 创建不同类型的图形
     let shapes: Vec<Box<dyn Drawable>> = vec![
         Box::new(Circle {
-            x: 0.0, y: 0.0, radius: 5.0, color: "红色".to_string(),
+            x: 0.0,
+            y: 0.0,
+            radius: 5.0,
+            color: "红色".to_string(),
         }),
         Box::new(Rectangle {
-            x: 10.0, y: 10.0, width: 8.0, height: 6.0, color: "蓝色".to_string(),
+            x: 10.0,
+            y: 10.0,
+            width: 8.0,
+            height: 6.0,
+            color: "蓝色".to_string(),
         }),
         Box::new(Circle {
-            x: 20.0, y: 20.0, radius: 3.0, color: "绿色".to_string(),
+            x: 20.0,
+            y: 20.0,
+            radius: 3.0,
+            color: "绿色".to_string(),
         }),
     ];
 
@@ -684,7 +724,6 @@ fn associated_types_and_gat() {
         }
     }
 
-    
     // 测试关联类型的使用
     let mut counter = Counter { current: 0, max: 5 };
     println!("计数器迭代:");
@@ -788,7 +827,7 @@ fn operator_overloading_and_default_generics() {
     }
 
     // 其他运算符的实现
-    use std::ops::{Sub, Mul, Div, Neg};
+    use std::ops::{Div, Mul, Neg, Sub};
 
     impl Sub for Vector2D {
         type Output = Self;
@@ -836,8 +875,14 @@ fn operator_overloading_and_default_generics() {
     println!("-v1 = {:?}", -v1);
     println!("v1 + 1.5 = {:?}", v1 + 1.5);
 
-    let c1 = Complex { real: 1.0, imag: 2.0 };
-    let c2 = Complex { real: 3.0, imag: 4.0 };
+    let c1 = Complex {
+        real: 1.0,
+        imag: 2.0,
+    };
+    let c2 = Complex {
+        real: 3.0,
+        imag: 4.0,
+    };
 
     println!("\n复数运算示例:");
     println!("c1 = {:?}", c1);
@@ -952,7 +997,10 @@ fn fully_qualified_syntax_and_disambiguation() {
 
     println!("\n关联函数消歧义:");
     println!("Dog::baby_name() = {}", Dog::baby_name());
-    println!("<Dog as Animal>::baby_name() = {}", <Dog as Animal>::baby_name());
+    println!(
+        "<Dog as Animal>::baby_name() = {}",
+        <Dog as Animal>::baby_name()
+    );
 
     // 更复杂的场景：泛型函数中的 trait 消歧义
     trait Display {
@@ -1045,7 +1093,11 @@ fn supertraits_and_trait_hierarchy() {
     // 必须先实现 Display
     impl Display for Circle {
         fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-            write!(f, "圆形(中心({:.1},{:.1}), 半径{:.1})", self.x, self.y, self.radius)
+            write!(
+                f,
+                "圆形(中心({:.1},{:.1}), 半径{:.1})",
+                self.x, self.y, self.radius
+            )
         }
     }
 
@@ -1179,7 +1231,7 @@ fn newtype_pattern_and_type_safety() {
     }
 
     // 为 Newtype 实现运算符和 Clone
-    use std::ops::{Add, Sub, Mul};
+    use std::ops::{Add, Mul, Sub};
 
     impl Clone for Meters {
         fn clone(&self) -> Self {
@@ -1249,7 +1301,10 @@ fn newtype_pattern_and_type_safety() {
     println!("Newtype 模式示例:");
     println!("距离1: {}", distance1);
     println!("距离2: {}", distance2);
-    println!("距离差: {}", calculate_distance(distance1.clone(), distance2));
+    println!(
+        "距离差: {}",
+        calculate_distance(distance1.clone(), distance2)
+    );
 
     let centimeters = distance1.to_centimeters();
     println!("转换为厘米: {}", centimeters);
@@ -1368,8 +1423,10 @@ fn comprehensive_graphics_system() {
 
     impl Renderable for Rectangle {
         fn render(&self) -> String {
-            format!("矩形({:.1},{:.1}) {:.1}x{:.1} {} 旋转{:.1}°",
-                   self.x, self.y, self.width, self.height, self.color, self.rotation)
+            format!(
+                "矩形({:.1},{:.1}) {:.1}x{:.1} {} 旋转{:.1}°",
+                self.x, self.y, self.width, self.height, self.color, self.rotation
+            )
         }
 
         fn bounds(&self) -> (f64, f64, f64, f64) {
@@ -1395,8 +1452,7 @@ fn comprehensive_graphics_system() {
 
     impl Interactive for Rectangle {
         fn contains_point(&self, x: f64, y: f64) -> bool {
-            x >= self.x && x <= self.x + self.width &&
-            y >= self.y && y <= self.y + self.height
+            x >= self.x && x <= self.x + self.width && y >= self.y && y <= self.y + self.height
         }
 
         fn on_click(&self) -> String {
@@ -1419,11 +1475,19 @@ fn comprehensive_graphics_system() {
 
     impl Renderable for Circle {
         fn render(&self) -> String {
-            format!("圆形({:.1},{:.1}) r={:.1} {}", self.x, self.y, self.radius, self.color)
+            format!(
+                "圆形({:.1},{:.1}) r={:.1} {}",
+                self.x, self.y, self.radius, self.color
+            )
         }
 
         fn bounds(&self) -> (f64, f64, f64, f64) {
-            (self.x - self.radius, self.y - self.radius, self.radius * 2.0, self.radius * 2.0)
+            (
+                self.x - self.radius,
+                self.y - self.radius,
+                self.radius * 2.0,
+                self.radius * 2.0,
+            )
         }
     }
 
@@ -1477,9 +1541,7 @@ fn comprehensive_graphics_system() {
         }
 
         fn render_all(&self) -> Vec<String> {
-            self.shapes.iter()
-                .map(|shape| shape.render())
-                .collect()
+            self.shapes.iter().map(|shape| shape.render()).collect()
         }
 
         fn handle_click(&mut self, x: f64, y: f64) -> Option<String> {
@@ -1518,18 +1580,28 @@ fn comprehensive_graphics_system() {
 
     // 添加不同的图形
     manager.add_shape(Box::new(Rectangle {
-        x: 10.0, y: 10.0, width: 100.0, height: 50.0,
-        color: "红色".to_string(), rotation: 0.0,
+        x: 10.0,
+        y: 10.0,
+        width: 100.0,
+        height: 50.0,
+        color: "红色".to_string(),
+        rotation: 0.0,
     }));
 
     manager.add_shape(Box::new(Circle {
-        x: 200.0, y: 100.0, radius: 30.0,
+        x: 200.0,
+        y: 100.0,
+        radius: 30.0,
         color: "蓝色".to_string(),
     }));
 
     manager.add_shape(Box::new(Rectangle {
-        x: 50.0, y: 200.0, width: 80.0, height: 80.0,
-        color: "绿色".to_string(), rotation: 45.0,
+        x: 50.0,
+        y: 200.0,
+        width: 80.0,
+        height: 80.0,
+        color: "绿色".to_string(),
+        rotation: 45.0,
     }));
 
     println!("渲染所有图形:");
@@ -1569,15 +1641,15 @@ fn comprehensive_graphics_system() {
 }
 
 // ===========================================
-// 11. Rust 1.92: Type Alias Impl Trait (TAIT)
+// 11. 实验性补充：Type Alias Impl Trait (TAIT)
 // ===========================================
 
-// Rust 1.92 完全稳定了 Type Alias Impl Trait (TAIT)
-// 允许在类型别名中使用 impl Trait，常用于隐藏具体类型或简化复杂类型（如 Future）
+// TAIT 截至 Rust 1.95 仍然不是稳定特性。
+// 这里保留注释示例，方便对照理解它未来可能带来的 trait 返回类型表达方式。
 
 /*
 pub fn tait_demo() {
-    println!("=== Rust 1.92: Type Alias Impl Trait (TAIT) ===");
+    println!("=== 实验性补充：Type Alias Impl Trait (TAIT) ===");
 
     // 定义一个不透明类型别名
     type MyIterator = impl Iterator<Item = i32>;
@@ -1598,19 +1670,19 @@ pub fn tait_demo() {
         type Iter: Iterator<Item = Self::Item>;
         fn items(&self) -> Self::Iter;
     }
-    
+
     struct MyVec(Vec<i32>);
-    
+
     impl Container for MyVec {
         type Item = i32;
         // 使用 TAIT 简化返回类型
         type Iter = impl Iterator<Item = i32>;
-        
+
         fn items(&self) -> Self::Iter {
             self.0.clone().into_iter()
         }
     }
-    
+
     println!("TAIT 使得隐藏具体实现细节变得非常简单，特别是在涉及闭包或 Future 时。");
     println!();
 }
@@ -1779,10 +1851,7 @@ mod tests {
             }
         }
 
-        let animals: Vec<Box<dyn Animal>> = vec![
-            Box::new(Dog),
-            Box::new(Cat),
-        ];
+        let animals: Vec<Box<dyn Animal>> = vec![Box::new(Dog), Box::new(Cat)];
 
         assert_eq!(animals[0].make_sound(), "汪汪");
         assert_eq!(animals[1].make_sound(), "喵喵");

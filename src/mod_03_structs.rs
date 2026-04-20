@@ -1,4 +1,10 @@
-#![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments)]
+#![allow(
+    dead_code,
+    unused_variables,
+    unused_imports,
+    unused_mut,
+    unused_assignments
+)]
 
 // Rust 结构体（Structs）
 // 深入讲解结构体定义、方法实现、所有权、泛型等核心概念
@@ -20,10 +26,10 @@ fn basic_structs() {
     // 每个字段都有名称和类型，这使得结构体具有自描述性
     // 结构体名称采用大驼峰命名法（PascalCase），字段名采用蛇形命名法（snake_case）
     struct User {
-        active: bool,           // 用户是否激活（布尔类型，实现 Copy trait）
-        username: String,       // 用户名（字符串类型，拥有堆内存）
-        email: String,          // 邮箱地址（字符串类型，拥有堆内存）
-        sign_in_count: u64,     // 登录次数（无符号64位整数，实现 Copy trait）
+        active: bool,       // 用户是否激活（布尔类型，实现 Copy trait）
+        username: String,   // 用户名（字符串类型，拥有堆内存）
+        email: String,      // 邮箱地址（字符串类型，拥有堆内存）
+        sign_in_count: u64, // 登录次数（无符号64位整数，实现 Copy trait）
     }
 
     // 结构体的设计原则：
@@ -48,8 +54,10 @@ fn basic_structs() {
     // - 整体大小是所有字段大小之和加上可能的对齐填充
     // - 结构体实例通常在栈上分配，但包含堆数据的字段在堆上分配
 
-    println!("用户信息: 活跃={}, 用户名={}, 邮箱={}, 登录次数={}",
-             user1.active, user1.username, user1.email, user1.sign_in_count);
+    println!(
+        "用户信息: 活跃={}, 用户名={}, 邮箱={}, 登录次数={}",
+        user1.active, user1.username, user1.email, user1.sign_in_count
+    );
 
     // 可变结构体：使用 mut 关键字允许修改字段
     // Rust 默认变量是不可变的，结构体也不例外
@@ -81,30 +89,32 @@ fn basic_structs() {
     // - 如果字段类型没有实现 Copy trait（如 String），则发生移动
     // - user2 的 username 和 email 字段被移动后，user2 不能再使用这些字段
 
-    println!("更新语法创建的用户: 邮箱={}, 用户名={}",
-             user3.email, user3.username);
+    println!(
+        "更新语法创建的用户: 邮箱={}, 用户名={}",
+        user3.email, user3.username
+    );
     // println!("{}", user2.username); // 编译错误：user2.username 已被移动
 
     // 元组结构体（Tuple Structs）：具名元组类型
     // 元组结构体有名称但没有字段名，字段通过索引访问
     // 适用于当字段名不重要，但类型本身有意义的场景
-    struct Color(i32, i32, i32);      // RGB 颜色值
-    struct Point(i32, i32, i32);      // 3D 坐标点
+    struct Color(i32, i32, i32); // RGB 颜色值
+    struct Point(i32, i32, i32); // 3D 坐标点
 
     // 元组结构体的应用场景：
     // 1. 包装器：为现有类型提供新的语义
     // 2. 抽象：隐藏具体实现细节
     // 3. 类型安全：防止混淆不同类型但相同结构的数据
 
-    let black = Color(0, 0, 0);          // 黑色
-    let origin = Point(0, 0, 0);         // 原点
+    let black = Color(0, 0, 0); // 黑色
+    let origin = Point(0, 0, 0); // 原点
     println!("颜色: ({}, {}, {})", black.0, black.1, black.2);
     println!("点: ({}, {}, {})", origin.0, origin.1, origin.2);
 
     // 类单元结构体（Unit-like Structs）：没有字段的空结构体
     // 类单元结构体类似于单元类型 ()，但有自己的类型
     // 适用于实现 trait 但不需要存储数据的场景
-    struct AlwaysEqual;                   // 总是相等的类型
+    struct AlwaysEqual; // 总是相等的类型
 
     let subject = AlwaysEqual;
     println!("类单元结构体创建成功");
@@ -137,8 +147,8 @@ fn struct_methods() {
     // 使用 #[derive(Debug)] 属性自动生成调试格式的实现
     #[derive(Debug)]
     struct Rectangle {
-        width: u32,       // 宽度
-        height: u32,      // 高度
+        width: u32,  // 宽度
+        height: u32, // 高度
     }
 
     // impl 块：为结构体实现方法
@@ -190,7 +200,7 @@ fn struct_methods() {
         fn resize(&mut self, width: u32, height: u32) -> &mut Self {
             self.width = width;
             self.height = height;
-            self  // 返回可变引用
+            self // 返回可变引用
         }
 
         // 只读方法：返回不可变引用
@@ -274,28 +284,25 @@ fn structs_and_ownership() {
     // 定义包含不同所有权类型的结构体
     #[derive(Debug)]
     struct User {
-        username: String,      // 拥有字符串数据（堆分配）
-        email: String,        // 拥有字符串数据（堆分配）
-        active: bool,          // 布尔值（栈分配，实现 Copy trait）
-        sign_in_count: u64,    // 无符号整数（栈分配，实现 Copy trait）
+        username: String,   // 拥有字符串数据（堆分配）
+        email: String,      // 拥有字符串数据（堆分配）
+        active: bool,       // 布尔值（栈分配，实现 Copy trait）
+        sign_in_count: u64, // 无符号整数（栈分配，实现 Copy trait）
     }
 
     // 字段简写语法：当变量名和字段名相同时可以省略
     // 这是 Rust 1.0 引入的语法糖，使代码更简洁
     fn build_user(username: String, email: String) -> User {
         User {
-            username,     // 等价于 username: username
-            email,        // 等价于 email: email
+            username, // 等价于 username: username
+            email,    // 等价于 email: email
             active: true,
             sign_in_count: 1,
         }
     }
 
     // 构建用户实例
-    let user1 = build_user(
-        String::from("testuser"),
-        String::from("test@example.com"),
-    );
+    let user1 = build_user(String::from("testuser"), String::from("test@example.com"));
 
     println!("构建的用户: {:?}", user1);
 
@@ -309,8 +316,10 @@ fn structs_and_ownership() {
     // 借用结构体：使用引用避免所有权转移
     // 借用允许访问结构体数据而不获取所有权
     fn display_user(user: &User) {
-        println!("用户信息: {} ({}) - 登录次数: {}",
-                 user.username, user.email, user.sign_in_count);
+        println!(
+            "用户信息: {} ({}) - 登录次数: {}",
+            user.username, user.email, user.sign_in_count
+        );
     }
 
     // 借用结构体进行读取操作
@@ -338,8 +347,8 @@ fn structs_and_ownership() {
     // 当结构体包含引用时，必须使用生命周期注解确保引用有效
     #[derive(Debug)]
     struct UserRef<'a> {
-        username: &'a str,     // 字符串切片引用
-        email: &'a str,       // 字符串切片引用
+        username: &'a str, // 字符串切片引用
+        email: &'a str,    // 字符串切片引用
         active: bool,
     }
 
@@ -364,7 +373,7 @@ fn structs_and_ownership() {
     }
 
     let p1 = Point { x: 1, y: 2 };
-    let p2 = p1;  // 复制而不是移动
+    let p2 = p1; // 复制而不是移动
     println!("复制后的点: {:?} {:?}", p1, p2);
 
     // Clone trait 的实现
@@ -380,7 +389,7 @@ fn structs_and_ownership() {
         email: String::from("clone@example.com"),
     };
 
-    let uc2 = uc1.clone();  // 深度复制
+    let uc2 = uc1.clone(); // 深度复制
     println!("克隆的用户: {:?} {:?}", uc1, uc2);
 
     // 结构体所有权的最佳实践：
@@ -467,11 +476,14 @@ fn struct_pattern_matching() {
     match rect {
         Rectangle {
             top_left: Point { x: 0, y },
-            bottom_right: Point { x: bottom_x, y: 0 }
+            bottom_right: Point { x: bottom_x, y: 0 },
         } => {
             println!("矩形从 (0, {}) 到 ({}, 0)", y, bottom_x);
         }
-        Rectangle { top_left, bottom_right } => {
+        Rectangle {
+            top_left,
+            bottom_right,
+        } => {
             println!("其他矩形: {:?} 到 {:?}", top_left, bottom_right);
         }
     }
@@ -525,10 +537,10 @@ fn struct_example_program() {
     // 图书结构体：定义图书的属性和行为
     #[derive(Debug)]
     struct Book {
-        title: String,        // 书名
-        author: String,       // 作者
-        pages: u32,           // 页数
-        available: bool,      // 是否可借阅
+        title: String,   // 书名
+        author: String,  // 作者
+        pages: u32,      // 页数
+        available: bool, // 是否可借阅
     }
 
     // 实现图书的行为
@@ -540,7 +552,7 @@ fn struct_example_program() {
                 title,
                 author,
                 pages,
-                available: true,  // 新书默认可借阅
+                available: true, // 新书默认可借阅
             }
         }
 
@@ -575,16 +587,32 @@ fn struct_example_program() {
         // 生成摘要：返回图书的基本信息
         // 不可变方法，格式化输出图书信息
         fn summary(&self) -> String {
-            format!("《{}》 by {} ({} pages) - {}",
-                    self.title, self.author, self.pages,
-                    if self.available { "Available" } else { "Checked out" })
+            format!(
+                "《{}》 by {} ({} pages) - {}",
+                self.title,
+                self.author,
+                self.pages,
+                if self.available {
+                    "Available"
+                } else {
+                    "Checked out"
+                }
+            )
         }
 
         // 获取详细信息：返回图书的所有信息
         fn details(&self) -> String {
-            format!("Title: {}\nAuthor: {}\nPages: {}\nStatus: {}",
-                    self.title, self.author, self.pages,
-                    if self.available { "Available" } else { "Checked out" })
+            format!(
+                "Title: {}\nAuthor: {}\nPages: {}\nStatus: {}",
+                self.title,
+                self.author,
+                self.pages,
+                if self.available {
+                    "Available"
+                } else {
+                    "Checked out"
+                }
+            )
         }
     }
 
@@ -652,13 +680,15 @@ fn struct_example_program() {
         }
 
         fn list_available_books(&self) -> Vec<&Book> {
-            self.books.iter()
+            self.books
+                .iter()
                 .filter(|book| book.is_available())
                 .collect()
         }
 
         fn find_by_author(&self, author: &str) -> Vec<&Book> {
-            self.books.iter()
+            self.books
+                .iter()
                 .filter(|book| book.author.contains(author))
                 .collect()
         }
@@ -728,7 +758,7 @@ fn struct_attributes() {
         value: 100,
     };
 
-    let clone2 = clone1.clone();  // 深度复制
+    let clone2 = clone1.clone(); // 深度复制
     println!("克隆测试: {:?} {:?}", clone1, clone2);
 
     // PartialEq 属性：实现相等性比较
@@ -819,8 +849,8 @@ fn struct_attributes() {
     println!("默认值: {:?}", default_val);
 
     // 自定义属性：控制结构体的行为
-    #[repr(C)]  // 指定内存布局为 C 兼容
-    #[repr(packed)]  // 紧凑内存布局，无填充
+    #[repr(C)] // 指定内存布局为 C 兼容
+    #[repr(packed)] // 紧凑内存布局，无填充
     struct CLayoutStruct {
         a: u8,
         b: u32,
@@ -852,8 +882,8 @@ fn struct_lifetimes() {
     // 生命周期注解 'a 表示引用的有效期
     #[derive(Debug)]
     struct Book<'a> {
-        title: &'a str,      // 书名引用，生命周期为 'a
-        author: &'a str,     // 作者引用，生命周期为 'a
+        title: &'a str,  // 书名引用，生命周期为 'a
+        author: &'a str, // 作者引用，生命周期为 'a
     }
 
     // 生命周期的作用：
@@ -881,11 +911,11 @@ fn struct_lifetimes() {
     // 静态生命周期：'static 表示整个程序的生命周期
     #[derive(Debug)]
     struct StaticString {
-        text: &'static str,  // 静态生命周期引用
+        text: &'static str, // 静态生命周期引用
     }
 
     let static_string = StaticString {
-        text: "This is a static string",  // 字符串字面量是 'static 的
+        text: "This is a static string", // 字符串字面量是 'static 的
     };
 
     println!("静态字符串: {:?}", static_string);
@@ -910,13 +940,11 @@ fn struct_lifetimes() {
     // 生命周期与泛型的结合
     #[derive(Debug)]
     struct Container<'a, T> {
-        item: &'a T,  // 引用类型 T，生命周期为 'a
+        item: &'a T, // 引用类型 T，生命周期为 'a
     }
 
     let number = 42;
-    let container = Container {
-        item: &number,
-    };
+    let container = Container { item: &number };
 
     println!("泛型容器: {:?}", container);
 
@@ -928,7 +956,7 @@ fn struct_lifetimes() {
 
     fn announce_and_return_part<'a>(announcement: &str, excerpt: &'a str) -> &'a str {
         println!("公告: {}", announcement);
-        excerpt  // 返回的生命周期与 excerpt 相同
+        excerpt // 返回的生命周期与 excerpt 相同
     }
 
     let novel = String::from("Call me Ishmael. Some years ago...");
@@ -1316,10 +1344,7 @@ mod tests {
             }
         }
 
-        let user1 = User::new(
-            String::from("test"),
-            String::from("test@example.com"),
-        );
+        let user1 = User::new(String::from("test"), String::from("test@example.com"));
 
         let user2 = user1.clone();
         assert_eq!(user1.username, user2.username);

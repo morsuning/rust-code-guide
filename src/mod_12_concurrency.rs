@@ -1,4 +1,10 @@
-#![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments)]
+#![allow(
+    dead_code,
+    unused_variables,
+    unused_imports,
+    unused_mut,
+    unused_assignments
+)]
 
 // Rust 并发编程（Concurrency）
 // 深入讲解线程、通道、共享状态、原子操作等并发编程特性
@@ -1799,19 +1805,19 @@ fn lock_free_programming() {
     // 示例2：简化的无锁数据结构（使用原子操作）
     // 注意：完整的无锁栈实现非常复杂，涉及内存回收和ABA问题
     // 这里我们展示一个简化的概念，实际应用中建议使用成熟的库
-    
+
     println!("无锁栈演示：");
     println!("注意：完整的无锁栈实现非常复杂，涉及内存安全问题");
     println!("实际应用中建议使用 crossbeam 等成熟的无锁数据结构库");
-    
+
     // 使用原子操作实现简单的无锁计数器集合
     use std::sync::atomic::AtomicI32;
-    
+
     #[derive(Debug)]
     struct AtomicArray {
         data: Vec<AtomicI32>,
     }
-    
+
     impl AtomicArray {
         fn new(size: usize) -> Self {
             let mut data = Vec::with_capacity(size);
@@ -1820,7 +1826,7 @@ fn lock_free_programming() {
             }
             AtomicArray { data }
         }
-        
+
         fn increment(&self, index: usize) -> i32 {
             if index < self.data.len() {
                 self.data[index].fetch_add(1, Ordering::SeqCst)
@@ -1828,7 +1834,7 @@ fn lock_free_programming() {
                 -1
             }
         }
-        
+
         fn get(&self, index: usize) -> i32 {
             if index < self.data.len() {
                 self.data[index].load(Ordering::SeqCst)
@@ -1837,27 +1843,33 @@ fn lock_free_programming() {
             }
         }
     }
-    
+
     let atomic_array = Arc::new(AtomicArray::new(5));
     let mut handles = vec![];
-    
+
     // 多个线程并发修改数组
     for thread_id in 0..3 {
         let array = Arc::clone(&atomic_array);
         let handle = thread::spawn(move || {
             for i in 0..5 {
                 let prev = array.increment(i);
-                println!("线程 {} 增加索引 {}: {} -> {}", thread_id, i, prev, prev + 1);
+                println!(
+                    "线程 {} 增加索引 {}: {} -> {}",
+                    thread_id,
+                    i,
+                    prev,
+                    prev + 1
+                );
                 thread::sleep(std::time::Duration::from_millis(10));
             }
         });
         handles.push(handle);
     }
-    
+
     for handle in handles {
         handle.join().unwrap();
     }
-    
+
     println!("最终数组状态:");
     for i in 0..5 {
         println!("  索引 {}: {}", i, atomic_array.get(i));
@@ -2151,7 +2163,7 @@ fn concurrency_testing() {
 
         // 死锁预防：两个线程都按照相同的顺序获取锁 (a -> b)
         // 这样可以避免死锁的发生
-        
+
         // 线程1：按照 a -> b 的顺序获取锁
         let handle1 = thread::spawn(move || {
             let _guard1 = a1.data.lock().unwrap();
@@ -2486,37 +2498,125 @@ pub fn sync_exclusive() {
     // std::sync::Exclusive 是一个包装器
     // 它只允许拥有 Exclusive<T> 的所有者访问 T
     // 因为它拥有 T，所以它可以在线程间安全传递（实现了 Sync）
-    
+
     // 模拟 Rust 1.91 的 Exclusive (如果标准库尚未提供，这里是概念演示)
     // 注意：在实际 Rust 1.91 中，这位于 std::sync::Exclusive
     struct Exclusive<T: ?Sized> {
         inner: T,
     }
-    
+
     impl<T> Exclusive<T> {
         pub const fn new(t: T) -> Exclusive<T> {
             Exclusive { inner: t }
         }
-        
+
         pub fn get_mut(&mut self) -> &mut T {
             &mut self.inner
         }
     }
-    
+
     // Exclusive 实现了 Sync，只要 T 是 Sized
     // 这是因为要访问 inner，必须拥有 Exclusive 的 &mut 引用
     // 而 &mut 引用本身就是互斥的
     unsafe impl<T: ?Sized> Sync for Exclusive<T> {}
-    
+
     let mut ex = Exclusive::new(42);
-    
+
     // 独占访问
     let val = ex.get_mut();
     *val += 1;
-    
+
     println!("Exclusive 值: {}", ex.inner);
-    
+
     println!("Exclusive<T> 的主要用途是适配既有的 Send 类型为 Sync，用于特定并发场景。");
+    println!();
+}
+
+// ===========================================
+// 16. Rust 1.92-1.95 并发原语增强
+// ===========================================
+
+// Rust 1.92 到 1.95 补强了几类高频并发 API：
+// - Rust 1.92: RwLockWriteGuard::downgrade
+// - Rust 1.95: Atomic*::update / try_update
+//
+// 这几个 API 很适合帮助新手建立正确的并发直觉：
+// 1. 锁不只是“拿到”和“释放”，还存在“从写锁平滑切换到读锁”的需求
+// 2. 原子变量不只是 `load` / `store`，也经常需要“读取旧值再尝试更新”
+// 3. 标准库新增的很多并发 API，本质上都是在减少模板代码和竞态窗口
+
+pub fn latest_concurrency_primitives() {
+    println!("=== Rust 1.92-1.95 并发原语增强 ===");
+
+    use std::sync::RwLock;
+    use std::sync::RwLockWriteGuard;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
+    // Rust 1.92: `RwLockWriteGuard::downgrade`
+    //
+    // 这个 API 解决的典型问题是：
+    // 1. 先拿写锁修改共享数据
+    // 2. 修改完成后，后续逻辑只需要读取
+    // 3. 不想先完全释放锁，再重新竞争一次读锁
+    //
+    // `downgrade` 会把写锁 guard 直接变成读锁 guard。
+    //
+    // 这种模式常见于：
+    // - 配置热更新
+    // - 缓存重建后切换到只读访问
+    // - 发布状态切换
+    let document = RwLock::new(String::from("draft"));
+    let mut write_guard = document.write().unwrap();
+    // 写锁阶段：此时我们拥有独占修改权限。
+    write_guard.push_str(" -> published");
+    // 降级后，仍然持有同一把锁，但权限从“写”变成“只读”。
+    let read_guard = RwLockWriteGuard::downgrade(write_guard);
+    println!("降级后的只读内容: {}", &*read_guard);
+    drop(read_guard);
+
+    // Rust 1.95: `AtomicBool::update`
+    //
+    // 它的语义是：
+    // - 读取当前值
+    // - 把当前值传给闭包
+    // - 用闭包返回的新值原子地更新变量
+    // - 返回“更新前的旧值”
+    //
+    // 旧值很有用，因为你可以知道这次更新之前系统处于什么状态。
+    let readiness = AtomicBool::new(false);
+    let previous = readiness.update(Ordering::SeqCst, Ordering::SeqCst, |value| !value);
+    println!(
+        "AtomicBool::update: old={previous}, new={}",
+        readiness.load(Ordering::SeqCst)
+    );
+
+    // Rust 1.95: `try_update`
+    //
+    // 和 `update` 的区别在于：
+    // - `update` 一定会生成一个新值
+    // - `try_update` 允许闭包返回 None，表示“这次决定不更新”
+    //
+    // 这对条件更新很重要，例如：
+    // - 配额不足时不增加计数
+    // - 超过阈值时拒绝状态推进
+    // - 只有满足某些检查时才提交新值
+    let jobs = AtomicUsize::new(4);
+    let scaled = jobs.try_update(Ordering::SeqCst, Ordering::SeqCst, |value| {
+        value.checked_mul(2)
+    });
+    // 第一次更新成功：4 -> 8
+    let skipped = jobs.try_update(Ordering::SeqCst, Ordering::SeqCst, |value| {
+        if value > 16 { Some(value) } else { None }
+    });
+    // 第二次更新失败：因为当前值 8 不满足条件，所以返回 Err(8) 并保持不变。
+    println!("AtomicUsize::try_update 第一次: {scaled:?}");
+    println!("AtomicUsize::try_update 第二次: {skipped:?}");
+    println!("当前任务数: {}", jobs.load(Ordering::SeqCst));
+
+    // 小结：
+    // 1. `downgrade` 适合“写完继续读”
+    // 2. `update` 适合“无条件原子更新并拿到旧值”
+    // 3. `try_update` 适合“有条件的原子更新”
     println!();
 }
 
@@ -2542,6 +2642,8 @@ pub fn main() {
     concurrency_error_handling();
     concurrency_testing();
     concurrency_example_program();
+    sync_exclusive();
+    latest_concurrency_primitives();
 
     println!("并发编程演示完成！");
 }
@@ -2669,5 +2771,32 @@ mod tests {
         assert_eq!(map.get(&"key_0".to_string()), Some(0));
         assert_eq!(map.get(&"key_3".to_string()), Some(3));
         assert_eq!(map.get(&"key_5".to_string()), None);
+    }
+
+    #[test]
+    fn test_rwlock_downgrade_and_atomic_updates() {
+        use std::sync::RwLock;
+        use std::sync::RwLockWriteGuard;
+        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
+        let lock = RwLock::new(String::from("v1"));
+        let mut write = lock.write().unwrap();
+        write.push_str("-stable");
+        let read = RwLockWriteGuard::downgrade(write);
+        assert_eq!(&*read, "v1-stable");
+
+        let flag = AtomicBool::new(false);
+        let old = flag.update(Ordering::SeqCst, Ordering::SeqCst, |value| !value);
+        assert!(!old);
+        assert!(flag.load(Ordering::SeqCst));
+
+        let counter = AtomicUsize::new(2);
+        let updated = counter.try_update(Ordering::SeqCst, Ordering::SeqCst, |value| {
+            value.checked_mul(2)
+        });
+        let rejected = counter.try_update(Ordering::SeqCst, Ordering::SeqCst, |_value| None);
+        assert_eq!(updated, Ok(2));
+        assert_eq!(rejected, Err(4));
+        assert_eq!(counter.load(Ordering::SeqCst), 4);
     }
 }

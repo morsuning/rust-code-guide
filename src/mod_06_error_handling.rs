@@ -1,4 +1,12 @@
-#![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments, unused_macros, deprecated)]
+#![allow(
+    dead_code,
+    unused_variables,
+    unused_imports,
+    unused_mut,
+    unused_assignments,
+    unused_macros,
+    deprecated
+)]
 
 // Rust 错误处理
 // 深入讲解 Rust 错误处理系统，包括 panic、Result、Option、错误传播和自定义错误类型
@@ -82,8 +90,8 @@ fn result_type_basics() {
         }
     }
 
-    let result1 = divide(10.0, 2.0);  // Ok(5.0)
-    let result2 = divide(10.0, 0.0);  // Err("不能除以零")
+    let result1 = divide(10.0, 2.0); // Ok(5.0)
+    let result2 = divide(10.0, 0.0); // Err("不能除以零")
 
     println!("除法结果1: {:?}", result1);
     println!("除法结果2: {:?}", result2);
@@ -121,8 +129,7 @@ fn result_type_basics() {
     println!("map 转换: {:?}", doubled);
 
     // and_then()：链式操作，类似于 flatMap
-    let chained = divide(10.0, 2.0)
-        .and_then(|x| divide(x, 5.0));
+    let chained = divide(10.0, 2.0).and_then(|x| divide(x, 5.0));
     println!("链式操作: {:?}", chained);
 
     // Result 的设计哲学：
@@ -167,7 +174,7 @@ fn option_type_basics() {
     }
 
     let numbers = vec![1, 2, 3, 4, 5];
-    let found = find_element(&numbers, 3);    // Some(2)
+    let found = find_element(&numbers, 3); // Some(2)
     let not_found = find_element(&numbers, 6); // None
 
     println!("找到元素: {:?}", found);
@@ -197,9 +204,7 @@ fn option_type_basics() {
     println!("map 转换: {:?}", doubled);
 
     // and_then()：链式操作
-    let chained = found
-        .and_then(|i| numbers.get(i))
-        .copied();
+    let chained = found.and_then(|i| numbers.get(i)).copied();
     println!("链式操作: {:?}", chained);
 
     // is_some() 和 is_none()：检查状态
@@ -255,8 +260,7 @@ fn error_propagation() {
     // 自定义错误传播函数
     fn process_data(data: &str) -> Result<i32, String> {
         // 使用 map_err 转换错误类型
-        let number: i32 = data.parse()
-            .map_err(|e| format!("解析错误: {}", e))?;
+        let number: i32 = data.parse().map_err(|e| format!("解析错误: {}", e))?;
 
         if number < 0 {
             return Err("数字不能为负数".to_string());
@@ -294,8 +298,7 @@ fn error_propagation() {
             return Err("输入为空".to_string());
         }
 
-        let number: i32 = trimmed.parse()
-            .map_err(|e| format!("解析失败: {}", e))?;
+        let number: i32 = trimmed.parse().map_err(|e| format!("解析失败: {}", e))?;
 
         let result = number * 2;
         Ok(format!("处理结果: {}", result))
@@ -325,9 +328,9 @@ fn multiple_error_types() {
     // 定义自定义错误类型：枚举是处理多种错误的常用方式
     #[derive(Debug)]
     enum MyError {
-        Io(std::io::Error),        // IO 错误
+        Io(std::io::Error),             // IO 错误
         Parse(std::num::ParseIntError), // 解析错误
-        Custom(String),            // 自定义错误
+        Custom(String),                 // 自定义错误
     }
 
     // 实现 From trait 进行错误转换：这是 ? 运算符工作的关键
@@ -351,11 +354,11 @@ fn multiple_error_types() {
 
     // 使用自定义错误类型
     fn complex_operation(file_path: &str) -> Result<i32, MyError> {
-        let mut file = std::fs::File::open(file_path)?;      // 可能产生 Io 错误
+        let mut file = std::fs::File::open(file_path)?; // 可能产生 Io 错误
         let mut content = String::new();
         std::io::Read::read_to_string(&mut file, &mut content)?;
 
-        let number: i32 = content.trim().parse()?;           // 可能产生 Parse 错误
+        let number: i32 = content.trim().parse()?; // 可能产生 Parse 错误
 
         if number < 0 {
             return Err("数字不能为负数".to_string().into()); // 转换为 Custom 错误
@@ -431,8 +434,7 @@ fn error_handling_patterns() {
             return Err("输入为空".to_string());
         }
 
-        let number: i32 = trimmed.parse()
-            .map_err(|e| format!("解析错误: {}", e))?;
+        let number: i32 = trimmed.parse().map_err(|e| format!("解析错误: {}", e))?;
 
         if number < 0 {
             return Err("数字不能为负数".to_string());
@@ -444,10 +446,12 @@ fn error_handling_patterns() {
     // 模式 3: 组合多个操作
     // 处理多个可能失败的操作
     fn combine_operations(a: &str, b: &str) -> Result<i32, String> {
-        let num_a = a.parse::<i32>()
+        let num_a = a
+            .parse::<i32>()
             .map_err(|e| format!("解析 a 失败: {}", e))?;
 
-        let num_b = b.parse::<i32>()
+        let num_b = b
+            .parse::<i32>()
             .map_err(|e| format!("解析 b 失败: {}", e))?;
 
         if num_a == 0 || num_b == 0 {
@@ -460,8 +464,7 @@ fn error_handling_patterns() {
     // 模式 4: 错误上下文添加
     // 为错误添加更多上下文信息
     fn read_file_with_context(path: &str) -> Result<String, String> {
-        std::fs::read_to_string(path)
-            .map_err(|e| format!("读取文件 '{}' 失败: {}", path, e))
+        std::fs::read_to_string(path).map_err(|e| format!("读取文件 '{}' 失败: {}", path, e))
     }
 
     // 模式 5: 可选值的错误处理
@@ -561,9 +564,9 @@ fn custom_error_types() {
     impl std::error::Error for AppError {
         fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
             match self {
-                AppError::Io(err) => Some(err),      // 返回底层错误
+                AppError::Io(err) => Some(err),       // 返回底层错误
                 AppError::ParseInt(err) => Some(err), // 返回底层错误
-                _ => None,                           // 没有底层错误
+                _ => None,                            // 没有底层错误
             }
         }
     }
@@ -727,7 +730,10 @@ fn error_handling_best_practices() {
 
     println!("\n用户友好的错误信息:");
     println!("{}", user_friendly_error("计算", Ok(42)));
-    println!("{}", user_friendly_error("计算", Err("无效输入".to_string())));
+    println!(
+        "{}",
+        user_friendly_error("计算", Err("无效输入".to_string()))
+    );
 
     println!("\n健壮的除法:");
     println!("10 / 0 = {}", robust_divide(10.0, 0.0));
@@ -783,8 +789,8 @@ fn error_handling_example_program() {
     // 处理包含数字的文件
     fn process_numeric_file(file_path: &str) -> Result<Vec<i32>, ProcessingError> {
         // 读取文件
-        let content = std::fs::read_to_string(file_path)
-            .map_err(|_| ProcessingError::FileNotFound)?;
+        let content =
+            std::fs::read_to_string(file_path).map_err(|_| ProcessingError::FileNotFound)?;
 
         // 解析内容
         let mut numbers = Vec::new();
@@ -794,15 +800,16 @@ fn error_handling_example_program() {
                 continue;
             }
 
-            let number: i32 = line.parse()
-                .map_err(|e| ProcessingError::ParseError(
-                    format!("第 {} 行 '{}': {}", line_num + 1, line, e)
-                ))?;
+            let number: i32 = line.parse().map_err(|e| {
+                ProcessingError::ParseError(format!("第 {} 行 '{}': {}", line_num + 1, line, e))
+            })?;
 
             if number < 0 {
-                return Err(ProcessingError::ValidationError(
-                    format!("第 {} 行: 负数不允许: {}", line_num + 1, number)
-                ));
+                return Err(ProcessingError::ValidationError(format!(
+                    "第 {} 行: 负数不允许: {}",
+                    line_num + 1,
+                    number
+                )));
             }
 
             numbers.push(number);
@@ -810,7 +817,7 @@ fn error_handling_example_program() {
 
         if numbers.is_empty() {
             return Err(ProcessingError::ValidationError(
-                "文件不包含有效数字".to_string()
+                "文件不包含有效数字".to_string(),
             ));
         }
 
@@ -826,8 +833,11 @@ fn error_handling_example_program() {
     }
 
     // 批量处理文件
-    fn batch_process_files(file_paths: &[&str]) -> Vec<(String, Result<Vec<i32>, ProcessingError>)> {
-        file_paths.iter()
+    fn batch_process_files(
+        file_paths: &[&str],
+    ) -> Vec<(String, Result<Vec<i32>, ProcessingError>)> {
+        file_paths
+            .iter()
             .map(|&path| {
                 let result = process_numeric_file(path);
                 (path.to_string(), result)
@@ -876,7 +886,8 @@ fn error_handling_example_program() {
         }
 
         // 解析为数字
-        let number: i32 = input.trim()
+        let number: i32 = input
+            .trim()
             .parse()
             .map_err(|e| format!("'{}' 不是有效的整数: {}", input, e))?;
 
@@ -890,12 +901,7 @@ fn error_handling_example_program() {
     }
 
     let test_inputs = vec![
-        "42",
-        "150",
-        "-10",
-        "abc",
-        "",
-        " 25  ", // 包含空格
+        "42", "150", "-10", "abc", "", " 25  ", // 包含空格
     ];
 
     for input in test_inputs {
@@ -933,7 +939,9 @@ fn error_handling_example_program() {
             match error_type {
                 0 => Err(NetworkError::Timeout),
                 1 => Err(NetworkError::ConnectionFailed),
-                _ => Err(NetworkError::InvalidResponse("500 Internal Server Error".to_string())),
+                _ => Err(NetworkError::InvalidResponse(
+                    "500 Internal Server Error".to_string(),
+                )),
             }
         } else {
             Ok("请求成功".to_string())
@@ -1015,7 +1023,9 @@ fn enhanced_error_trait() {
     impl Error for DatabaseError {
         // 提供错误源信息
         fn source(&self) -> Option<&(dyn Error + 'static)> {
-            self.source.as_ref().map(|s| s.as_ref() as &(dyn Error + 'static))
+            self.source
+                .as_ref()
+                .map(|s| s.as_ref() as &(dyn Error + 'static))
         }
 
         // 提供更多的错误详情（需要 nightly 编译器和 unstable 特性）
@@ -1182,8 +1192,11 @@ fn enhanced_error_trait() {
 
     impl fmt::Display for ConfigError {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            write!(f, "配置错误: '{}' 应该是 {} 类型，但得到 '{}'",
-                   self.key, self.expected_type, self.value)
+            write!(
+                f,
+                "配置错误: '{}' 应该是 {} 类型，但得到 '{}'",
+                self.key, self.expected_type, self.value
+            )
         }
     }
 
@@ -1200,21 +1213,17 @@ fn enhanced_error_trait() {
     fn parse_config_value(key: &str, value: &str, expected_type: &str) -> Result<(), ConfigError> {
         match expected_type {
             "integer" => {
-                value.parse::<i32>().map_err(|_| {
-                    ConfigError {
-                        key: key.to_string(),
-                        value: value.to_string(),
-                        expected_type: expected_type.to_string(),
-                    }
+                value.parse::<i32>().map_err(|_| ConfigError {
+                    key: key.to_string(),
+                    value: value.to_string(),
+                    expected_type: expected_type.to_string(),
                 })?;
             }
             "boolean" => {
-                value.parse::<bool>().map_err(|_| {
-                    ConfigError {
-                        key: key.to_string(),
-                        value: value.to_string(),
-                        expected_type: expected_type.to_string(),
-                    }
+                value.parse::<bool>().map_err(|_| ConfigError {
+                    key: key.to_string(),
+                    value: value.to_string(),
+                    expected_type: expected_type.to_string(),
                 })?;
             }
             _ => {
@@ -1281,12 +1290,11 @@ fn enhanced_error_trait() {
     let complex_error = ServiceError::new(
         "data_processing",
         "数据处理失败",
-        DatabaseError::new("查询超时", "SELECT * FROM large_table")
-            .with_source(NetworkError {
-                message: "网络不稳定".to_string(),
-                url: "tcp://primary-db:5432".to_string(),
-                status_code: Some(503),
-            })
+        DatabaseError::new("查询超时", "SELECT * FROM large_table").with_source(NetworkError {
+            message: "网络不稳定".to_string(),
+            url: "tcp://primary-db:5432".to_string(),
+            status_code: Some(503),
+        }),
     );
 
     log_error_enhanced(&complex_error);
@@ -1375,7 +1383,10 @@ mod tests {
 
         assert!(validate_input("valid").is_ok());
         assert_eq!(validate_input(""), Err("输入不能为空".to_string()));
-        assert_eq!(validate_input(&"a".repeat(101)), Err("输入不能超过 100 个字符".to_string()));
+        assert_eq!(
+            validate_input(&"a".repeat(101)),
+            Err("输入不能超过 100 个字符".to_string())
+        );
     }
 
     #[test]
@@ -1386,8 +1397,7 @@ mod tests {
                 return Err("输入为空".to_string());
             }
 
-            let number: i32 = trimmed.parse()
-                .map_err(|e| format!("解析错误: {}", e))?;
+            let number: i32 = trimmed.parse().map_err(|e| format!("解析错误: {}", e))?;
 
             if number < 0 {
                 return Err("数字不能为负数".to_string());
@@ -1414,7 +1424,10 @@ mod tests {
 
         let numbers = vec![1.0, 2.0, 3.0];
         assert_eq!(calculate_average(&numbers), Ok(2.0));
-        assert_eq!(calculate_average(&[]), Err("不能计算空数组的平均值".to_string()));
+        assert_eq!(
+            calculate_average(&[]),
+            Err("不能计算空数组的平均值".to_string())
+        );
     }
 
     #[test]
@@ -1427,7 +1440,10 @@ mod tests {
         let none_value: Option<i32> = None;
 
         assert_eq!(option_to_result(some_value, "值不存在"), Ok(42));
-        assert_eq!(option_to_result(none_value, "值不存在"), Err("值不存在".to_string()));
+        assert_eq!(
+            option_to_result(none_value, "值不存在"),
+            Err("值不存在".to_string())
+        );
     }
 
     #[test]
@@ -1437,7 +1453,8 @@ mod tests {
                 return Err("输入不能为空".to_string());
             }
 
-            let number: i32 = input.trim()
+            let number: i32 = input
+                .trim()
                 .parse()
                 .map_err(|e| format!("'{}' 不是有效的整数: {}", input, e))?;
 
@@ -1449,7 +1466,10 @@ mod tests {
         }
 
         assert_eq!(process_user_input("42"), Ok(84));
-        assert_eq!(process_user_input("150"), Err("数字 150 不在 1-100 范围内".to_string()));
+        assert_eq!(
+            process_user_input("150"),
+            Err("数字 150 不在 1-100 范围内".to_string())
+        );
         assert!(process_user_input("abc").is_err());
         assert_eq!(process_user_input(""), Err("输入不能为空".to_string()));
     }
@@ -1457,8 +1477,7 @@ mod tests {
     #[test]
     fn test_error_context() {
         fn read_file_with_context(path: &str) -> Result<String, String> {
-            std::fs::read_to_string(path)
-                .map_err(|e| format!("读取文件 '{}' 失败: {}", path, e))
+            std::fs::read_to_string(path).map_err(|e| format!("读取文件 '{}' 失败: {}", path, e))
         }
 
         let result = read_file_with_context("nonexistent.txt");
@@ -1489,7 +1508,9 @@ mod tests {
 
         impl Error for EnhancedError {
             fn source(&self) -> Option<&(dyn Error + 'static)> {
-                self.source.as_ref().map(|s| s.as_ref() as &(dyn Error + 'static))
+                self.source
+                    .as_ref()
+                    .map(|s| s.as_ref() as &(dyn Error + 'static))
             }
 
             // fn provide<'a>(&'a self, request: &mut std::error::Request<'a>) {
@@ -1587,7 +1608,9 @@ mod tests {
 
         // 测试错误链
         assert_eq!(service_error.to_string(), "Service Error: user_service");
-        assert_eq!(service_error.source().unwrap().to_string(),
-                   "Network Error: https://example.com - 404");
+        assert_eq!(
+            service_error.source().unwrap().to_string(),
+            "Network Error: https://example.com - 404"
+        );
     }
 }

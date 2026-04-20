@@ -1,4 +1,12 @@
-#![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments, unused_macros, deprecated)]
+#![allow(
+    dead_code,
+    unused_variables,
+    unused_imports,
+    unused_mut,
+    unused_assignments,
+    unused_macros,
+    deprecated
+)]
 
 // Rust 面向对象特性
 // 深入讲解 Rust 中实现面向对象编程的各种模式和技术
@@ -72,7 +80,7 @@ fn encapsulation() {
 // 所有字段都是私有的，只能通过公共方法访问
 #[derive(Debug, Clone)]
 struct Circle {
-    radius: f64,      // 半径私有，确保不会设置为负值
+    radius: f64,        // 半径私有，确保不会设置为负值
     center: (f64, f64), // 圆心坐标私有
 }
 
@@ -179,7 +187,12 @@ fn inheritance_alternatives() {
 
     // 示例 2：使用组合模式
     let gui_button = GuiButton {
-        widget: Widget { x: 10, y: 20, width: 100, height: 30 },
+        widget: Widget {
+            x: 10,
+            y: 20,
+            width: 100,
+            height: 30,
+        },
         text: "点击我".to_string(),
         color: (255, 0, 0),
     };
@@ -273,20 +286,21 @@ struct Widget {
 
 impl Widget {
     pub fn draw(&self) {
-        println!("绘制组件: 位置({}, {}), 尺寸 {}x{}",
-                 self.x, self.y, self.width, self.height);
+        println!(
+            "绘制组件: 位置({}, {}), 尺寸 {}x{}",
+            self.x, self.y, self.width, self.height
+        );
     }
 
     pub fn contains_point(&self, x: i32, y: i32) -> bool {
-        x >= self.x && x <= self.x + self.width &&
-        y >= self.y && y <= self.y + self.height
+        x >= self.x && x <= self.x + self.width && y >= self.y && y <= self.y + self.height
     }
 }
 
 // 按钮组件 - 通过组合扩展 Widget
 #[derive(Debug)]
 struct GuiButton {
-    widget: Widget,  // 组合 Widget
+    widget: Widget, // 组合 Widget
     text: String,
     color: (u8, u8, u8),
 }
@@ -294,7 +308,12 @@ struct GuiButton {
 impl GuiButton {
     pub fn new(x: i32, y: i32, width: i32, height: i32, text: &str) -> Self {
         GuiButton {
-            widget: Widget { x, y, width, height },
+            widget: Widget {
+                x,
+                y,
+                width,
+                height,
+            },
             text: text.to_string(),
             color: (0, 0, 255), // 默认蓝色
         }
@@ -303,7 +322,10 @@ impl GuiButton {
     pub fn draw(&self) {
         println!("绘制按钮: '{}'", self.text);
         self.widget.draw();
-        println!("按钮颜色: RGB({}, {}, {})", self.color.0, self.color.1, self.color.2);
+        println!(
+            "按钮颜色: RGB({}, {}, {})",
+            self.color.0, self.color.1, self.color.2
+        );
     }
 
     pub fn click(&self) {
@@ -348,10 +370,8 @@ fn polymorphism() {
     println!("=== 多态与 Trait 对象 ===");
 
     // 运行时多态：使用 trait 对象
-    let animals: Vec<Box<dyn Animal>> = vec![
-        Box::new(Dog::new("Buddy")),
-        Box::new(Cat::new("Whiskers")),
-    ];
+    let animals: Vec<Box<dyn Animal>> =
+        vec![Box::new(Dog::new("Buddy")), Box::new(Cat::new("Whiskers"))];
 
     println!("动物园中的动物:");
     for animal in animals {
@@ -430,7 +450,10 @@ impl DrawableTextField {
 
 impl Draw for DrawableTextField {
     fn draw(&self) {
-        println!("绘制文本框: {} ({}x{})", self.placeholder, self.width, self.height);
+        println!(
+            "绘制文本框: {} ({}x{})",
+            self.placeholder, self.width, self.height
+        );
     }
 }
 
@@ -909,10 +932,8 @@ mod tests {
 
     #[test]
     fn test_polymorphism() {
-        let animals: Vec<Box<dyn Animal>> = vec![
-            Box::new(Dog::new("Max")),
-            Box::new(Cat::new("Luna")),
-        ];
+        let animals: Vec<Box<dyn Animal>> =
+            vec![Box::new(Dog::new("Max")), Box::new(Cat::new("Luna"))];
 
         for animal in animals {
             animal.make_sound();

@@ -1,4 +1,10 @@
-#![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments)]
+#![allow(
+    dead_code,
+    unused_variables,
+    unused_imports,
+    unused_mut,
+    unused_assignments
+)]
 
 // Rust 基础语法特性
 // 包含变量、数据类型、函数、注释和控制流的深入讲解
@@ -89,34 +95,34 @@ fn data_types() {
     // - 符号：决定是否支持负数
     // - 架构：isize 和 usize 的大小与目标架构一致
 
-    let a: i8 = -128;        // 8位有符号整数：-128 到 127
-    let b: u8 = 255;         // 8位无符号整数：0 到 255
-    let c: i16 = -32768;     // 16位有符号整数：-32768 到 32767
-    let d: u16 = 65535;      // 16位无符号整数：0 到 65535
+    let a: i8 = -128; // 8位有符号整数：-128 到 127
+    let b: u8 = 255; // 8位无符号整数：0 到 255
+    let c: i16 = -32768; // 16位有符号整数：-32768 到 32767
+    let d: u16 = 65535; // 16位无符号整数：0 到 65535
     let e: i32 = -2147483648; // 32位有符号整数：-2147483648 到 2147483647
-    let f: u32 = 4294967295;  // 32位无符号整数：0 到 4294967295
+    let f: u32 = 4294967295; // 32位无符号整数：0 到 4294967295
     let g: i64 = -9223372036854775808; // 64位有符号整数
-    let h: u64 = 18446744073709551615;  // 64位无符号整数
+    let h: u64 = 18446744073709551615; // 64位无符号整数
     let i: i128 = -170141183460469231731687303715884105728; // 128位有符号整数
-    let j: u128 = 340282366920938463463374607431768211455;  // 128位无符号整数
+    let j: u128 = 340282366920938463463374607431768211455; // 128位无符号整数
 
     // 架构相关类型：大小取决于目标平台
-    let k: isize = -4;       // 有符号整数，大小与指针相同
-    let l: usize = 4;        // 无符号整数，大小与指针相同
+    let k: isize = -4; // 有符号整数，大小与指针相同
+    let l: usize = 4; // 无符号整数，大小与指针相同
 
     // 整数字面量的多种表示方式
-    let decimal = 98_222;     // 十进制，下划线提高可读性
-    let hex = 0xff;          // 十六进制
-    let octal = 0o77;        // 八进制
+    let decimal = 98_222; // 十进制，下划线提高可读性
+    let hex = 0xff; // 十六进制
+    let octal = 0o77; // 八进制
     let binary = 0b1111_0000; // 二进制
-    let byte = b'A';         // 字节字面量（仅适用于 u8）
+    let byte = b'A'; // 字节字面量（仅适用于 u8）
 
     println!("各种整数类型和表示方式");
 
     // 浮点类型：IEEE 754 标准的浮点数
     // f32：单精度浮点数，精度约为 6-9 位十进制数
     // f64：双精度浮点数，精度约为 15-17 位十进制数（默认）
-    let m: f32 = 3.1415926;  // 单精度
+    let m: f32 = 3.1415926; // 单精度
     let n: f64 = 2.718281828459045; // 双精度
 
     // 浮点数的特殊值
@@ -129,12 +135,12 @@ fn data_types() {
     // 布尔类型：逻辑运算的基础
     // 占用 1 字节内存，只能取 true 或 false
     let p = true;
-    let q: bool = false;  // 显式类型标注
+    let q: bool = false; // 显式类型标注
 
     // 布尔运算
-    let r = p && q;       // 逻辑与
-    let s = p || q;       // 逻辑或
-    let t = !p;           // 逻辑非
+    let r = p && q; // 逻辑与
+    let s = p || q; // 逻辑或
+    let t = !p; // 逻辑非
 
     println!("布尔运算: &&={}, ||={}, !={}", r, s, t);
 
@@ -153,7 +159,10 @@ fn data_types() {
     let single_char = 'A';
     let string_slice = "hello";
 
-    println!("字符类型: '{}', 字符串切片: \"{}\"", single_char, string_slice);
+    println!(
+        "字符类型: '{}', 字符串切片: \"{}\"",
+        single_char, string_slice
+    );
 
     // 复合类型（Compound Types）：可以将多个值组合成一个类型
 
@@ -169,7 +178,10 @@ fn data_types() {
     let five_hundred = tup.0; // 使用索引访问
     let six_point_four = tup.1;
     let one = tup.2;
-    println!("索引访问元组: {}, {}, {}", five_hundred, six_point_four, one);
+    println!(
+        "索引访问元组: {}, {}, {}",
+        five_hundred, six_point_four, one
+    );
 
     // 单元元组：特殊的空元组
     // 在函数不返回值时隐式使用
@@ -180,8 +192,20 @@ fn data_types() {
     // 与元组不同，数组的所有元素必须是相同类型
     // 数组在栈上分配，大小在编译时确定
     let a = [1, 2, 3, 4, 5]; // 类型推断为 [i32; 5]
-    let months = ["January", "February", "March", "April", "May", "June",
-                  "July", "August", "September", "October", "November", "December"];
+    let months = [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+    ];
 
     // 显式类型标注
     let b: [i32; 5] = [1, 2, 3, 4, 5];
@@ -248,7 +272,10 @@ fn functions() {
     // 基本函数调用
     let result1 = add_one(5);
     let result2 = add_two(5);
-    println!("函数调用结果: add_one(5)={}, add_two(5)={}", result1, result2);
+    println!(
+        "函数调用结果: add_one(5)={}, add_two(5)={}",
+        result1, result2
+    );
 
     // 无返回值函数
     print_message("Hello, Functions!");
@@ -406,7 +433,8 @@ fn control_flow() {
 
     // 使用范围（range）进行 for 循环
     // Range 类型提供了多种范围表示方式
-    for number in (1..4).rev() { // 反向迭代
+    for number in (1..4).rev() {
+        // 反向迭代
         println!("{}!", number);
     }
     println!("LIFTOFF!!!");
@@ -503,7 +531,7 @@ fn let_else_statement() {
         println!("传统方式解析成功：{}", number);
     } else {
         println!("传统方式解析失败");
-        return;  // 提前返回
+        return; // 提前返回
     }
     println!("传统方式继续执行");
 
@@ -511,7 +539,7 @@ fn let_else_statement() {
     let input = "456";
     let Some(number) = parse_number(input) else {
         println!("let-else 解析失败");
-        return;  // 提前返回
+        return; // 提前返回
     };
     println!("let-else 解析成功：{}", number);
     println!("let-else 继续执行");
@@ -583,7 +611,9 @@ fn let_else_statement() {
     }
 
     fn extract_database_url(content: &str) -> Option<&str> {
-        content.lines().find(|line| line.starts_with("database_url"))
+        content
+            .lines()
+            .find(|line| line.starts_with("database_url"))
     }
 
     let filename = "config.txt";
@@ -835,10 +865,7 @@ fn compiler_attributes() {
     }
 
     // 示例 6: 多重 lint 预期
-    #[allow(
-        dead_code,
-        unused_variables
-    )]
+    #[allow(dead_code, unused_variables)]
     fn multiple_lints_example() {
         let _unused = "多个 lint 预期";
         println!("同时预期多个 lint 警告");
@@ -1033,9 +1060,9 @@ mod tests {
         fn test_parse_failure() -> bool {
             let input = "invalid";
             let Some(_number) = parse_number(input) else {
-                return true;  // 预期的失败情况
+                return true; // 预期的失败情况
             };
-            false  // 不应该到达这里
+            false // 不应该到达这里
         }
         assert!(test_parse_failure());
 
@@ -1125,7 +1152,7 @@ mod tests {
         fn test_failed_api_request() -> bool {
             let endpoint = "/api/nonexistent";
             let HttpResponse::Success { .. } = make_api_request(endpoint) else {
-                return true;  // 预期的失败情况
+                return true; // 预期的失败情况
             };
             false
         }

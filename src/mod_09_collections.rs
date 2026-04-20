@@ -1,4 +1,12 @@
-#![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments, unused_macros, deprecated)]
+#![allow(
+    dead_code,
+    unused_variables,
+    unused_imports,
+    unused_mut,
+    unused_assignments,
+    unused_macros,
+    deprecated
+)]
 
 // Rust 集合类型深度解析 (Rust Collections Deep Dive)
 // 全面讲解 Rust 标准库中的各种集合类型、使用场景、性能特性和最佳实践
@@ -854,7 +862,11 @@ fn collection_performance_optimization() {
 
     // 多次遍历
     let start = Instant::now();
-    let sum = large_vec.iter().filter(|&&x| x % 2 == 0).map(|&x| x as i64).sum::<i64>(); // 使用i64避免溢出
+    let sum = large_vec
+        .iter()
+        .filter(|&&x| x % 2 == 0)
+        .map(|&x| x as i64)
+        .sum::<i64>(); // 使用i64避免溢出
     let count = large_vec.iter().filter(|&&x| x % 2 == 0).count();
     let max = large_vec.iter().filter(|&&x| x % 2 == 0).max();
     let multiple_pass_duration = start.elapsed();
@@ -1254,6 +1266,153 @@ fn data_processing_pipeline_system() {
 }
 
 // ===========================================
+// 8. Rust 1.92-1.95 集合 API 增强
+// ===========================================
+
+// Rust 1.92 到 1.95 为集合和迭代器补充了多组非常实用的 API：
+// - Rust 1.92: BTreeMap::Entry::insert_entry
+// - Rust 1.93: VecDeque::pop_front_if / pop_back_if
+// - Rust 1.94: slice::array_windows, Peekable::next_if_map
+// - Rust 1.95: Vec::push_mut / insert_mut, VecDeque::*_mut
+//
+// 这些 API 的共同特点是：
+// 1. 它们都在减少“先查找、再修改、再回头取值”的重复代码
+// 2. 它们都更强调“原地操作”和“少走一步”
+// 3. 学会之后，写容器操作时会更自然地想到“能不能一步完成”
+//
+// 对 Rust 新手来说，这一节很值得认真掌握，因为它展示了标准库 API 的设计风格：
+// - 不只是把事情做成
+// - 还要把常见用法写得更安全、更直接、更难写错
+
+fn latest_collection_updates() {
+    println!("=== Rust 1.92-1.95 集合 API 增强 ===");
+
+    use std::collections::{BTreeMap, VecDeque};
+
+    // Rust 1.92: `insert_entry`
+    //
+    // 旧写法中，常见流程是：
+    // 1. 先通过 entry 找到位置
+    // 2. 插入值
+    // 3. 如果还想继续访问这个条目，再额外做一次查找
+    //
+    // `insert_entry` 会在插入之后直接返回 `OccupiedEntry`，
+    // 让我们立刻继续访问刚插入的位置。
+    //
+    // 适用场景：
+    // 1. 插入默认值后还要继续修改
+    // 2. 想同时查看 key 和 value
+    // 3. 想复用 Entry API 的上下文，避免重复查找
+    let mut scores = BTreeMap::new();
+    let occupied = scores.entry("Rust").insert_entry(95);
+    println!(
+        "insert_entry 后的键值对: {} => {}",
+        occupied.key(),
+        occupied.get()
+    );
+
+    // Rust 1.93: `pop_front_if` / `pop_back_if`
+    //
+    // 这两个 API 把“检查头尾元素”和“满足条件时弹出”合并成了一步。
+    //
+    // 以前更常见的写法大概是：
+    // `if deque.front().is_some_and(...) { deque.pop_front(); }`
+    //
+    // 现在可以直接表达“如果头/尾元素满足条件，就把它移除”。
+    //
+    // 它特别适合：
+    // 1. 消费消息队列
+    // 2. 清理过期缓冲区
+    // 3. 条件出队
+    let mut deque = VecDeque::from([1, 2, 3, 4, 5]);
+    let removed_front = deque.pop_front_if(|front| *front % 2 == 1);
+    let removed_back = deque.pop_back_if(|back| *back % 2 == 1);
+    println!("条件弹出前后: front={removed_front:?}, back={removed_back:?}, 剩余={deque:?}");
+
+    // Rust 1.94: `array_windows`
+    //
+    // 它会把一个切片按“固定长度窗口”滑动扫描。
+    // 每次返回的是定长数组引用 `&[T; N]`，而不是普通切片 `&[T]`。
+    //
+    // 为什么这很有用？
+    // 1. 编译器知道窗口长度是常量，类型信息更强
+    // 2. 写算法时更直观，例如“连续三个点”“连续四个字节”
+    // 3. 某些情况下可以少写边界判断
+    //
+    // 下面的例子会把 `[10, 20, 30, 40]` 变成：
+    // - [10, 20, 30]
+    // - [20, 30, 40]
+    let windows: Vec<[i32; 3]> = [10, 20, 30, 40].array_windows::<3>().copied().collect();
+    println!("array_windows::<3> 结果: {windows:?}");
+
+    // Rust 1.94: `Peekable::next_if_map`
+    //
+    // 这个 API 的语义可以理解成：
+    // 1. 看一下下一个元素
+    // 2. 尝试把它转换成另一种形式
+    // 3. 只有转换成功时，才真正消费这个元素
+    //
+    // 对解析器、token 流处理器、协议解码器来说很方便。
+    //
+    // 这里我们尝试把字符串 token 解析成 `u32`：
+    // - "128" 解析成功，所以返回 `Some(128)`，并且元素被消费
+    // - "oops" 解析失败，所以返回 `None`，而元素仍然保留在迭代器里
+    let mut tokens = ["128", "oops", "256"].into_iter().peekable();
+    let first_number = tokens.next_if_map(|token| token.parse::<u32>().map_err(|_| token));
+    let failed_number = tokens.next_if_map(|token| token.parse::<u32>().map_err(|_| token));
+    println!("next_if_map 第一次: {first_number:?}");
+    println!("next_if_map 第二次: {failed_number:?}");
+    println!("失败后保留的下一个元素: {:?}", tokens.next());
+
+    // Rust 1.95: `push_mut` / `insert_mut`
+    //
+    // 旧写法里，如果你往 Vec 里插入了一个元素，
+    // 又想立刻继续修改这个“刚插入的新元素”，通常还得再拿一次索引或 `last_mut()`。
+    //
+    // 新 API 会直接返回这个新元素的可变引用。
+    //
+    // 这特别适合：
+    // 1. 插入后立刻补充字段
+    // 2. 构造复杂对象时分步初始化
+    // 3. 避免重新计算索引
+    let mut numbers = vec![1, 2, 3];
+    *numbers.push_mut(4) += 10;
+    *numbers.insert_mut(1, 99) += 1;
+    println!("Vec 原地插入后: {numbers:?}");
+
+    // VecDeque 在 Rust 1.95 也补齐了对应的 `*_mut` API。
+    //
+    // 这个例子模拟一个任务队列：
+    // - 在尾部插入测试任务，并立刻补上说明
+    // - 在头部插入准备任务，并立刻补上说明
+    // - 在中间插入编译任务，并立刻补上说明
+    //
+    // 读者可以把它理解成：
+    // “插入动作和插入后的细化修改，终于可以写在一起了。”
+    let mut task_queue = VecDeque::from(["build".to_string()]);
+    task_queue
+        .push_back_mut("test".to_string())
+        .push_str(" + lint");
+    task_queue
+        .push_front_mut("prepare".to_string())
+        .push_str(" env");
+    task_queue
+        .insert_mut(1, "compile".to_string())
+        .push_str(" sources");
+    println!("VecDeque 原地插入后: {task_queue:?}");
+
+    // 小结：
+    // 这一组 API 最大的价值不是“能做以前做不到的事”，
+    // 而是把以前能做但很啰嗦的代码，变成更贴近意图的写法。
+    //
+    // 如果你是 Rust 新手，可以把它们记成三类：
+    // 1. 插入后继续处理：`insert_entry` / `*_mut`
+    // 2. 条件消费：`pop_*_if`
+    // 3. 固定窗口与按需消费：`array_windows` / `next_if_map`
+    println!();
+}
+
+// ===========================================
 // Rust 集合教程
 // ===========================================
 
@@ -1268,6 +1427,7 @@ pub fn main() {
     iterators_deep_dive();
     collection_performance_optimization();
     data_processing_pipeline_system();
+    latest_collection_updates();
 
     println!("集合类型解析完成！");
     println!("\n关键要点总结:");
@@ -1427,5 +1587,46 @@ mod tests {
         // 测试重复检测
         processor.add_event(event);
         assert_eq!(processor.event_queue.len(), 0); // 应该被跳过
+    }
+
+    #[test]
+    fn test_latest_collection_entry_and_windows() {
+        use std::collections::BTreeMap;
+
+        let mut versions = BTreeMap::new();
+        let occupied = versions.entry("rust").insert_entry(195);
+        assert_eq!(occupied.key(), &"rust");
+        assert_eq!(occupied.get(), &195);
+
+        let windows: Vec<[i32; 2]> = [1, 2, 3].array_windows::<2>().copied().collect();
+        assert_eq!(windows, vec![[1, 2], [2, 3]]);
+    }
+
+    #[test]
+    fn test_latest_collection_mutating_apis() {
+        use std::collections::VecDeque;
+
+        let mut values = vec![1, 2];
+        *values.push_mut(3) += 7;
+        *values.insert_mut(1, 10) += 5;
+        assert_eq!(values, vec![1, 15, 2, 10]);
+
+        let mut deque = VecDeque::from([1, 2, 3]);
+        assert_eq!(deque.pop_front_if(|front| *front == 1), Some(1));
+        *deque.push_back_mut(4) += 1;
+        *deque.push_front_mut(0) -= 1;
+        assert_eq!(deque, VecDeque::from([-1, 2, 3, 5]));
+    }
+
+    #[test]
+    fn test_peekable_next_if_map() {
+        let mut tokens = ["42", "oops"].into_iter().peekable();
+
+        let first = tokens.next_if_map(|token| token.parse::<u32>().map_err(|_| token));
+        let second = tokens.next_if_map(|token| token.parse::<u32>().map_err(|_| token));
+
+        assert_eq!(first, Some(42));
+        assert_eq!(second, None);
+        assert_eq!(tokens.next(), Some("oops"));
     }
 }

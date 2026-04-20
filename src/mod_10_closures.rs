@@ -1,4 +1,12 @@
-#![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments, unused_macros, deprecated)]
+#![allow(
+    dead_code,
+    unused_variables,
+    unused_imports,
+    unused_mut,
+    unused_assignments,
+    unused_macros,
+    deprecated
+)]
 
 // Rust 闭包（Closures）
 // 深入讲解闭包语法、环境捕获、Fn trait 系统等函数式编程特性
@@ -237,16 +245,18 @@ fn closures_and_iterators() {
     // filter 方法接受一个返回 bool 的闭包，保留满足条件的元素
     // 闭包使得过滤逻辑可以动态定义，非常灵活
     let numbers = vec![1, 2, 3, 4, 5, 6];
-    let even_numbers: Vec<&i32> = numbers.iter()
-        .filter(|&&x| x % 2 == 0)  // 过滤偶数
+    let even_numbers: Vec<&i32> = numbers
+        .iter()
+        .filter(|&&x| x % 2 == 0) // 过滤偶数
         .collect();
     println!("偶数: {:?}", even_numbers);
 
     // 使用闭包映射数据
     // map 方法接受一个闭包，对每个元素进行转换
     // 这是函数式编程中最常用的操作之一
-    let doubled: Vec<i32> = numbers.iter()
-        .map(|&x| x * 2)  // 每个元素乘以 2
+    let doubled: Vec<i32> = numbers
+        .iter()
+        .map(|&x| x * 2) // 每个元素乘以 2
         .collect();
     println!("翻倍: {:?}", doubled);
 
@@ -266,17 +276,18 @@ fn closures_and_iterators() {
     // sort_by 方法接受一个比较闭包，定义元素的排序规则
     // 闭包的灵活性使得可以按任意规则排序
     let mut words = vec!["apple", "banana", "cherry", "date"];
-    words.sort_by(|a, b| a.len().cmp(&b.len()));  // 按长度排序
+    words.sort_by(|a, b| a.len().cmp(&b.len())); // 按长度排序
     println!("按长度排序: {:?}", words);
 
     // 复杂的迭代器链
     // 迭代器适配器可以链式调用，形成复杂的数据处理管道
     // 每个适配器都接受一个闭包，定义特定的转换逻辑
-    let result: Vec<i32> = numbers.iter()
-        .filter(|&&x| x > 2)    // 过滤大于 2 的数
-        .map(|&x| x * x)       // 计算平方
-        .take(3)               // 只取前 3 个
-        .collect();            // 收集到向量中
+    let result: Vec<i32> = numbers
+        .iter()
+        .filter(|&&x| x > 2) // 过滤大于 2 的数
+        .map(|&x| x * x) // 计算平方
+        .take(3) // 只取前 3 个
+        .collect(); // 收集到向量中
     println!("大于 2 的平方（前3个）: {:?}", result);
 
     // 迭代器闭包的优势：
@@ -322,7 +333,7 @@ fn closure_patterns() {
         F: FnOnce() -> i32,
     {
         if condition {
-            Some(computation())  // 只有当 condition 为 true 时才执行计算
+            Some(computation()) // 只有当 condition 为 true 时才执行计算
         } else {
             None
         }
@@ -361,9 +372,9 @@ fn closure_patterns() {
     impl Config {
         fn new() -> Self {
             Config {
-                timeout: 30,     // 默认超时 30 秒
-                retries: 3,      // 默认重试 3 次
-                debug: false,    // 默认不开启调试
+                timeout: 30,  // 默认超时 30 秒
+                retries: 3,   // 默认重试 3 次
+                debug: false, // 默认不开启调试
             }
         }
 
@@ -371,20 +382,21 @@ fn closure_patterns() {
         where
             F: FnOnce(&mut Config),
         {
-            config_fn(&mut self);  // 闭包配置对象
+            config_fn(&mut self); // 闭包配置对象
             self
         }
     }
 
-    let config = Config::new()
-        .configure(|c| {
-            c.timeout = 60;     // 修改超时时间
-            c.retries = 5;      // 修改重试次数
-            c.debug = true;     // 开启调试模式
-        });
+    let config = Config::new().configure(|c| {
+        c.timeout = 60; // 修改超时时间
+        c.retries = 5; // 修改重试次数
+        c.debug = true; // 开启调试模式
+    });
 
-    println!("配置结果: timeout={}, retries={}, debug={}",
-             config.timeout, config.retries, config.debug);
+    println!(
+        "配置结果: timeout={}, retries={}, debug={}",
+        config.timeout, config.retries, config.debug
+    );
 
     // 模式 4: 工厂函数（Factory Functions）
     // 工厂函数使用闭包创建和返回定制化的函数
@@ -549,7 +561,11 @@ fn advanced_closure_features() {
     let add_op = create_operation(|x| x + 10);
     let mul_op = create_operation(|x| x * 3);
 
-    println!("闭包 trait 对象: {} {}", add_op.execute(5), mul_op.execute(5));
+    println!(
+        "闭包 trait 对象: {} {}",
+        add_op.execute(5),
+        mul_op.execute(5)
+    );
 
     // 递归算法的闭包实现
     // 虽然 Rust 不支持直接的递归闭包语法，但可以通过间接方式实现递归
@@ -786,11 +802,7 @@ fn closure_example_program() {
     // 示例 2: 数据处理管道
     // 闭包可以用来构建复杂的数据处理管道
     // 每个处理步骤都是一个闭包，可以灵活地组合和重用
-    fn create_pipeline<F1, F2, F3, T, U, V, W>(
-        step1: F1,
-        step2: F2,
-        step3: F3,
-    ) -> impl Fn(T) -> W
+    fn create_pipeline<F1, F2, F3, T, U, V, W>(step1: F1, step2: F2, step3: F3) -> impl Fn(T) -> W
     where
         F1: Fn(T) -> U,
         F2: Fn(U) -> V,
@@ -805,8 +817,8 @@ fn closure_example_program() {
     }
 
     let pipeline = create_pipeline(
-        |x: i32| x * 2,      // 第一步：乘以 2
-        |x: i32| x + 10,     // 第二步：加 10
+        |x: i32| x * 2,         // 第一步：乘以 2
+        |x: i32| x + 10,        // 第二步：加 10
         |x: i32| x.to_string(), // 第三步：转换为字符串
     );
 
@@ -844,13 +856,12 @@ fn closure_example_program() {
         }
     }
 
-    let config = AppConfig::new()
-        .configure(|config| {
-            config.name = "Advanced App".to_string();
-            config.version = "2.0.0".to_string();
-            config.debug = true;
-            config.max_connections = 1000;
-        });
+    let config = AppConfig::new().configure(|config| {
+        config.name = "Advanced App".to_string();
+        config.version = "2.0.0".to_string();
+        config.debug = true;
+        config.max_connections = 1000;
+    });
 
     println!("\n=== 配置系统 ===");
     println!("最终配置: {:?}", config);
@@ -965,9 +976,7 @@ mod tests {
     #[test]
     fn test_closure_pattern_matching() {
         let numbers = vec![1, 2, 3, 4, 5, 6];
-        let even_numbers: Vec<&i32> = numbers.iter()
-            .filter(|&&x| x % 2 == 0)
-            .collect();
+        let even_numbers: Vec<&i32> = numbers.iter().filter(|&&x| x % 2 == 0).collect();
         assert_eq!(even_numbers, vec![&2, &4, &6]);
     }
 }

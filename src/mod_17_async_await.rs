@@ -1,4 +1,10 @@
-#![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments)]
+#![allow(
+    dead_code,
+    unused_variables,
+    unused_imports,
+    unused_mut,
+    unused_assignments
+)]
 
 // Rust 异步编程与 async/await
 // 深入讲解 Rust 中的异步编程模型，包括 Future、async/await、执行器等核心概念
@@ -341,9 +347,9 @@ async fn async_streams() {
 
     // 流操作示例 - 使用标准迭代器
     let data_stream: Vec<i32> = (0..20)
-        .filter(|&x| x % 2 == 0)  // 过滤偶数
-        .map(|x| x * x)           // 平方
-        .take(5)                  // 取前5个
+        .filter(|&x| x % 2 == 0) // 过滤偶数
+        .map(|x| x * x) // 平方
+        .take(5) // 取前5个
         .collect();
 
     println!("流操作结果: {:?}", data_stream);
@@ -482,7 +488,7 @@ async fn async_patterns_and_best_practices() {
 
     // 模式 3: 缓存异步结果
     use std::collections::HashMap;
-    use std::sync::{Arc, Mutex, Condvar};
+    use std::sync::{Arc, Condvar, Mutex};
     use tokio::sync::RwLock;
 
     #[derive(Clone)]
@@ -517,15 +523,15 @@ async fn async_patterns_and_best_practices() {
     }
 
     let cache = AsyncCache::new();
-    let result1 = cache.get_or_insert(
-        "key1".to_string(),
-        || async { "计算值 1".to_string() },
-    ).await;
+    let result1 = cache
+        .get_or_insert("key1".to_string(), || async { "计算值 1".to_string() })
+        .await;
 
-    let result2 = cache.get_or_insert(
-        "key1".to_string(),
-        || async { "不应该执行".to_string() },
-    ).await;
+    let result2 = cache
+        .get_or_insert("key1".to_string(), || async {
+            "不应该执行".to_string()
+        })
+        .await;
 
     println!("缓存结果: {} {}", result1, result2);
 
@@ -618,15 +624,18 @@ async fn testing_async_code() {
             })
             .collect::<Vec<_>>();
 
-        let results: Vec<_> = futures::future::join_all(handles).await
+        let results: Vec<_> = futures::future::join_all(handles)
+            .await
             .into_iter()
             .map(|r| r.unwrap())
             .collect();
 
         let success_count = results.iter().filter(|r| r.is_ok()).count();
-        println!("并发测试结果: {} 成功, {} 失败",
-                 success_count,
-                 results.len() - success_count);
+        println!(
+            "并发测试结果: {} 成功, {} 失败",
+            success_count,
+            results.len() - success_count
+        );
     }
 
     test_concurrent_operations().await;
@@ -803,11 +812,13 @@ async fn practical_examples() {
 
     // 添加任务
     for i in 0..5 {
-        task_queue.add_task(AsyncTask {
-            id: format!("task_{}", i),
-            data: format!("任务数据 {}", i),
-            created_at: Instant::now(),
-        }).await;
+        task_queue
+            .add_task(AsyncTask {
+                id: format!("task_{}", i),
+                data: format!("任务数据 {}", i),
+                created_at: Instant::now(),
+            })
+            .await;
     }
 
     // 处理任务
@@ -823,11 +834,10 @@ async fn practical_examples() {
 
     // 示例 3: 异步数据管道
 
-
     async fn create_data_pipeline() -> Vec<String> {
         // 简化的数据管道示例
         let data_stream: Vec<String> = (0..100)
-            .filter(|&x| x % 3 == 0)  // 过滤3的倍数
+            .filter(|&x| x % 3 == 0) // 过滤3的倍数
             .map(|x| format!("处理后的数据: {}", x))
             .collect();
 
@@ -1039,9 +1049,7 @@ async fn async_trait_methods() {
         port: 8080,
     };
 
-    let service = builder
-        .configure("9090").await
-        .build().await;
+    let service = builder.configure("9090").await.build().await;
     println!("构建的服务: {:?}", service);
 
     // 示例 5: 异步工厂模式
@@ -1446,8 +1454,10 @@ async fn async_function_lifetimes() {
     }
 
     async fn apply_config_ref(config: &Config) -> String {
-        format!("Config: timeout={}ms, retries={}",
-                config.timeout_ms, config.max_retries)
+        format!(
+            "Config: timeout={}ms, retries={}",
+            config.timeout_ms, config.max_retries
+        )
     }
 
     let config = Config {
@@ -1459,23 +1469,25 @@ async fn async_function_lifetimes() {
 
     // 示例 4: 异步闭包的生命周期改进
     let numbers = vec![1, 2, 3, 4, 5];
-    let doubled = async {
-        numbers.iter().map(|&x| x * 2).collect::<Vec<_>>()
-    }.await;
+    let doubled = async { numbers.iter().map(|&x| x * 2).collect::<Vec<_>>() }.await;
     println!("异步闭包结果: {:?}", doubled);
 
     // 示例 5: 异步函数中的泛型处理器生命周期
     trait AsyncProcessor: Send + Sync {
-        fn process<'a>(&'a self, input: &'a str) -> std::pin::Pin<Box<dyn std::future::Future<Output = String> + Send + 'a>>;
+        fn process<'a>(
+            &'a self,
+            input: &'a str,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = String> + Send + 'a>>;
     }
 
     struct StringProcessor;
 
     impl AsyncProcessor for StringProcessor {
-        fn process<'a>(&'a self, input: &'a str) -> std::pin::Pin<Box<dyn std::future::Future<Output = String> + Send + 'a>> {
-            Box::pin(async move {
-                input.to_uppercase()
-            })
+        fn process<'a>(
+            &'a self,
+            input: &'a str,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = String> + Send + 'a>> {
+            Box::pin(async move { input.to_uppercase() })
         }
     }
 
@@ -1509,7 +1521,10 @@ async fn async_function_lifetimes() {
         let config_str = apply_config_ref(config).await;
         let processed_input = processor.process(&config_str).await;
 
-        Ok(format!("最终结果: {} (数据: {:?})", processed_input, processed_data))
+        Ok(format!(
+            "最终结果: {} (数据: {:?})",
+            processed_input, processed_data
+        ))
     }
 
     let result = complex_async_operation(&config, &data, &processor).await;
@@ -1904,19 +1919,19 @@ async fn practical_async_lifetime_examples() {
 }
 
 // ===========================================
-// 13. Rust 1.92: 异步闭包 (Async Closures)
+// 13. 补充：异步闭包 (Async Closures)
 // ===========================================
 
-// Rust 1.92 (2025-12-11) 稳定了异步闭包 (async closures)
+// 异步闭包在 Rust 1.85 已稳定。
 // 允许创建直接返回 Future 的闭包，语法更加简洁
 
 pub async fn async_closures_demo() {
-    println!("=== Rust 1.92: 异步闭包 (Async Closures) ===");
+    println!("=== 补充：异步闭包 (Async Closures) ===");
 
     // 这是一个异步闭包
     // 语法: async |args| { body }
     // 它等价于返回 Future 的普通闭包，但捕捉变量的处理更自然
-    
+
     let process = async |x: i32| {
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         x * 2
@@ -1924,24 +1939,25 @@ pub async fn async_closures_demo() {
 
     let result = process(21).await;
     println!("异步闭包结果: {}", result);
-    
+
     // 结合高阶函数使用
-    async fn run_with_context<F, Fut>(f: F) -> i32 
-    where 
+    async fn run_with_context<F, Fut>(f: F) -> i32
+    where
         F: FnOnce(i32) -> Fut,
-        Fut: Future<Output = i32>
+        Fut: Future<Output = i32>,
     {
         f(10).await
     }
-    
+
     // 直接传递异步闭包
     let res = run_with_context(async |x| {
         println!("在上下文中处理: {}", x);
         x + 5
-    }).await;
-    
+    })
+    .await;
+
     println!("上下文结果: {}", res);
-    
+
     println!();
 }
 
@@ -1965,6 +1981,7 @@ pub async fn main() {
     testing_async_code().await;
     practical_examples().await;
     async_trait_methods().await;
+    async_closures_demo().await;
     async_function_lifetimes().await;
     practical_async_lifetime_examples().await;
 
@@ -2034,7 +2051,8 @@ mod tests {
             })
             .collect::<Vec<_>>();
 
-        let results: Vec<_> = futures::future::join_all(handles).await
+        let results: Vec<_> = futures::future::join_all(handles)
+            .await
             .into_iter()
             .map(|r| r.unwrap())
             .collect();
@@ -2083,15 +2101,17 @@ mod tests {
 
         let cache = SimpleCache::new();
 
-        let result1 = cache.get_or_insert(
-            "test_key".to_string(),
-            || async { "computed_value".to_string() },
-        ).await;
+        let result1 = cache
+            .get_or_insert("test_key".to_string(), || async {
+                "computed_value".to_string()
+            })
+            .await;
 
-        let result2 = cache.get_or_insert(
-            "test_key".to_string(),
-            || async { "should_not_be_called".to_string() },
-        ).await;
+        let result2 = cache
+            .get_or_insert("test_key".to_string(), || async {
+                "should_not_be_called".to_string()
+            })
+            .await;
 
         assert_eq!(result1, "computed_value");
         assert_eq!(result2, "computed_value");

@@ -1,4 +1,12 @@
-#![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments, unused_macros, deprecated)]
+#![allow(
+    dead_code,
+    unused_variables,
+    unused_imports,
+    unused_mut,
+    unused_assignments,
+    unused_macros,
+    deprecated
+)]
 
 // Rust 迭代器（Iterators）
 // 深入讲解迭代器概念、适配器、消费者、自定义迭代器等函数式编程特性
@@ -293,14 +301,14 @@ fn custom_iterators() {
     // 实现 Iterator trait
     // 这是自定义迭代器的核心，必须实现 next() 方法和定义 Item 类型
     impl Iterator for Counter {
-        type Item = u32;  // 迭代器产生的元素类型
+        type Item = u32; // 迭代器产生的元素类型
 
         fn next(&mut self) -> Option<Self::Item> {
             self.count += 1;
             if self.count < 6 {
-                Some(self.count)  // 返回 Some 表示还有元素
+                Some(self.count) // 返回 Some 表示还有元素
             } else {
-                None  // 返回 None 表示迭代结束
+                None // 返回 None 表示迭代结束
             }
         }
     }
@@ -414,11 +422,12 @@ fn iterator_chaining() {
 
     // 复杂的链式操作
     // 演示了多个适配器的组合使用，每个步骤都有明确的语义
-    let result: Vec<i32> = numbers.iter()
-        .filter(|&&x| x > 3)           // 过滤大于3的
-        .map(|&x| x * 2)               // 翻倍
-        .take(4)                       // 取前4个
-        .collect();                    // 收集结果
+    let result: Vec<i32> = numbers
+        .iter()
+        .filter(|&&x| x > 3) // 过滤大于3的
+        .map(|&x| x * 2) // 翻倍
+        .take(4) // 取前4个
+        .collect(); // 收集结果
     println!("复杂链式操作: {:?}", result);
 
     // 数据处理管道 - 学生成绩分析
@@ -433,7 +442,8 @@ fn iterator_chaining() {
 
     // 找出成绩大于80的学生姓名
     // 展示了数据筛选和提取的链式操作
-    let excellent_students: Vec<&str> = data.iter()
+    let excellent_students: Vec<&str> = data
+        .iter()
         .filter(|&&(_, score)| score > 80)
         .map(|&(name, _)| name)
         .collect();
@@ -441,14 +451,14 @@ fn iterator_chaining() {
 
     // 计算平均成绩
     // 展示了数值计算和类型转换的链式操作
-    let average_score: f64 = data.iter()
-        .map(|&(_, score)| score as f64)
-        .sum::<f64>() / data.len() as f64;
+    let average_score: f64 =
+        data.iter().map(|&(_, score)| score as f64).sum::<f64>() / data.len() as f64;
     println!("平均成绩: {:.2}", average_score);
 
     // 找出最高分学生
     // 展示了最大值查找和结果格式化
-    let top_student = data.iter()
+    let top_student = data
+        .iter()
         .max_by_key(|&&(_, score)| score)
         .map(|&(name, score)| format!("{}: {}", name, score));
     println!("最高分学生: {:?}", top_student);
@@ -457,11 +467,15 @@ fn iterator_chaining() {
     // 展示了迭代器在文本处理中的强大能力
     let text = "Hello world! Rust is awesome. Hello iterators!";
     let word_count: std::collections::HashMap<String, usize> = text
-        .split_whitespace()                          // 分割单词
-        .map(|word| word.to_lowercase())             // 转换为小写
-        .map(|word| word.trim_end_matches(&['.', '!', '?', ',', ';', ':'][..]).to_string())  // 移除标点并转换为String
-        .filter(|word| !word.is_empty())             // 过滤空单词
-        .fold(std::collections::HashMap::new(), |mut map, word| {  // 统计词频
+        .split_whitespace() // 分割单词
+        .map(|word| word.to_lowercase()) // 转换为小写
+        .map(|word| {
+            word.trim_end_matches(&['.', '!', '?', ',', ';', ':'][..])
+                .to_string()
+        }) // 移除标点并转换为String
+        .filter(|word| !word.is_empty()) // 过滤空单词
+        .fold(std::collections::HashMap::new(), |mut map, word| {
+            // 统计词频
             *map.entry(word).or_insert(0) += 1;
             map
         });
@@ -471,11 +485,12 @@ fn iterator_chaining() {
     // 数字处理链 - 条件求和
     // 展示了数学计算的链式操作
     let numbers = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    let result = numbers.iter()
-        .filter(|&&x| x % 2 == 0)        // 过滤偶数
-        .map(|&x| x * x)                // 计算平方
-        .take(3)                        // 取前3个
-        .sum::<i32>();                  // 求和
+    let result = numbers
+        .iter()
+        .filter(|&&x| x % 2 == 0) // 过滤偶数
+        .map(|&x| x * x) // 计算平方
+        .take(3) // 取前3个
+        .sum::<i32>(); // 求和
     println!("偶数平方和（前3个）: {}", result);
 
     // 链式调用的优势：
@@ -536,7 +551,8 @@ fn iterator_performance() {
     // 链式操作（惰性）- 效率更高
     // 所有操作在一个遍历中完成，没有中间分配
     let start = std::time::Instant::now();
-    let result: Vec<i32> = numbers.iter()
+    let result: Vec<i32> = numbers
+        .iter()
         .filter(|&&x| x > 5)
         .map(|&x| x * 2)
         .take(2)
@@ -567,10 +583,7 @@ fn iterator_performance() {
     }
 
     fn process_with_iterators(data: &[i32]) -> i32 {
-        data.iter()
-            .filter(|&&x| x > 5)
-            .map(|&x| x * 2)
-            .sum()
+        data.iter().filter(|&&x| x > 5).map(|&x| x * 2).sum()
     }
 
     let data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
@@ -624,11 +637,12 @@ fn iterator_patterns() {
     // 将原始数据通过一系列转换步骤，最终得到所需的结果
     // 这是最常见的迭代器模式，特别适合数据处理工作流
     fn process_numbers(numbers: &[i32]) -> Vec<String> {
-        numbers.iter()
-            .filter(|&&x| x > 0)                    // 过滤负数
-            .map(|&x| x * 2)                        // 数值翻倍
-            .map(|x| format!("处理后的数字: {}", x))  // 格式化输出
-            .collect()                               // 收集结果
+        numbers
+            .iter()
+            .filter(|&&x| x > 0) // 过滤负数
+            .map(|&x| x * 2) // 数值翻倍
+            .map(|x| format!("处理后的数字: {}", x)) // 格式化输出
+            .collect() // 收集结果
     }
 
     let numbers = vec![-1, 2, -3, 4, -5, 6];
@@ -639,9 +653,10 @@ fn iterator_patterns() {
     // 使用 fold 和 HashMap 对数据进行分组统计
     // 这种模式在数据分析和统计中非常常见
     let data = vec!["apple", "banana", "apple", "orange", "banana", "apple"];
-    let counts = data.iter()
+    let counts = data
+        .iter()
         .fold(std::collections::HashMap::new(), |mut map, item| {
-            *map.entry(item).or_insert(0) += 1;  // 统计每个元素的出现次数
+            *map.entry(item).or_insert(0) += 1; // 统计每个元素的出现次数
             map
         });
     println!("分组统计: {:?}", counts);
@@ -649,11 +664,7 @@ fn iterator_patterns() {
     // 模式 3: 扁平化嵌套结构
     // 使用 flatten 将嵌套的数据结构展平
     // 这种模式在处理树形结构或嵌套集合时很有用
-    let nested = vec![
-        vec![1, 2, 3],
-        vec![4, 5, 6],
-        vec![7, 8, 9],
-    ];
+    let nested = vec![vec![1, 2, 3], vec![4, 5, 6], vec![7, 8, 9]];
     let flattened: Vec<i32> = nested.into_iter().flatten().collect();
     println!("扁平化嵌套结构: {:?}", flattened);
 
@@ -668,18 +679,20 @@ fn iterator_patterns() {
     // 使用 take_while 和 filter 结合实现复杂的条件聚合
     // 这种模式在满足特定条件的数据聚合中很有用
     let numbers = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    let conditional_sum = numbers.iter()
-        .take_while(|&&x| x < 8)               // 只处理小于8的数
-        .filter(|&&x| x % 2 == 0)              // 只处理偶数
-        .sum::<i32>();                         // 求和
+    let conditional_sum = numbers
+        .iter()
+        .take_while(|&&x| x < 8) // 只处理小于8的数
+        .filter(|&&x| x % 2 == 0) // 只处理偶数
+        .sum::<i32>(); // 求和
     println!("条件求和（小于8的偶数）: {}", conditional_sum);
 
     // 模式 6: 数据验证
     // 使用 filter_map 结合解析操作，安全地验证和转换数据
     // 这种模式在处理外部数据输入时非常有用
     let inputs = vec!["42", "123", "abc", "789", "xyz"];
-    let valid_numbers: Vec<i32> = inputs.iter()
-        .filter_map(|s| s.parse().ok())         // 只保留成功解析的数字
+    let valid_numbers: Vec<i32> = inputs
+        .iter()
+        .filter_map(|s| s.parse().ok()) // 只保留成功解析的数字
         .collect();
     println!("数据验证和转换: {:?}", valid_numbers);
 
@@ -750,34 +763,44 @@ fn iterator_example_program() {
         // 找出最常见的单词
         fn most_common_word(&self) -> Option<(String, usize)> {
             let mut counts = std::collections::HashMap::new();
-            self.text.split_whitespace()
-                .map(|word| word.to_lowercase())                 // 小写化
-                .map(|word| word.trim_end_matches(&['.', '!', '?', ',', ';', ':'][..]).to_string())  // 移除标点并转换为String
-                .filter(|word| !word.is_empty())                 // 过滤空单词
+            self.text
+                .split_whitespace()
+                .map(|word| word.to_lowercase()) // 小写化
+                .map(|word| {
+                    word.trim_end_matches(&['.', '!', '?', ',', ';', ':'][..])
+                        .to_string()
+                }) // 移除标点并转换为String
+                .filter(|word| !word.is_empty()) // 过滤空单词
                 .for_each(|word| {
-                    *counts.entry(word).or_insert(0) += 1;       // 统计词频
+                    *counts.entry(word).or_insert(0) += 1; // 统计词频
                 });
 
-            counts.into_iter().max_by_key(|&(_, count)| count)    // 找出最大值
+            counts.into_iter().max_by_key(|&(_, count)| count) // 找出最大值
         }
 
         // 计算每个单词的长度
         fn word_lengths(&self) -> Vec<usize> {
-            self.text.split_whitespace()
-                .map(|word| word.chars().count())             // 正确计算 Unicode 字符数
+            self.text
+                .split_whitespace()
+                .map(|word| word.chars().count()) // 正确计算 Unicode 字符数
                 .collect()
         }
 
         // 获取不重复的单词列表
         fn unique_words(&self) -> Vec<String> {
-            let mut words: Vec<String> = self.text.split_whitespace()
+            let mut words: Vec<String> = self
+                .text
+                .split_whitespace()
                 .map(|word| word.to_lowercase())
-                .map(|word| word.trim_end_matches(&['.', '!', '?', ',', ';', ':'][..]).to_string())
+                .map(|word| {
+                    word.trim_end_matches(&['.', '!', '?', ',', ';', ':'][..])
+                        .to_string()
+                })
                 .filter(|word| !word.is_empty())
                 .collect();
 
-            words.sort();                                      // 排序
-            words.dedup();                                    // 去重
+            words.sort(); // 排序
+            words.dedup(); // 去重
             words
         }
     }
@@ -787,7 +810,8 @@ Rust is a systems programming language that runs blazingly fast,
 prevents segfaults, and guarantees thread safety.
 Rust is memory safe without garbage collection.
 Rust empowers everyone to build reliable and efficient software.
-    "#.trim();
+    "#
+    .trim();
 
     let analyzer = TextAnalyzer::new(sample_text.to_string());
 
@@ -811,8 +835,7 @@ Rust empowers everyone to build reliable and efficient software.
     // 示例 2: 数据流处理
     // 展示了迭代器在数据处理中的错误处理和过滤能力
     fn process_sensor_data(data: &[f64]) -> (f64, f64, f64) {
-        let valid_data = data.iter()
-            .filter(|&&x| x >= 0.0 && x <= 100.0);  // 过滤有效数据
+        let valid_data = data.iter().filter(|&&x| x >= 0.0 && x <= 100.0); // 过滤有效数据
 
         let count = valid_data.clone().count() as f64;
         let average = valid_data.clone().sum::<f64>() / count;
@@ -824,7 +847,7 @@ Rust empowers everyone to build reliable and efficient software.
 
     let sensor_readings = vec![
         23.5, 24.1, 22.8, 25.3, 101.5, // 101.5 无效
-        23.9, 24.5, -1.0, 22.1, 24.8,  // -1.0 无效
+        23.9, 24.5, -1.0, 22.1, 24.8, // -1.0 无效
         23.2, 24.0, 23.7, 24.3, 23.8,
     ];
 
@@ -851,7 +874,8 @@ Rust empowers everyone to build reliable and efficient software.
 
     println!("\n=== 日志分析 ===");
 
-    let log_counts = log_lines.iter()
+    let log_counts = log_lines
+        .iter()
         .map(|line| {
             if let Some(level) = line.split(':').next() {
                 level
@@ -866,7 +890,8 @@ Rust empowers everyone to build reliable and efficient software.
 
     println!("日志级别统计: {:?}", log_counts);
 
-    let error_messages: Vec<&str> = log_lines.iter()
+    let error_messages: Vec<&str> = log_lines
+        .iter()
         .filter(|line| line.starts_with("ERROR"))
         .map(|line| line.split(':').nth(1).unwrap_or("").trim())
         .collect();
@@ -981,7 +1006,8 @@ mod tests {
     #[test]
     fn test_iterator_chaining() {
         let v = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-        let result: Vec<i32> = v.iter()
+        let result: Vec<i32> = v
+            .iter()
             .filter(|&&x| x > 5)
             .map(|&x| x * 2)
             .take(3)

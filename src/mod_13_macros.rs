@@ -1,4 +1,10 @@
-#![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_assignments)]
+#![allow(
+    dead_code,
+    unused_variables,
+    unused_imports,
+    unused_mut,
+    unused_assignments
+)]
 
 // Rust 宏系统
 // 深入讲解 Rust 的元编程能力，包括声明式宏、过程宏和高级宏技巧
@@ -1364,6 +1370,52 @@ fn macro_example_program() {
 }
 
 // ===========================================
+// 11. Rust 1.95 cfg_select! 宏
+// ===========================================
+
+// Rust 1.95 稳定了 cfg_select!，用于把条件编译分支写成表达式风格的宏
+// 它很适合“平台差异只影响少量值或小段逻辑”的场景
+//
+// 这个宏对新手的价值主要在于：
+// 1. 它让“根据平台或配置挑一个值”这件事写起来像表达式
+// 2. 以前这类代码常常要写多个 `#[cfg] const` 或多个条件编译块
+// 3. 当差异很小的时候，`cfg_select!` 会更紧凑、更好读
+
+fn cfg_select_macro() {
+    println!("=== Rust 1.95 cfg_select! 宏 ===");
+
+    // 这个例子根据当前目标平台，选出一个平台家族字符串。
+    //
+    // 你可以把它理解成“编译期版的 match”：
+    // - 不是在运行时检查变量
+    // - 而是在编译时根据 cfg 条件只保留一个分支
+    let platform_family = cfg_select! {
+        unix => { "unix" }
+        windows => { "windows" }
+        _ => { "other" }
+    };
+
+    // 第二个例子更贴近日常开发：
+    // 根据平台选择换行符。
+    //
+    // 这种“只差一个小常量”的场景，正是 cfg_select! 最合适的用途。
+    let newline = cfg_select! {
+        windows => { "\r\n" }
+        _ => { "\n" }
+    };
+
+    // 打印结果，让读者明确看到：
+    // cfg_select! 最终直接产生了一个普通值，可以像普通变量一样使用。
+    println!("平台家族: {platform_family}");
+    println!("平台换行符示例: {:?}", format!("header{newline}body"));
+
+    // 使用建议：
+    // 1. 如果只是少量值差异，用 cfg_select! 很自然
+    // 2. 如果是大段逻辑差异，还是拆模块或拆函数更清晰
+    println!();
+}
+
+// ===========================================
 // 主函数
 // ===========================================
 
@@ -1381,6 +1433,7 @@ pub fn main() {
     function_like_macros();
     advanced_macro_patterns();
     macro_example_program();
+    cfg_select_macro();
 
     println!("宏系统演示完成！");
 }
@@ -1460,5 +1513,16 @@ mod tests {
 
         assert_eq!(conditional!(true, 1, 2), 1);
         assert_eq!(conditional!(false, 1, 2), 2);
+    }
+
+    #[test]
+    fn test_cfg_select_macro() {
+        let platform = cfg_select! {
+            unix => { "unix" }
+            windows => { "windows" }
+            _ => { "other" }
+        };
+
+        assert!(!platform.is_empty());
     }
 }
