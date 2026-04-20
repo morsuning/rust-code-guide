@@ -817,14 +817,13 @@ fn compiler_attributes() {
     // 示例 2: 预期 unused_variables 警告
     fn function_with_unused_variables() {
         #[expect(unused_variables)]
-        let _future_feature = "预留变量";
+        let future_feature = "预留变量";
 
         println!("函数中包含预期的未使用变量");
     }
 
     // 示例 3: 预期 deprecated 警告
     #[deprecated(since = "1.0.0", note = "使用 new_function 替代")]
-    #[expect(deprecated)]
     fn old_function() {
         println!("这是一个已弃用的函数");
     }
@@ -859,7 +858,7 @@ fn compiler_attributes() {
 
         // 使用 #[expect] - 预期警告，有维护保障
         #[expect(unused_variables)]
-        let _expected_variable = "这应该产生警告";
+        let expected_variable = "这应该产生警告";
 
         println!("#[expect] 提供了更好的维护保障");
     }
@@ -870,7 +869,7 @@ fn compiler_attributes() {
         unused_variables
     )]
     fn multiple_lints_example() {
-        let _unused = "多个 lint 预期";
+        let unused = "多个 lint 预期";
         println!("同时预期多个 lint 警告");
     }
 
@@ -893,7 +892,6 @@ fn practical_expect_examples() {
 
     // 场景 1: API 向后兼容性
     mod legacy_api {
-        #[expect(deprecated)]
         #[deprecated(since = "2.0.0", note = "使用 new_api() 替代")]
         pub fn old_api() {
             println!("遗留 API 实现");
@@ -925,7 +923,7 @@ fn practical_expect_examples() {
 
         #[expect(unused_variables)]
         pub fn test_placeholder() {
-            let _placeholder = "测试占位符";
+            let placeholder = "测试占位符";
         }
     }
 
@@ -948,7 +946,7 @@ fn practical_expect_examples() {
 
         #[expect(unused_variables)]
         fn generated_with_placeholders() {
-            let _future_impl = "预留实现";
+            let future_impl = "预留实现";
         }
     }
 
