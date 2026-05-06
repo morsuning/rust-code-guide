@@ -54,7 +54,6 @@ rust-code-guide/
 - [结构体](src/mod_03_structs.rs)
 - [枚举](src/mod_04_enums.rs)
 - [模式匹配](src/mod_05_pattern_matching.rs)
-- [if let 守卫（Rust 1.95）](src/mod_05_pattern_matching.rs)
 
 ### 错误处理
 
@@ -73,7 +72,6 @@ rust-code-guide/
 - [Vector](src/mod_09_collections.rs)
 - [String](src/mod_09_collections.rs)
 - [HashMap](src/mod_09_collections.rs)
-- [最新集合 API（Rust 1.92-1.95）](src/mod_09_collections.rs)
 
 ### 函数式编程
 
@@ -91,14 +89,13 @@ rust-code-guide/
 
 - [声明式宏](src/mod_13_macros.rs)
 - [过程宏](src/mod_13_macros.rs)
-- [cfg_select! 宏（Rust 1.95）](src/mod_13_macros.rs)
 
 ### 高级特性
 
 - [不安全 Rust](src/mod_14_advanced.rs)
 - [生命周期](src/mod_14_advanced.rs)
 - [外部函数接口](src/mod_15_ffi.rs)
-- [底层能力补充（Rust 1.92-1.95）](src/mod_14_advanced.rs)
+- [底层能力补充](src/mod_14_advanced.rs)
 
 ### 智能指针
 
@@ -106,7 +103,7 @@ rust-code-guide/
 - [Rc 和 Arc 引用计数](src/mod_16_smart_pointers.rs)
 - [RefCell 和内部可变性](src/mod_16_smart_pointers.rs)
 - [Weak 指针和循环引用](src/mod_16_smart_pointers.rs)
-- [零初始化智能指针分配（Rust 1.92）](src/mod_16_smart_pointers.rs)
+- [零初始化智能指针分配](src/mod_16_smart_pointers.rs)
 
 ### 异步编程
 
