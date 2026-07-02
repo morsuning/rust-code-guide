@@ -1663,6 +1663,7 @@ fn practical_fd_usage_unix() {
 }
 
 // 文件描述符在异步编程中的应用
+#[cfg(unix)]
 async fn async_fd_usage() {
     use std::fs::File;
     use std::os::fd::AsFd;
@@ -1671,7 +1672,7 @@ async fn async_fd_usage() {
     println!("=== 异步文件描述符使用 ===");
 
     // 在异步编程中，文件描述符的管理更加重要
-    // Rust 1.77+ 的标准化为异步 I/O 提供了更好的基础
+    // Rust 1.77+ 标准化的 fd API 为异步 I/O 提供了更好的基础
 
     // 创建同步文件
     let file = File::create("async_test.txt").expect("文件创建失败");
@@ -1685,6 +1686,7 @@ async fn async_fd_usage() {
 }
 
 // 文件描述符的网络编程应用
+#[cfg(unix)]
 fn network_fd_usage() {
     use std::net::TcpListener;
     use std::os::fd::AsFd;
