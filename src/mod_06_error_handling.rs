@@ -968,12 +968,12 @@ fn error_handling_example_program() {
 }
 
 // ===========================================
-// 10. Rust 1.76+ core::error::Error trait 改进（Enhanced Error Trait）
+// 10. Rust 1.81 core::error::Error trait（Enhanced Error Trait）
 // ===========================================
 
-// Rust 1.76 开始对 core::error::Error trait 进行了重大改进
-// 这些改进持续到后续版本，提供了更强大的错误处理能力
-// 包括更好的错误链、源码位置信息、上下文信息等
+// Rust 1.81 把 Error trait 从 std 下沉到 core，
+// 让无标准库（no_std）环境也能使用统一的错误抽象
+// 同时引入了 Request 机制，为错误提供类型化的上下文查询
 
 // Error trait 改进的核心价值：
 // 1. 增强的错误链：提供更清晰的错误溯源能力
@@ -983,10 +983,11 @@ fn error_handling_example_program() {
 // 5. 向后兼容：保持与现有代码的兼容性
 
 fn enhanced_error_trait() {
-    println!("=== Rust 1.76+ core::error::Error trait 改进 ===");
+    println!("=== Rust 1.81 core::error::Error trait ===");
 
-    // 1. 基础 Error trait 使用（Rust 1.76+）
-    // 新版本的 Error trait 提供了更好的默认实现和扩展能力
+    // 1. 基础 Error trait 使用（Rust 1.81）
+    // core::error::Error 与 std::error::Error 同源，
+    // no_std 环境下可以直接 use core::error::Error
 
     use std::error::Error;
     use std::fmt;
@@ -1036,7 +1037,7 @@ fn enhanced_error_trait() {
         // }
     }
 
-    // 2. 错误链和上下文（Rust 1.76+ 改进）
+    // 2. 错误链和上下文（Rust 1.81+ 改进）
     // 新的 Error trait 提供了更好的错误链处理能力
 
     #[derive(Debug)]
@@ -1108,7 +1109,7 @@ fn enhanced_error_trait() {
         }
     }
 
-    // 3. 错误转换和包装（Rust 1.76+ 改进）
+    // 3. 错误转换和包装（Rust 1.81+ 改进）
     // 更好的错误类型转换和包装机制
 
     #[derive(Debug)]
@@ -1180,7 +1181,7 @@ fn enhanced_error_trait() {
         }
     }
 
-    // 4. 错误报告和诊断（Rust 1.76+ 改进）
+    // 4. 错误报告和诊断（Rust 1.81+ 改进）
     // 更好的错误报告和诊断信息
 
     #[derive(Debug)]
@@ -1262,7 +1263,7 @@ fn enhanced_error_trait() {
         }
     }
 
-    // 5. 错误日志和监控（Rust 1.76+ 改进）
+    // 5. 错误日志和监控（Rust 1.81+ 改进）
     // 更好的错误日志记录和监控支持
 
     fn log_error_enhanced(error: &dyn Error) {
@@ -1299,7 +1300,7 @@ fn enhanced_error_trait() {
 
     log_error_enhanced(&complex_error);
 
-    // Rust 1.76+ Error trait 改进的最佳实践：
+    // Rust 1.81+ Error trait 改进的最佳实践：
     // 1. 实现provide方法：为错误提供丰富的上下文信息
     // 2. 正确的错误链：使用source()方法提供错误溯源
     // 3. 结构化错误信息：使用request_value等方法提供结构化数据
@@ -1487,7 +1488,7 @@ mod tests {
         assert!(error_msg.contains("读取文件"));
     }
 
-    // Rust 1.76+ 增强的 Error trait 特性测试
+    // Rust 1.81+ 增强的 Error trait 特性测试
     #[test]
     fn test_enhanced_error_trait() {
         use std::error::Error;

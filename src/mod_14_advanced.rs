@@ -347,7 +347,7 @@ fn union_types() {
 
         // 修改为浮点数
         // 这会覆盖内存中的整数值
-        u.f = 3.14;
+        u.f = 2.5;
         println!("作为浮点数: {}", u.f);
 
         // 现在作为整数读取会得到未定义的行为
@@ -416,10 +416,10 @@ fn union_types() {
 }
 
 // ===========================================
-// 5. 内联汇编（Inline Assembly）- Rust 1.54
+// 5. 内联汇编（Inline Assembly）- Rust 1.59
 // ===========================================
 
-// 内联汇编是 Rust 1.54 版本开始稳定的重要特性
+// 内联汇编是 Rust 1.59 版本开始稳定的重要特性
 // 它允许在 Rust 代码中直接嵌入汇编语言指令，实现对硬件的直接控制
 // 这是系统编程、性能优化和底层开发的重要工具
 
@@ -439,9 +439,9 @@ fn union_types() {
 
 #[cfg(all(target_arch = "x86_64", target_os = "linux"))]
 fn inline_assembly() {
-    println!("=== 内联汇编 (Rust 1.54+) ===");
+    println!("=== 内联汇编 (Rust 1.59+) ===");
 
-    // Rust 1.54 内联汇编的基本语法
+    // Rust 1.59 内联汇编的基本语法
     // asm!("汇编模板", 操作数1, 操作数2, ...);
     // 汇编模板：包含汇编指令和占位符
     // 操作数：指定输入、输出和标签
@@ -492,7 +492,7 @@ fn inline_assembly() {
     }
     println!("内联汇编乘法: {} * {} = {}", a, b, product);
 
-    // Rust 1.54 内联汇编的操作数类型详解
+    // Rust 1.59 内联汇编的操作数类型详解
     // in(reg)：输入到通用寄存器
     // out(reg)：从通用寄存器输出
     // inout(reg)：输入输出通用寄存器
@@ -601,7 +601,7 @@ fn inline_assembly() {
         println!("内存屏障后读取: {}", value);
     }
 
-    // Rust 1.54 内联汇编的实际应用场景
+    // Rust 1.59 内联汇编的实际应用场景
     // 场景 1：性能关键的内联函数
     #[inline(always)]
     unsafe fn fast_abs(x: i32) -> i32 {
@@ -678,9 +678,9 @@ fn inline_assembly() {
 // 其他平台的内联汇编处理
 #[cfg(not(all(target_arch = "x86_64", target_os = "linux")))]
 fn inline_assembly() {
-    println!("=== 内联汇编 (Rust 1.54+) ===");
+    println!("=== 内联汇编 (Rust 1.59+) ===");
     println!("内联汇编在当前平台上可能受限或不支持");
-    println!("内联汇编需要 Rust 1.54+ 版本和特定平台支持");
+    println!("内联汇编需要 Rust 1.59+ 版本和特定平台支持");
     println!("当前架构: {}", std::env::consts::ARCH);
     println!("当前系统: {}", std::env::consts::OS);
 
@@ -3133,14 +3133,18 @@ fn advanced_example_program() {
 }
 
 // ===========================================
-// 17. Rust 1.80 #[cfg(accessible)] 配置谓词
+// 17. #[cfg(accessible)] 配置谓词（nightly-only）
 // ===========================================
 
-// Rust 1.80 引入了 #[cfg(accessible)] 配置谓词，这是一个强大的条件编译特性
-// 它允许基于项目路径的可访问性进行条件编译，为大型项目和库提供更精细的控制
+// 注意：截止 Rust 1.97，`#[cfg(accessible)]` **仍然是不稳定特性**，
+// 只能在 nightly 工具链上通过 feature 开关使用，stable 上不可用。
+//
+// 它允许基于路径的可访问性进行条件编译，为大型项目和库提供更精细的控制。
+// 这里只介绍概念和语法，帮助读者了解 Rust 正在演进的条件编译能力；
+// 下面的示例代码全部以注释形式保留，需要 nightly 才能运行。
 
 fn cfg_accessible_predicate() {
-    println!("=== Rust 1.80 #[cfg(accessible)] 配置谓词 ===");
+    println!("=== #[cfg(accessible)] 配置谓词 (nightly-only) ===");
 
     // #[cfg(accessible)] 的背景和意义：
     // 1. 精细控制：基于路径的可访问性进行条件编译
@@ -3594,14 +3598,16 @@ fn practical_cfg_accessible_examples() {
 */
 
 // ===========================================
-// 18. Rust 1.82 #[repr(transparent)] 对结构体支持
+// 18. #[repr(transparent)] 透明包装器
 // ===========================================
 
-// Rust 1.82 完善了对结构体的 #[repr(transparent)] 支持，这是一个重要的内存布局控制特性
-// 它允许结构体在内存布局上与其内部的唯一字段完全相同，为 FFI 和类型安全的封装提供了更好的支持
+// `#[repr(transparent)]` 早已稳定（struct 1.28 起，单变量枚举 1.54 起），
+// 它让结构体在内存布局上与其内部的唯一字段完全相同，
+// 为 FFI 和类型安全的封装提供了更好的支持。
+// 本节介绍它的用途与限制。
 
 fn repr_transparent_structs() {
-    println!("=== Rust 1.82 #[repr(transparent)] 对结构体支持 ===");
+    println!("=== #[repr(transparent)] 透明包装器 ===");
 
     // #[repr(transparent)] 的背景和意义：
     // 1. FFI 互操作性：在 C 语言接口中透明传递 Rust 类型
@@ -4050,14 +4056,16 @@ fn practical_transparent_examples() {
 }
 
 // ===========================================
-// 19. Rust 1.91: Const 上下文中的可变引用 (Const Context Mutable References)
+// 19. Rust 1.83: Const 上下文中的可变引用 (Const Context Mutable References)
 // ===========================================
 
-// Rust 1.91 (2025-10-30) 引入了在 const 上下文中支持 &mut
-// 这极大扩展了编译时计算的能力，允许在 const fn 中使用可变引用
+// Rust 1.83 稳定了在 const 上下文（const fn / const 块）中支持 `&mut`、`*mut`、
+// `&Cell` 和 `*const Cell`，这极大扩展了编译时计算的能力。
+// 在 1.83 之前，const fn 里只能通过传值反复运算；现在可以在 const fn 内部
+// 使用可变引用原地修改数据，写起来更接近普通代码。
 
 pub fn const_mut_refs() {
-    println!("=== Rust 1.91: Const 上下文中的可变引用 ===");
+    println!("=== Rust 1.83: Const 上下文中的可变引用 ===");
 
     // 编译时交换值
     const fn const_swap(arr: &mut [i32], x: usize, y: usize) {
@@ -4206,6 +4214,127 @@ fn recent_low_level_improvements() {
 }
 
 // ===========================================
+// 21. Rust 1.95-1.97 底层能力补充（二）
+// ===========================================
+
+// 第 20 节讲完 1.92-1.95 的第一批底层增强，本节继续补齐 1.95-1.97 的剩余内容：
+// - Rust 1.95: `MaybeUninit<[T; N]>` 与 `[MaybeUninit<T>; N]` 互相转换
+// - Rust 1.95: `Cell<[T; N]>` 的 AsRef 转换
+// - Rust 1.95: 裸指针的 `as_ref_unchecked` / `as_mut_unchecked`
+// - Rust 1.95: `Layout` 的 `repeat` / `repeat_packed` / `extend_packed`
+// - Rust 1.95: `ControlFlow::is_break` / `is_continue` 可在 const 中使用
+// - Rust 1.97: `RepeatN` 实现 `Default`
+//
+// 共同主题是“初始化与内存布局”：
+// 系统编程里最常打交道的就是“先准备一块内存，再决定怎么填”。
+// 这些 API 把这类操作变得更安全、更少样板代码。
+
+fn recent_low_level_improvements_part2() {
+    println!("=== Rust 1.95-1.97 底层能力补充（二） ===");
+
+    use std::cell::Cell;
+    use std::mem::MaybeUninit;
+
+    // Rust 1.95: MaybeUninit 数组转换
+    //
+    // MaybeUninit<T> 表示“可能未初始化的 T”。
+    // 当你手头是 `[MaybeUninit<T>; N]`（逐个准备元素）时，
+    // 现在可以直接转换成 `MaybeUninit<[T; N]>`（一整块待初始化内存），
+    // 反之亦然，无需自己手工转指针。
+    //
+    // 典型场景：FFI 缓冲区、SIMD 打包、用数组拼装结构体。
+    let mut slots: [MaybeUninit<u32>; 3] = [MaybeUninit::uninit(); 3];
+    slots[0].write(10);
+    slots[1].write(20);
+    slots[2].write(30);
+    // 元素都已就绪，转成“整块未初始化内存”的形式。
+    let whole: MaybeUninit<[u32; 3]> = slots.into();
+    // 反向转换也支持：从整块内存重新拆回逐个元素。
+    let slots_again: [MaybeUninit<u32>; 3] = whole.into();
+    let sum: u32 = unsafe { slots_again.into_iter().map(|s| s.assume_init()).sum() };
+    println!("MaybeUninit 数组转换后的元素之和: {sum}");
+
+    // Rust 1.95: Cell<[T; N]> 的 AsRef
+    //
+    // 之前 `Cell<[T; N]>` 只能整体读写，现在可以把它当成
+    // `[Cell<T>; N]` 或 `[Cell<T>]` 的引用看待。
+    // 这有什么用？写锁步（lock-step）算法时，
+    // 可以“逐元素原地修改”，而不必每次取 Cell 的可变引用。
+    let cells = Cell::new([1u32, 2, 3]);
+    // 两个 AsRef 实现同时存在，需要显式标注类型来消歧。
+    let as_array: &[Cell<u32>; 3] = <Cell<[u32; 3]> as AsRef<[Cell<u32>; 3]>>::as_ref(&cells);
+    let as_slice: &[Cell<u32>] = <Cell<[u32; 3]> as AsRef<[Cell<u32>]>>::as_ref(&cells);
+    // 逐元素原地加 1（Cell 的 get/set 不需要 &mut self）。
+    as_array[0].set(as_array[0].get() + 1);
+    as_slice[1].set(as_slice[1].get() + 1);
+    println!("Cell 数组原地修改后: {:?}", cells.get());
+
+    // Rust 1.95: 裸指针的 as_ref_unchecked / as_mut_unchecked
+    //
+    // 以前要把裸指针转成引用，必须写 `unsafe { &*ptr }`。
+    // 新方法把意图写得更清楚：`as_ref_unchecked` 表示“我保证指针此时有效”。
+    // 注意：它仍然是 unsafe 的——调用者有责任保证对齐、有效和非别名约束。
+    let value = 42u32;
+    let raw_const = &value as *const u32;
+    // 把“只读裸指针”转成共享引用。
+    let shared: &u32 = unsafe { raw_const.as_ref_unchecked() };
+    println!("as_ref_unchecked 得到: {shared}");
+
+    let mut mutable = 7u32;
+    let raw_mut = &mut mutable as *mut u32;
+    // 把“可变裸指针”转成可变引用。
+    let exclusive: &mut u32 = unsafe { raw_mut.as_mut_unchecked() };
+    *exclusive += 1;
+    println!("as_mut_unchecked 修改后: {mutable}");
+
+    // Rust 1.95: Layout 的 repeat 系列
+    //
+    // Layout 描述“一块内存怎么对齐、多大”。手动分配数组内存时，
+    // 需要按元素大小重复布局：
+    // - `repeat(n)`：n 个元素，返回 (新布局, 步长)。步长用于手动算偏移
+    // - `repeat_packed(n)`：n 个元素，但要求对齐必须是元素对齐的幂
+    // - `extend_packed(layout)`：在本布局后面接上另一段布局
+    //
+    // 它们都返回 Result，因为计算可能溢出（元素数量太大时）。
+    let elem = std::alloc::Layout::new::<u32>();
+    let (array_layout, stride) = elem.repeat(4).unwrap();
+    println!("Layout::repeat(4): stride={stride}, size={}", array_layout.size());
+    let packed = elem.repeat_packed(4).unwrap();
+    println!("Layout::repeat_packed(4): size={}", packed.size());
+    let extended = elem.extend_packed(elem).unwrap();
+    println!("Layout::extend_packed: size={}", extended.size());
+    // dangling_ptr 返回“该布局对应的合法悬垂指针”，
+    // 常用于“还没有数据可指向”时的占位指针。
+    let _dangling = elem.dangling_ptr();
+    println!("Layout::dangling_ptr 可用作占位指针");
+
+    // Rust 1.95: ControlFlow::is_break / is_continue 可在 const 中使用
+    //
+    // ControlFlow 是标准库内部常用的“提前返回”枚举，
+    // 现在它的两个判断方法可以在常量求值里使用。
+    use std::ops::ControlFlow;
+    const IS_BREAK: bool = ControlFlow::<u32, u32>::Break(3).is_break();
+    const IS_CONTINUE: bool = ControlFlow::<u32, u32>::Continue(1).is_continue();
+    println!("const 求值: Break.is_break = {IS_BREAK}, Continue.is_continue = {IS_CONTINUE}");
+
+    // Rust 1.97: RepeatN 实现 Default
+    //
+    // RepeatN 是 `repeat_n(x, n)` 产生的迭代器，表示“重复 n 次”。
+    // 现在它可以 Default 构造（空重复迭代器），
+    // 方便在泛型代码里用 Default::default() 占位。
+    let empty: std::iter::RepeatN<u8> = Default::default();
+    let count = empty.count();
+    println!("Default 的 RepeatN 元素数量: {count}");
+
+    // 小结：
+    // 1. MaybeUninit 数组转换解决了“逐个准备元素”和“整块内存”之间的搬运问题
+    // 2. Cell 数组的 AsRef 让内部可变性可以精确到元素
+    // 3. 裸指针转引用的 unchecked 方法把不安全操作的意图写得更清楚
+    // 4. Layout 计算溢出有 Result 兜底，不会悄悄返回错误布局
+    println!();
+}
+
+// ===========================================
 // 主函数
 // ===========================================
 
@@ -4232,6 +4361,7 @@ pub fn main() {
     latest_const_and_generic_enhancements();
     const_mut_refs();
     recent_low_level_improvements();
+    recent_low_level_improvements_part2();
     advanced_example_program();
 
     println!("高级特性演示完成！");
@@ -5081,6 +5211,52 @@ mod tests {
         assert!(LazyLock::get(&lock).is_none());
         LazyLock::force_mut(&mut lock).push('!');
         assert_eq!(LazyLock::force(&lock), "stable!");
+    }
+
+    #[test]
+    fn test_recent_low_level_improvements_part2() {
+        use std::cell::Cell;
+        use std::mem::MaybeUninit;
+
+        // MaybeUninit 数组转换（Rust 1.95）
+        let mut slots: [MaybeUninit<u32>; 3] = [MaybeUninit::uninit(); 3];
+        slots[0].write(10);
+        slots[1].write(20);
+        slots[2].write(30);
+        let whole: MaybeUninit<[u32; 3]> = slots.into();
+        let slots_again: [MaybeUninit<u32>; 3] = whole.into();
+        let sum: u32 = unsafe { slots_again.into_iter().map(|s| s.assume_init()).sum() };
+        assert_eq!(sum, 60);
+
+        // Cell 数组 AsRef（Rust 1.95）
+        let cells = Cell::new([1u32, 2, 3]);
+        let as_array: &[Cell<u32>; 3] = <Cell<[u32; 3]> as AsRef<[Cell<u32>; 3]>>::as_ref(&cells);
+        as_array[0].set(as_array[0].get() + 1);
+        assert_eq!(cells.get(), [2, 2, 3]);
+
+        // 裸指针 as_ref_unchecked / as_mut_unchecked（Rust 1.95）
+        let value = 42u32;
+        let raw_const = &value as *const u32;
+        assert_eq!(unsafe { raw_const.as_ref_unchecked() }, &42);
+        let mut mutable = 7u32;
+        let raw_mut = &mut mutable as *mut u32;
+        *unsafe { raw_mut.as_mut_unchecked() } += 1;
+        assert_eq!(mutable, 8);
+
+        // Layout repeat 系列（Rust 1.95）
+        let elem = std::alloc::Layout::new::<u32>();
+        let (array_layout, stride) = elem.repeat(4).unwrap();
+        assert_eq!(stride, 4);
+        assert_eq!(array_layout.size(), 16);
+        assert_eq!(elem.repeat_packed(4).unwrap().size(), 16);
+
+        // ControlFlow const 方法（Rust 1.95）
+        const IS_BREAK: bool = std::ops::ControlFlow::<u32, u32>::Break(3).is_break();
+        assert!(IS_BREAK);
+
+        // RepeatN: Default（Rust 1.97）
+        let empty: std::iter::RepeatN<u8> = Default::default();
+        assert_eq!(empty.count(), 0);
     }
 }
 

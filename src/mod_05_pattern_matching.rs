@@ -816,7 +816,78 @@ fn if_let_guards() {
 }
 
 // ===========================================
-// 13. 模式匹配最佳实践
+// 13. Rust 1.96 assert_matches! 断言宏
+// ===========================================
+
+// Rust 1.96 稳定了 `assert_matches!` 和 `debug_assert_matches!`，
+// 它们检查一个值是否匹配给定模式，不匹配时就 panic。
+//
+// 它和 `assert!(matches!(..))` 的区别：
+// 1. panic 信息里会带上实际值的 Debug 输出，方便排查
+// 2. 写起来少一层嵌套，意图更直接
+//
+// 注意：这两个宏**不在 prelude 里**，需要手动引入。
+// 原因是社区里已经有很多同名宏（例如 matches 生态的老牌 crate），
+// 直接放 prelude 会造成命名冲突。
+
+fn assert_matches_macro() {
+    println!("=== Rust 1.96 assert_matches! 断言宏 ===");
+
+    // 手动引入宏。这里从 core 引入，std 也会 re-export 同款。
+    use core::assert_matches;
+
+    // 模拟一个随机性的输入：合法结果是 1..=6。
+    // 如果不匹配，assert_matches! 会打印出实际值。
+    let dice_roll = 4u32;
+    assert_matches!(dice_roll, 1..=6);
+    println!("骰子点数 {dice_roll} 在 1..=6 范围内，断言通过");
+
+    // 可以匹配复杂模式，例如枚举变体带载荷的情况。
+    #[derive(Debug)]
+    enum Status {
+        Ready,
+        Processing { task_id: u32, progress: u8 },
+        Failed(String),
+    }
+
+    let status = Status::Processing {
+        task_id: 7,
+        progress: 50,
+    };
+    // 模式里的字段用 `..` 省略其余部分，只关注关心的字段。
+    assert_matches!(status, Status::Processing { task_id: 7, .. });
+    println!("任务状态匹配 Processing 且 task_id 为 7");
+
+    // 匹配失败时的表现：panic 信息里会显示实际值。
+    // 这里故意不写这一行，读者可以参考文档里的示例：
+    // assert_matches!(Status::Failed("磁盘已满".into()), Status::Ready);
+    // 上面的断言会 panic，并打印出实际的 Failed("磁盘已满")。
+
+    // `debug_assert_matches!` 和 `assert_matches!` 的关系，
+    // 与 `debug_assert!` 和 `assert!` 的关系一样：
+    // 只在 debug 构建下生效，release 构建里会被移除，零开销。
+    core::debug_assert_matches!(Some(42), Some(n) if n > 0);
+    println!("debug_assert_matches 在 debug 构建下校验通过");
+
+    // 实用场景：解析结果的结构化校验。
+    // 测试解析函数时，与其逐字段 unwrap 再断言，
+    // 不如一步断言“结果必须是某个形态”。
+    fn parse_port(input: &str) -> Result<u16, std::num::ParseIntError> {
+        input.parse()
+    }
+    let parsed = parse_port("8080");
+    assert_matches!(parsed, Ok(8080));
+    println!("端口解析结果匹配 Ok(8080)");
+
+    // 小结：
+    // 1. assert_matches! 把“模式匹配 + 断言”合并成一步
+    // 2. 失败时会打印实际值，调试体验优于 matches! 组合
+    // 3. 需要手动 use，不在 prelude 中
+    println!();
+}
+
+// ===========================================
+// 14. 模式匹配最佳实践
 // ===========================================
 
 // 掌握模式匹配的最佳实践对于编写高质量 Rust 代码至关重要
@@ -1028,6 +1099,7 @@ pub fn main() {
     advanced_pattern_matching();
     matches_macro();
     if_let_guards();
+    assert_matches_macro();
     pattern_matching_best_practices();
     pattern_matching_example_program();
 
@@ -1261,5 +1333,26 @@ mod tests {
         };
 
         assert_eq!(result, 12);
+    }
+
+    #[test]
+    fn test_assert_matches_macro() {
+        use core::assert_matches;
+
+        // 简单模式匹配（Rust 1.96）
+        assert_matches!(Some(42), Some(42));
+        assert_matches!(Result::<i32, i32>::Ok(7), Ok(7));
+
+        // 复杂模式 + 守卫
+        assert_matches!(Some(10), Some(n) if n > 5);
+
+        // debug_assert_matches 在 debug 构建生效
+        core::debug_assert_matches!(Some("x"), Some(_));
+
+        // 失败场景：值不匹配模式时宏会 panic
+        let result = std::panic::catch_unwind(|| {
+            core::assert_matches!(Some(1), Some(2));
+        });
+        assert!(result.is_err());
     }
 }

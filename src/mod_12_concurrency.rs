@@ -2485,22 +2485,29 @@ fn concurrency_example_program() {
 }
 
 // ===========================================
-// 15. Rust 1.91: Sync Exclusive
+// ===========================================
+// 15. 概念演示：Exclusive<T> 独占访问包装器
 // ===========================================
 
-// Rust 1.91 引入了 std::sync::Exclusive<T>
-// 这是一个同步原语，提供对 T 的独占访问，相当于编译时的 Mutex
-// 它实现了 Sync，即使 T 只是 Send
+// 注意：标准库的 `std::sync::Exclusive<T>` 至今（Rust 1.97）仍是 nightly-only，
+// 尚未在 stable 稳定。本节用教学模拟讲解它的设计思想：
+// 为什么"独占访问"能让一个仅 Send 的类型安全地变为 Sync。
+//
+// 核心思路：
+// - Exclusive<T> 拥有 T，只通过 &mut self 暴露内部值
+// - &mut 引用在编译期就保证了独占性（同一时刻只有一个可变借用）
+// - 因此共享引用 &Exclusive<T> 无法触及内部值，天然线程安全
+//
+// 对比 Mutex：
+// - Mutex 是运行期互斥（加锁/解锁）
+// - Exclusive 是编译期互斥（借用规则）
+// - 两者用途不同：Exclusive 主要用于"只在线程间传递、不共享访问"的场景
 
 pub fn sync_exclusive() {
-    println!("=== Rust 1.91: Sync Exclusive ===");
+    println!("=== 概念演示：Exclusive<T> 独占访问包装器（尚未稳定） ===");
 
-    // std::sync::Exclusive 是一个包装器
-    // 它只允许拥有 Exclusive<T> 的所有者访问 T
-    // 因为它拥有 T，所以它可以在线程间安全传递（实现了 Sync）
-
-    // 模拟 Rust 1.91 的 Exclusive (如果标准库尚未提供，这里是概念演示)
-    // 注意：在实际 Rust 1.91 中，这位于 std::sync::Exclusive
+    // 教学模拟：与标准库设计一致的最小实现。
+    // 真实使用时应等待 stable，或用 nightly 的 `exclusive_wrapper` feature。
     struct Exclusive<T: ?Sized> {
         inner: T,
     }
@@ -2621,6 +2628,72 @@ pub fn latest_concurrency_primitives() {
 }
 
 // ===========================================
+// 17. Rust 1.96 并发相关 From 实现
+// ===========================================
+
+// Rust 1.96 稳定了两个与并发/异常处理相关的 From 实现：
+// - `From<T> for AssertUnwindSafe<T>`：把任意值包进“断言可安全跨越 unwind 边界”的包装器
+// - `From<T> for LazyLock<T, F>`：直接用已有值构造懒初始化容器
+//
+// 本节把它们放在一起讲，因为它们在并发代码里的使用场景经常重合：
+// 1. `catch_unwind` 跨线程捕获 panic 时，需要 AssertUnwindSafe 绕过编译器检查
+// 2. 全局懒初始化配置时，LazyLock 是线程安全的首选
+// 3. “先用已有值占位，之后再按需替换”是很常见的初始化策略
+
+fn concurrency_from_impls() {
+    println!("=== Rust 1.96 并发相关 From 实现 ===");
+
+    // Rust 1.96: `From<T> for AssertUnwindSafe<T>`
+    //
+    // 背景：`catch_unwind` 要求闭包实现 `UnwindSafe`，
+    // 但某些闭包捕获了 `&mut T` 之类的引用，编译器无法证明它安全。
+    // `AssertUnwindSafe` 就是“我向你保证这里没问题”的包装器。
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    // 新稳定的是 From 实现：当值本身满足 UnwindSafe 时，
+    // 可以直接 `.into()` 包装，再统一走包装器接口。
+    let plain: AssertUnwindSafe<u32> = 42u32.into();
+    // 包装器通过公开字段 `.0` 或 Deref 暴露内部值。
+    println!("AssertUnwindSafe::from(42) 的内部值 = {}", plain.0);
+
+    // 真正需要手动包装的场景：闭包捕获了 `&mut` 引用。
+    // 此时闭包不满足 UnwindSafe，编译器会拒绝直接传给 catch_unwind，
+    // 因此我们用 AssertUnwindSafe 显式声明“我保证这个跨 unwind 边界是安全的”。
+    let mut counter = 0u32;
+    let outcome = catch_unwind(AssertUnwindSafe(|| {
+        for _ in 0..10 {
+            counter += 1;
+        }
+    }));
+    println!("捕获 &mut 的闭包执行成功: {:?}, counter = {counter}", outcome.is_ok());
+
+    // Rust 1.96: `From<T> for LazyLock<T, F>`
+    //
+    // LazyLock 是线程安全的懒初始化容器（1.80 稳定）。
+    // 以前必须 `LazyLock::new(|| value)`，现在如果值已经算好，
+    // 可以直接 `value.into()` 构造，闭包类型会被推断成 `fn() -> T`。
+    use std::sync::LazyLock;
+
+    let precomputed: LazyLock<String, fn() -> String> = "hello".to_string().into();
+    println!("LazyLock::from 构造后取值: {}", LazyLock::force(&precomputed));
+
+    // 实用场景：把“已算好的默认值”放进 LazyLock，
+    // 后续代码可以统一走 `force` 接口，无需关心值是否已经初始化。
+    let defaults: LazyLock<Vec<u32>, fn() -> Vec<u32>> = vec![1, 2, 3].into();
+    let items = LazyLock::force(&defaults);
+    println!("LazyLock 内元素: {items:?}");
+
+    // 注意：`From<T> for LazyCell<T, F>`（单线程版）在 1.96 同时稳定，
+    // 用法一致，只是 LazyCell 不实现 Sync，适合单线程场景。
+
+    // 小结：
+    // 1. AssertUnwindSafe 的 From 让 catch_unwind 包装少一层样板
+    // 2. LazyLock 的 From 让“已有值”与“懒初始化”两种模式无缝切换
+    // 3. 这些实现本质上都是语法糖，真正重要的是理解底层语义
+    println!();
+}
+
+// ===========================================
 // 主函数
 // ===========================================
 
@@ -2644,6 +2717,7 @@ pub fn main() {
     concurrency_example_program();
     sync_exclusive();
     latest_concurrency_primitives();
+    concurrency_from_impls();
 
     println!("并发编程演示完成！");
 }
@@ -2798,5 +2872,27 @@ mod tests {
         assert_eq!(updated, Ok(2));
         assert_eq!(rejected, Err(4));
         assert_eq!(counter.load(Ordering::SeqCst), 4);
+    }
+
+    #[test]
+    fn test_concurrency_from_impls() {
+        use std::panic::{AssertUnwindSafe, catch_unwind};
+
+        // From<T> for AssertUnwindSafe<T>（Rust 1.96）
+        let wrapped: AssertUnwindSafe<u32> = 42u32.into();
+        assert_eq!(wrapped.0, 42);
+
+        // 捕获 &mut 引用的闭包需要 AssertUnwindSafe 包装
+        let mut counter = 0u32;
+        let outcome = catch_unwind(AssertUnwindSafe(|| {
+            counter += 1;
+        }));
+        assert!(outcome.is_ok());
+        assert_eq!(counter, 1);
+
+        // From<T> for LazyLock<T, F>（Rust 1.96）
+        use std::sync::LazyLock;
+        let precomputed: LazyLock<String, fn() -> String> = "hello".to_string().into();
+        assert_eq!(LazyLock::force(&precomputed), "hello");
     }
 }

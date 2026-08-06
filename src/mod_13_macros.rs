@@ -104,7 +104,7 @@ fn declarative_macros_basics() {
         };
     }
 
-    print_all!(1, "hello", 3.14, true);
+    print_all!(1, "hello", 2.5, true);
 
     // 声明式宏的优势和注意事项：
     // 优势：

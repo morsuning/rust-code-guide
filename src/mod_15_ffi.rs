@@ -118,7 +118,7 @@ fn data_type_mapping() {
     // 注意：大多数平台上 i32 和 c_int 大小相同，但这不是保证的
     // 在嵌入式系统或特殊平台上，它们可能不同
 
-    let rust_float: f64 = 3.14;
+    let rust_float: f64 = 2.5;
     let c_double_val: c_double = rust_float as c_double;
     println!("Rust f64 -> C double: {} -> {}", rust_float, c_double_val);
     // 浮点类型的映射通常比较简单，因为大多数现代系统使用 IEEE 754 标准
@@ -1776,6 +1776,58 @@ fn latest_ffi_updates() {
 }
 
 // ===========================================
+// 12. Rust 1.97 FFI 错误类型增强
+// ===========================================
+
+// Rust 1.97 让 `FromBytesUntilNulError` 实现了 Copy。
+//
+// 背景：`CStr::from_bytes_until_nul` 用来把字节切片转换成 C 字符串，
+// 当输入字节里找不到结尾的 `\0` 时，会返回这个错误类型。
+//
+// 为什么 Copy 很重要？
+// 1. 之前每次匹配这个错误，要么借用、要么重新构造
+// 2. 现在它可以按值复制，错误处理代码可以更自由地传递和复用
+//
+// 对新手来说，这里想传达的一个普遍规律：
+// “错误类型本身小而简单（不含堆分配）时，实现 Copy 是很自然的演进方向”。
+
+fn ffi_error_type_enhancement() {
+    println!("=== Rust 1.97 FFI 错误类型增强 ===");
+
+    use std::ffi::CStr;
+
+    // 一个合法输入：末尾有 \0，转换成功。
+    let valid = b"hello\0";
+    match CStr::from_bytes_until_nul(valid) {
+        Ok(cstr) => println!("合法 C 字符串: {:?}", cstr.to_bytes()),
+        Err(_) => unreachable!(),
+    }
+
+    // 一个非法输入：没有 \0，返回 FromBytesUntilNulError。
+    let invalid = b"no-null-terminator";
+    let error: std::ffi::FromBytesUntilNulError = match CStr::from_bytes_until_nul(invalid) {
+        Ok(_) => unreachable!(),
+        Err(e) => e,
+    };
+
+    // Rust 1.97 之前，这里需要小心所有权；现在错误可以直接按值复制，
+    // 多个分支都能各自持有一份，不必反复匹配借用。
+    let error_copy = error; // Copy 之后原值仍然可用
+    println!("错误类型尺寸: {} 字节", std::mem::size_of_val(&error_copy));
+    println!("错误值可以重复使用: {error:?}（已复制，原值仍在）");
+
+    // 实用场景：把错误保存起来稍后报告，或者聚合成自定义错误类型。
+    // 因为错误是 Copy 的，收集多个错误时不会触发移动语义的麻烦。
+    let errors: Vec<std::ffi::FromBytesUntilNulError> = vec![error, error_copy];
+    println!("收集了 {} 个错误实例", errors.len());
+
+    // 小结：
+    // 1. from_bytes_until_nul 是 C 字符串解析的常用入口
+    // 2. 错误类型实现 Copy 后，处理多个失败场景时更灵活
+    println!();
+}
+
+// ===========================================
 // 主函数
 // ===========================================
 
@@ -1794,6 +1846,7 @@ pub fn main() {
     safe_wrappers();
     std_os_fd_standardization();
     latest_ffi_updates();
+    ffi_error_type_enhancement();
 
     println!("FFI 演示完成！");
 }
@@ -1956,6 +2009,22 @@ mod tests {
         let (ptr, len, cap) = text.into_raw_parts();
         let rebuilt = unsafe { String::from_raw_parts(ptr, len, cap) };
         assert_eq!(rebuilt, "ffi");
+    }
+
+    #[test]
+    fn test_ffi_error_type_copy() {
+        use std::ffi::CStr;
+
+        // 合法输入
+        let valid = b"hello\0";
+        assert!(CStr::from_bytes_until_nul(valid).is_ok());
+
+        // 非法输入：FromBytesUntilNulError 是 Copy 的（Rust 1.97）
+        let error: std::ffi::FromBytesUntilNulError =
+            CStr::from_bytes_until_nul(b"no-null").unwrap_err();
+        let error_copy = error; // Copy：原值仍可用
+        let errors = vec![error, error_copy];
+        assert_eq!(errors.len(), 2);
     }
 }
 

@@ -859,14 +859,14 @@ async fn practical_examples() {
 }
 
 // ===========================================
-// 11. Rust 1.85 异步 trait 方法改进
+// 11. 异步 trait 方法（async fn in traits）
 // ===========================================
 
-// Rust 1.85 引入了对异步 trait 方法的重大改进，使得在 trait 中定义和使用异步方法变得更加自然和直观
-// 这个改进解决了长期以来异步 trait 方法需要额外语法或第三方库的问题
+// `async fn` 可以直接写在 trait 里，这是 Rust 1.75 稳定的能力（RPITIT）。
+// 它解决了长期以来异步 trait 方法需要 async-trait 宏或其他辅助工具的问题。
 
 async fn async_trait_methods() {
-    println!("=== Rust 1.85 异步 trait 方法改进 ===");
+    println!("=== 异步 trait 方法（async fn in traits，Rust 1.75+） ===");
 
     // 异步 trait 方法的背景和意义：
     // 1. 简化语法：不再需要 async-trait 宏或其他辅助工具
@@ -876,7 +876,7 @@ async fn async_trait_methods() {
     // 5. 代码可读性：更直观的异步方法定义和使用
 
     // 基本语法：在 trait 中直接使用 async fn
-    // 注意：这需要 Rust 1.85+ 版本支持
+    // 注意：这需要 Rust 1.75+ 版本支持
 
     // 示例 1: 基本的异步 trait 定义
     trait DatabaseService {
@@ -1412,14 +1412,17 @@ async fn practical_async_trait_examples() {
 }
 
 // ===========================================
-// 12. Rust 1.86 异步函数生命周期改进
+// 12. 异步函数与借用引用（生命周期模式）
 // ===========================================
 
-// Rust 1.86 引入了异步函数生命周期的重要改进，使得异步函数的生命周期处理更加灵活和直观
-// 这些改进简化了异步代码中的生命周期标注，提高了代码的可读性和编译器的推断能力
+// 本节介绍异步函数中常见的生命周期模式：异步函数如何安全地借用参数。
+// 注意：async fn 会捕获参数的生命周期（产生带有生命周期参数的 Future），
+// 这不是某个版本引入的新能力，而是使用 async fn 时一直需要注意的规则。
+// 如果你遇到 "future does not live long enough" 之类的错误，
+// 通常的修法就是把需要的借用放进 async 块内部，或调整签名。
 
 async fn async_function_lifetimes() {
-    println!("=== Rust 1.86 异步函数生命周期改进 ===");
+    println!("=== 异步函数与借用引用（生命周期模式） ===");
 
     // 异步函数生命周期改进的背景和意义：
     // 1. 简化语法：减少显式生命周期标注的需要
@@ -1429,7 +1432,8 @@ async fn async_function_lifetimes() {
     // 5. 性能优化：优化的生命周期处理可能带来更好的性能
 
     // 示例 1: 改进的异步函数生命周期推断
-    // 在 Rust 1.86 之前，这样的函数可能需要显式生命周期标注
+    // 下面的函数借用了 `data`，其返回的 Future 也携带该生命周期。
+    // 只要调用时借用源仍然存活，就能正常工作。
     async fn process_data_ref(data: &[u8]) -> Vec<u8> {
         data.iter().map(|&b| b * 2).collect()
     }
@@ -1535,12 +1539,12 @@ async fn async_function_lifetimes() {
 
     practical_async_lifetime_examples().await;
 
-    println!("异步函数生命周期改进演示完成");
+    println!("异步函数借用引用演示完成");
     println!();
 }
 
 async fn practical_async_lifetime_examples() {
-    println!("=== 异步函数生命周期实际应用示例 ===");
+    println!("=== 异步函数借用引用的实际应用示例 ===");
 
     // 场景 1: HTTP 请求处理中的生命周期
     // 注意：包含 async 方法的 trait 目前不能用于 dyn dispatch
@@ -1915,7 +1919,7 @@ async fn practical_async_lifetime_examples() {
         }
     }
 
-    println!("异步函数生命周期实际应用示例演示完成");
+    println!("异步函数借用引用的实际应用示例演示完成");
 }
 
 // ===========================================

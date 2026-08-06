@@ -50,7 +50,7 @@ fn generic_functions() {
     }
 
     let number = pick(10, "hello"); // T 是 i32，U 是 &str
-    let string = pick("world", 3.14); // T 是 &str，U 是 f64
+    let string = pick("world", 2.5); // T 是 &str，U 是 f64
     println!("选择结果: {} {}", number, string);
 
     // 泛型函数的约束：通过 trait bounds 限制类型参数
@@ -214,7 +214,7 @@ fn generic_enums() {
     }
 
     let empty: Container<i32> = Container::Empty;
-    let single: Container<f64> = Container::Value(3.14);
+    let single: Container<f64> = Container::Value(2.5);
     let pair: Container<&str> = Container::Pair("hello", "world");
 
     println!("自定义枚举: {:?} {:?} {:?}", empty, single, pair);
@@ -607,7 +607,7 @@ fn generic_performance() {
 
     // 编译时会为具体类型生成专门版本
     let int_result = generic_max(5, 10); // 生成 generic_max_i32 版本
-    let float_result = generic_max(3.14, 2.71); // 生成 generic_max_f64 版本
+    let float_result = generic_max(2.5, 1.5); // 生成 generic_max_f64 版本
     let string_result = generic_max("apple", "banana"); // 生成 generic_max_str 版本
 
     println!("整数最大值: {}", int_result);

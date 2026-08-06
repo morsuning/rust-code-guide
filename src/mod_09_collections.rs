@@ -1273,7 +1273,7 @@ fn data_processing_pipeline_system() {
 // - Rust 1.92: BTreeMap::Entry::insert_entry
 // - Rust 1.93: VecDeque::pop_front_if / pop_back_if
 // - Rust 1.94: slice::array_windows, Peekable::next_if_map
-// - Rust 1.95: Vec::push_mut / insert_mut, VecDeque::*_mut
+// - Rust 1.95: Vec::push_mut / insert_mut, VecDeque::*_mut, LinkedList::*_mut
 //
 // 这些 API 的共同特点是：
 // 1. 它们都在减少“先查找、再修改、再回头取值”的重复代码
@@ -1400,6 +1400,19 @@ fn latest_collection_updates() {
         .insert_mut(1, "compile".to_string())
         .push_str(" sources");
     println!("VecDeque 原地插入后: {task_queue:?}");
+
+    // LinkedList 在 Rust 1.95 也补齐了对应的 `push_front_mut` / `push_back_mut`。
+    //
+    // LinkedList 与 Vec 的最大区别是：
+    // - 在中间插入元素是 O(1)，不需要搬动其他元素
+    // - 代价是元素不连续存储，随机访问很慢
+    //
+    // 因此它的 `*_mut` API 特别适合“链表尾部/头部追加后立即修改”的场景，
+    // 例如维护一个待处理任务的双端队列。
+    let mut linked = std::collections::LinkedList::from([10, 20]);
+    *linked.push_back_mut(30) += 5; // 尾部追加 30，并立刻加 5
+    *linked.push_front_mut(0) += 1; // 头部追加 0，并立刻加 1
+    println!("LinkedList 原地追加后: {linked:?}");
 
     // 小结：
     // 这一组 API 最大的价值不是“能做以前做不到的事”，
@@ -1628,5 +1641,17 @@ mod tests {
         assert_eq!(first, Some(42));
         assert_eq!(second, None);
         assert_eq!(tokens.next(), Some("oops"));
+    }
+
+    #[test]
+    fn test_linked_list_push_mut() {
+        // LinkedList::push_front_mut / push_back_mut（Rust 1.95）
+        use std::collections::LinkedList;
+
+        let mut linked = LinkedList::from([10, 20]);
+        *linked.push_back_mut(30) += 5;
+        *linked.push_front_mut(0) += 1;
+        let collected: Vec<i32> = linked.into_iter().collect();
+        assert_eq!(collected, vec![1, 10, 20, 35]);
     }
 }

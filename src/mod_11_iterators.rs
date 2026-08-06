@@ -919,6 +919,82 @@ Rust empowers everyone to build reliable and efficient software.
 }
 
 // ===========================================
+// 9. Rust 1.95-1.96 可 Copy 的范围类型 (core::range)
+// ===========================================
+
+// Rust 1.95 稳定了 `core::range::RangeInclusive`，Rust 1.96 补齐了
+// `core::range::Range` / `RangeFrom` / `RangeToInclusive`。
+// 这是一组**全新的范围类型**，和 `0..5` 这种老语法产生的旧类型并存。
+//
+// 为什么要新造一组类型？核心问题是 Copy：
+// 1. 旧范围类型（如 `std::ops::Range`）实现了 Iterator，直接消费元素
+// 2. 而"既能 Copy 又能被迭代"是互斥的：Copy 要求可以反复复制，
+//    迭代却会消耗内部状态，两者结合容易写出隐蔽 bug
+// 3. 新类型只实现 IntoIterator，迭代前必须显式转换，所以可以 Copy
+//
+// 对新手来说，这一节记住三件事：
+// 1. `0..5` 字面量目前仍是旧类型，未来版本才会逐步切换
+// 2. 新类型能放进 Copy 结构体（例如存一个切片区间），旧的不行
+// 3. 两者都有 IntoIterator，遍历写法完全一样
+
+fn copyable_range_types() {
+    println!("=== Rust 1.95-1.96 可 Copy 的范围类型 ===");
+
+    use core::range::{Range, RangeFrom, RangeInclusive, RangeToInclusive};
+
+    // 用 `From` 从旧语法构造新类型，这是当前最常用的方式：
+    // `0..3` 是旧类型 `std::ops::Range`，`.into()` 转换成新的 `core::range::Range`。
+    let r: Range<usize> = (0..3).into();
+    let ri: RangeInclusive<usize> = (1..=2).into();
+    let rf: RangeFrom<usize> = (3..).into();
+    let rt: RangeToInclusive<usize> = (..=5).into();
+
+    // 新类型可以随意复制（Copy），这是旧类型做不到的。
+    // 一个 `Span` 结构体可以直接存放范围，然后被到处传递。
+    #[derive(Clone, Copy)]
+    struct Span(Range<usize>);
+
+    // 切片直接用新范围索引，语法和旧类型完全一致。
+    // 注意字面量 `4..9` 默认推断为旧类型 `std::ops::Range<{integer}>`，
+    // 所以这里要显式写出元素类型或用 `.into()` 完成到新类型的转换。
+    let text = "hello, world";
+    let span = Span((4usize..9).into());
+    println!("Span(4..9) 索引得到: {:?}", &text[span.0]);
+
+    // 新范围也支持 `contains` / `is_empty` 等查询方法。
+    let ri: RangeInclusive<u32> = (3..=5).into();
+    println!("RangeInclusive(3..=5): contains(4) = {}, is_empty = {}", ri.contains(&4), ri.is_empty());
+
+    // 迭代需要显式调用 `.iter()`（或者 `.clone().into_iter()`），
+    // 因为类型本身不消耗自己——它实现了 IntoIterator 而不是 Iterator。
+    let sum: u32 = ri.iter().sum();
+    println!("ri.iter().sum() = {sum}");
+
+    // 新类型可以直接放进泛型 API。
+    // 函数参数用 `impl RangeBounds` 时，新旧范围都能传进来，
+    // 所以库作者不需要为了支持新类型而改动签名。
+    fn in_range<T: PartialOrd>(value: T, range: impl core::ops::RangeBounds<T>) -> bool {
+        range.contains(&value)
+    }
+    let old_range: std::ops::Range<u32> = 0..10; // 旧类型
+    let new_range: Range<u32> = (0..10).into();  // 新类型
+    println!("旧类型 in_range(5) = {}, 新类型 in_range(5) = {}", in_range(5, old_range), in_range(5, new_range));
+
+    // RangeToInclusive 和旧版一样支持 Copy，这里展示它作为边界判断的用法。
+    println!("RangeToInclusive(..=5) contains(5) = {}", rt.contains(&5));
+
+    // 未来版本会把 `0..5` 字面量默认解析成新类型，
+    // 同时旧类型会迁移到 `core::range::legacy` 模块。
+    // 现在写的代码两种都兼容，迁移时不会破坏。
+
+    // 小结：
+    // 1. 新范围类型解决的是“Copy 与迭代互斥”的设计难题
+    // 2. 通过 `.into()` 从旧语法构造，向后兼容
+    // 3. 泛型接口用 RangeBounds 抽象，新旧类型无缝混用
+    println!();
+}
+
+// ===========================================
 // 主函数
 // ===========================================
 
@@ -934,6 +1010,7 @@ pub fn main() {
     iterator_performance();
     iterator_patterns();
     iterator_example_program();
+    copyable_range_types();
 
     println!("迭代器演示完成！");
 }
@@ -1038,5 +1115,38 @@ mod tests {
         let analyzer = TextAnalyzer::new("Hello world Rust".to_string());
         assert_eq!(analyzer.word_count(), 3);
         assert_eq!(analyzer.character_count(), 16);
+    }
+
+    #[test]
+    fn test_copyable_range_types() {
+        use core::range::{Range, RangeFrom, RangeInclusive};
+
+        // 新范围类型是 Copy 的（Rust 1.95-1.96）
+        let r: Range<usize> = (0..3).into();
+        let r2 = r; // Copy，原值仍可用
+        assert_eq!(r, r2);
+
+        // 切片索引与旧语法一致
+        let text = "hello, world";
+        assert_eq!(&text[Range::from(0..5)], "hello");
+
+        // 迭代需要显式 .iter()
+        let ri: RangeInclusive<u32> = (3..=5).into();
+        assert_eq!(ri.contains(&4), true);
+        assert_eq!(ri.is_empty(), false);
+        assert_eq!(ri.iter().sum::<u32>(), 12);
+
+        // 泛型 RangeBounds 同时接受新旧类型
+        fn in_range<T: PartialOrd>(value: T, range: impl core::ops::RangeBounds<T>) -> bool {
+            range.contains(&value)
+        }
+        let old_range: std::ops::Range<u32> = 0..10;
+        let new_range: Range<u32> = (0..10).into();
+        assert!(in_range(5, old_range));
+        assert!(in_range(5, new_range));
+
+        // RangeFrom 支持无限范围
+        let rf: RangeFrom<u32> = (3..).into();
+        assert_eq!(rf.start, 3);
     }
 }

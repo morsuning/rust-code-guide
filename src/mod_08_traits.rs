@@ -1644,7 +1644,7 @@ fn comprehensive_graphics_system() {
 // 11. 实验性补充：Type Alias Impl Trait (TAIT)
 // ===========================================
 
-// TAIT 截至 Rust 1.95 仍然不是稳定特性。
+// TAIT 截至 Rust 1.97 仍然不是稳定特性。
 // 这里保留注释示例，方便对照理解它未来可能带来的 trait 返回类型表达方式。
 
 /*

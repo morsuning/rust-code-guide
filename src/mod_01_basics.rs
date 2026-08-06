@@ -122,8 +122,9 @@ fn data_types() {
     // 浮点类型：IEEE 754 标准的浮点数
     // f32：单精度浮点数，精度约为 6-9 位十进制数
     // f64：双精度浮点数，精度约为 15-17 位十进制数（默认）
-    let m: f32 = 3.1415926; // 单精度
-    let n: f64 = 2.718281828459045; // 双精度
+    // 注：数学常量请使用 std::f32::consts 等常量，避免手写字面量
+    let m: f32 = std::f32::consts::PI; // 单精度
+    let n: f64 = std::f64::consts::E; // 双精度
 
     // 浮点数的特殊值
     let infinity: f64 = f64::INFINITY;
@@ -963,6 +964,116 @@ fn practical_expect_examples() {
 }
 
 // ===========================================
+// 9. Rust 1.95-1.97 数值与转换增强
+// ===========================================
+
+// Rust 1.95 和 1.97 为数值类型补充了两组非常实用的 API：
+// - Rust 1.95: `bool: TryFrom<{integer}>`，把“整数转布尔”变成显式可失败转换
+// - Rust 1.97: `highest_one` / `lowest_one` / `isolate_*_one` / `bit_width`，
+//   一次取到“最高/最低的置位位置”，省去手写位扫描循环
+//
+// 对新手来说，这一节想传达两件事：
+// 1. 标准库在持续补齐“很常用但过去要自己写”的小工具
+// 2. 新增 API 的命名往往直接对应真实场景：`isolate` 表示“把某一位单独拎出来”
+
+fn numeric_and_conversion_enhancements() {
+    println!("=== Rust 1.95-1.97 数值与转换增强 ===");
+
+    // Rust 1.95: `bool: TryFrom<{integer}>`
+    //
+    // 之前想把整数当布尔用，通常写 `x != 0`。
+    // 现在标准库提供了一个显式的转换接口，并且是“可失败”的：
+    // - 0 转成 false
+    // - 1 转成 true
+    // - 其他值转换失败，返回错误
+    //
+    // 它的价值在于把“语义边界”讲清楚：
+    // 只有 0 和 1 是合法的布尔编码，其余整数都不该被悄悄当成 true。
+    let ok_true: Result<bool, _> = 1u8.try_into();
+    let ok_false: Result<bool, _> = 0u16.try_into();
+    let bad: Result<bool, _> = 2u8.try_into();
+    println!("bool::try_from(1) = {ok_true:?}");
+    println!("bool::try_from(0) = {ok_false:?}");
+    println!("bool::try_from(2) = {bad:?}");
+
+    // 实际使用中常见的模式是配合 `?` 或 `unwrap_or`：
+    // 解析“0/1 标志位”时，非法值直接按默认值处理。
+    let flag: bool = "1".parse::<u8>().unwrap().try_into().unwrap_or(false);
+    println!("解析标志位（输入 1）得到: {flag}");
+
+    // Rust 1.97: `highest_one` / `lowest_one`
+    //
+    // 这两个方法回答同一个问题：“这个整数的二进制里，最高/最低的 1 在第几位？”
+    // 以 0b1010_0100 为例：
+    // - 最低的 1 在第 2 位（从 0 开始数）
+    // - 最高的 1 在第 7 位
+    //
+    // 为什么有用？
+    // 1. 判断“下一个更大的 2 的幂”相关计算
+    // 2. 位图、位掩码操作里快速定位置位区间
+    // 3. 序列化/协议解析中查找定界位
+    let bits: u32 = 0b1010_0100;
+    println!("0b1010_0100: highest_one = {:?}, lowest_one = {:?}", bits.highest_one(), bits.lowest_one());
+
+    // `isolate_highest_one` / `isolate_lowest_one` 更进一步：
+    // 它们直接返回“只有那一位是 1”的掩码，其余位全部清零。
+    //
+    // 这特别适合：
+    // 1. 从位图中提取单个标志后继续做位运算
+    // 2. 逐步消费置位位（处理一个，清掉一个）
+    let mask_hi = bits.isolate_highest_one();
+    let mask_lo = bits.isolate_lowest_one();
+    println!("isolate_highest_one = {mask_hi:#010b}, isolate_lowest_one = {mask_lo:#010b}");
+
+    // 对于全零值，highest_one / lowest_one 返回 None，
+    // isolate 系列返回 0，所以不存在“越界”问题。
+    let zero: u32 = 0;
+    println!("0 的 highest_one = {:?}, isolate_lowest_one = {:#010b}", zero.highest_one(), zero.isolate_lowest_one());
+
+    // 有符号整数同样适用：它按“补码位模式”计算，不关心符号语义。
+    let neg: i32 = -4; // 二进制是 ...1111_1100
+    println!("-4 的 highest_one = {:?}（补码中从低到高第一个 1 在第 2 位）", neg.lowest_one());
+
+    // Rust 1.97: `bit_width`
+    //
+    // 返回“表示这个值最少需要多少位”，等价于 `64 - leading_zeros`，
+    // 但写成专门的方法更直白，也免去计算类型的位数（32 位还是 64 位）。
+    // 注意：bit_width 只对无符号整数和 NonZero 系列可用。
+    println!("255u32 的 bit_width = {}", 255u32.bit_width());
+    println!("1u32 的 bit_width = {}", 1u32.bit_width());
+
+    // Rust 1.97: `NonZero` 系列的位操作方法
+    //
+    // `NonZeroU32` 等类型保证“非零”，因此：
+    // - `highest_one` / `lowest_one` 直接返回 usize，不需要 Option
+    // - 同样提供 isolate 系列和 bit_width
+    //
+    // 对新手来说，这里想强调 NonZero 类型的价值：
+    // 类型系统直接排除 0，调用方少写一次判断。
+    use std::num::NonZeroU32;
+    let nonzero = NonZeroU32::new(0b1010_0100).unwrap();
+    println!("NonZeroU32(0b1010_0100): highest_one = {}, lowest_one = {}, bit_width = {}",
+             nonzero.highest_one(), nonzero.lowest_one(), nonzero.bit_width());
+    let nz_isolate = nonzero.isolate_lowest_one();
+    println!("NonZeroU32 的 isolate_lowest_one = {nz_isolate:#010b}");
+
+    // Rust 1.97: `char::is_control` 可以在 const 上下文中使用
+    //
+    // 之前 `is_control` 只是普通方法，现在可以在常量求值中使用，
+    // 例如在编译期校验字符表、生成控制字符掩码。
+    const NEWLINE_IS_CONTROL: bool = '\n'.is_control();
+    const LETTER_IS_CONTROL: bool = 'a'.is_control();
+    println!("const 求值: '\\n'.is_control() = {NEWLINE_IS_CONTROL}, 'a'.is_control() = {LETTER_IS_CONTROL}");
+
+    // 小结：
+    // 1. TryFrom 系列让“0/1 布尔编码”的转换变得显式且安全
+    // 2. 位操作方法族把位扫描、掩码提取等高频操作收进标准库
+    // 3. NonZero 类型配合新方法，可以用类型系统排除非法输入
+    // 4. const 能力扩展让字符判断可以在编译期完成
+    println!();
+}
+
+// ===========================================
 // 主函数
 // ===========================================
 
@@ -978,6 +1089,7 @@ pub fn main() {
     let_else_statement();
     practical_examples();
     compiler_attributes();
+    numeric_and_conversion_enhancements();
 
     println!("基础语法演示完成！");
 }
@@ -1186,4 +1298,33 @@ fn validate_age(age: i32) -> Result<(), String> {
         return Err("年龄过大".to_string());
     }
     Ok(())
+}
+
+#[test]
+fn test_numeric_and_conversion_enhancements() {
+    // bool: TryFrom（Rust 1.95）
+    let ok_true: Result<bool, _> = 1u8.try_into();
+    let ok_false: Result<bool, _> = 0u8.try_into();
+    let bad: Result<bool, _> = 2u8.try_into();
+    assert_eq!(ok_true, Ok(true));
+    assert_eq!(ok_false, Ok(false));
+    assert!(bad.is_err());
+
+    // 整数位操作（Rust 1.97）
+    let bits: u32 = 0b1010_0100;
+    assert_eq!(bits.highest_one(), Some(7));
+    assert_eq!(bits.lowest_one(), Some(2));
+    assert_eq!(bits.isolate_highest_one(), 0b1000_0000);
+    assert_eq!(bits.isolate_lowest_one(), 0b0000_0100);
+    assert_eq!(255u32.bit_width(), 8);
+    assert_eq!(0u32.highest_one(), None);
+
+    // NonZero 版本直接返回 usize，bit_width 返回 NonZeroU8
+    let nonzero = std::num::NonZeroU32::new(bits).unwrap();
+    assert_eq!(nonzero.lowest_one(), 2);
+    assert_eq!(nonzero.bit_width().get(), 8);
+
+    // const char::is_control（Rust 1.97）
+    const NEWLINE_IS_CONTROL: bool = '\n'.is_control();
+    assert!(NEWLINE_IS_CONTROL);
 }
