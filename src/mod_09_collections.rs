@@ -1,12 +1,6 @@
-#![allow(
-    dead_code,
-    unused_variables,
-    unused_imports,
-    unused_mut,
-    unused_assignments,
-    unused_macros,
-    deprecated
-)]
+// 教程里的类型、字段和方法经常只为演示语法而定义，不一定会被全部读取或调用，所以允许 dead_code；
+// 其他 lint（未使用的导入、变量、可变性等）必须保持干净，不要再给模块添加新的 allow。
+#![allow(dead_code)]
 
 // Rust 集合类型深度解析 (Rust Collections Deep Dive)
 // 全面讲解 Rust 标准库中的各种集合类型、使用场景、性能特性和最佳实践
@@ -29,7 +23,7 @@ fn vector_deep_dive() {
     // 这种布局使得 Vector 既安全又高效
 
     // 创建 Vector 的不同方式及其适用场景
-    let mut v1: Vec<i32> = Vec::new(); // 空向量，需要类型注解
+    let v1: Vec<i32> = Vec::new(); // 空向量，需要类型注解
     println!("空向量创建: 长度={}, 容量={}", v1.len(), v1.capacity());
 
     // 使用 vec! 宏：这是最常用的创建方式，编译器会推断类型
@@ -421,7 +415,7 @@ fn hashmap_deep_dive() {
     println!("删除后: {:?}", map);
 
     // 保留满足条件的键值对
-    map.retain(|key, value| key.starts_with("key"));
+    map.retain(|key, _value| key.starts_with("key"));
     println!("保留后: {:?}", map);
 
     // 自定义哈希和比较
@@ -661,7 +655,7 @@ fn iterators_deep_dive() {
             *x
         })
         .collect();
-    println!("iter_mut() 双倍后: {:?}", numbers2);
+    println!("iter_mut() 双倍后: {:?}，map 收集到的新向量: {:?}", numbers2, doubled);
 
     // 3. into_iter() - 消费所有权
     let numbers3 = vec![1, 2, 3];
@@ -793,7 +787,7 @@ fn iterators_deep_dive() {
 fn collection_performance_optimization() {
     println!("=== 集合性能优化实战 ===");
 
-    use std::collections::{HashMap, HashSet};
+    use std::collections::HashMap;
     use std::time::Instant;
 
     // 1. Vec 性能优化
@@ -888,6 +882,7 @@ fn collection_performance_optimization() {
     println!("  多次遍历耗时: {:?}", multiple_pass_duration);
     println!("  单次遍历耗时: {:?}", single_pass_duration);
     println!("  结果验证: sum={}, count={}, max={:?}", sum, count, max);
+    println!("  单次遍历的结果: sum={}, count={}, max={:?}", sum2, count2, max2);
 
     // 4. 内存使用优化
     println!("\n4. 内存使用优化:");
@@ -1167,7 +1162,7 @@ impl EventProcessor {
 fn data_processing_pipeline_system() {
     println!("=== 综合实例：数据流处理系统 ===");
 
-    use std::collections::{HashMap, HashSet, VecDeque};
+    use std::collections::HashMap;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     // 创建模拟数据
@@ -1364,6 +1359,17 @@ fn latest_collection_updates() {
     println!("next_if_map 第二次: {failed_number:?}");
     println!("失败后保留的下一个元素: {:?}", tokens.next());
 
+    // Rust 1.94: `Peekable::next_if_map_mut`
+    //
+    // 和 next_if_map 的区别：闭包拿到的是元素的**可变引用**，返回 `Option<R>`。
+    // 返回 `Some` 时元素被消费；返回 `None` 时元素（包括闭包对它做过的修改）原样放回迭代器。
+    // 当你想“满足条件才把元素里的数据整体取走（比如 `mem::take`），否则一动不动”时，它更顺手：
+    // 拒绝的时候不必再把元素手动塞回 `Err`。
+    let mut names = vec![String::from("ada"), String::from("bob")].into_iter().peekable();
+    let taken = names.next_if_map_mut(|name| name.starts_with('a').then(|| std::mem::take(name)));
+    let rejected = names.next_if_map_mut(|name| name.starts_with('a').then(|| std::mem::take(name)));
+    println!("next_if_map_mut: 取走了 {taken:?}，第二次被拒绝 {rejected:?}，剩余元素 {:?}", names.next());
+
     // Rust 1.95: `push_mut` / `insert_mut`
     //
     // 旧写法里，如果你往 Vec 里插入了一个元素，
@@ -1426,6 +1432,325 @@ fn latest_collection_updates() {
 }
 
 // ===========================================
+// 9. Rust 1.98-1.99 字符串、切片与容器 API 补充
+// ===========================================
+
+// 字符串、切片和容器新增了几组很实用的 API：
+// - `str::substr_range` / `[T]::subslice_range`（1.98）：子串在原字符串中的位置
+// - `str::strip_circumfix` / `[T]::strip_circumfix`（1.98）：一次去掉前后缀
+// - `String::from_utf16le` / `from_utf16be`（1.98，含 lossy 版本）：按字节序解码 UTF-16 字节流
+// - `String::from_utf8_lossy_owned` / `FromUtf8Error::into_utf8_lossy`（1.99）：UTF-8 容错转换的 owned 版本
+// - `VecDeque::retain_back`（1.99）：只保留末尾的 n 个元素
+// （`Vec::into_parts` / `from_parts` 属于 unsafe 的部件拆装，已收入第 19 章“进阶参考”）
+//
+// 对新手来说，这一节的主线是：标准库在把“要么手写、要么 unsafe”的小套路变成现成的安全 API。
+
+fn collection_updates_198_199() {
+    println!("=== Rust 1.98-1.99 字符串、切片与容器 API 补充 ===");
+
+    use std::collections::VecDeque;
+
+    // ---------- substr_range / subslice_range（Rust 1.98） ----------
+    //
+    // 场景：词法分析器把一段源码切成很多 `&str` 片段（token），
+    // 报错时想告诉用户“出错的 token 在原文的第几个字节”。
+    // 以前要么在每个 token 里额外存一个偏移量，要么用指针算术（unsafe）反推。
+    // `substr_range` 就是这个“反推”的安全版本：
+    // - 如果参数确实是 `self` 内部的一段（内存地址落在 self 范围内），返回它的字节区间
+    // - 否则返回 `None`
+    //
+    // 关键：它比较的是**内存地址**，而不是内容！
+    // 内容相同但来自别处的 `&str`（比如另一个字符串里的同名片段）不算“子串”。
+    let source = "let answer = 42;";
+    let token = source.split_whitespace().nth(1).unwrap(); // "answer"，借用自 source
+    println!("token {token:?} 在原文中的字节区间: {:?}", source.substr_range(token));
+
+    let lookalike = String::from("answer"); // 内容相同，但是另一块内存
+    println!("内容相同但来源不同: {:?}", source.substr_range(&lookalike));
+
+    // 返回值是 1.96 起稳定的**新范围类型** `core::range::Range<usize>`（而不是 `std::ops::Range`）。
+    // 它实现了 `Copy`，并且可以直接拿来给原字符串切片，一来一回正好闭环。
+    // 新旧范围类型的区别详见迭代器一章。
+    if let Some(range) = source.substr_range(token) {
+        println!("用返回的区间再切回去: {:?}", &source[range]);
+    }
+
+    // 切片版本 `subslice_range` 同理，返回的也是新的 `core::range::Range<usize>`。
+    let data = [10, 20, 30, 40, 50];
+    let middle = &data[1..4];
+    println!("子切片 {middle:?} 在原数组中的区间: {:?}", data.subslice_range(middle));
+
+    // ---------- strip_circumfix（Rust 1.98） ----------
+    //
+    // `strip_prefix` 去掉前缀，`strip_suffix` 去掉后缀；
+    // `strip_circumfix(前缀, 后缀)` 把两件事合成一步：两端都匹配才返回 `Some`，只匹配一端也是 `None`。
+    // 典型用途：去掉括号、引号、标签这类成对出现的包裹符号。
+    println!("去掉方括号: {:?}", "[core]".strip_circumfix('[', ']'));
+    println!("只有左括号: {:?}", "[core".strip_circumfix('[', ']'));
+    println!("去掉成对的 HTML 标签: {:?}", "<b>粗体</b>".strip_circumfix("<b>", "</b>"));
+
+    // 切片也有同名方法，参数是切片：去掉首尾的哨兵字节。
+    let frame = [0x7E_u8, 1, 2, 3, 0x7E];
+    println!("去掉帧定界符: {:?}", frame.strip_circumfix(&[0x7E][..], &[0x7E][..]));
+
+    // ---------- String::from_utf16le / from_utf16be（Rust 1.98） ----------
+    //
+    // 网络协议和文件格式给你的 UTF-16 通常是**字节流**，并且字节序是约定好的：
+    // Windows API、.NET 常用小端（LE），Java、很多网络协议用大端（BE）。
+    // 而 `String::from_utf16` 要的是 `&[u16]`，所以以前必须先
+    // `chunks_exact(2)` + `u16::from_le_bytes` 拼出 `Vec<u16>`，再解码。
+    // 现在一步到位。字节数为奇数、或者出现不成对的代理项，会得到 `Err`。
+    //
+    // “你”的 Unicode 码点是 U+4F60：小端字节序是 60 4F，大端字节序是 4F 60。
+    let le_bytes = [0x68, 0x00, 0x69, 0x00, 0x60, 0x4F]; // "hi你"（UTF-16LE）
+    let be_bytes = [0x00, 0x68, 0x00, 0x69, 0x4F, 0x60]; // "hi你"（UTF-16BE）
+    println!("from_utf16le: {:?}", String::from_utf16le(&le_bytes));
+    println!("from_utf16be: {:?}", String::from_utf16be(&be_bytes));
+    println!("字节数为奇数: {:?}", String::from_utf16le(&[0x68, 0x00, 0x69]).is_err());
+    // `_lossy` 版本不会失败，遇到非法数据时用 U+FFFD（�）替换，适合“尽力显示”的场景。
+    println!("lossy 容错: {:?}", String::from_utf16le_lossy(&[0x68, 0x00, 0x00, 0xD8, 0x69, 0x00]));
+
+    // ---------- from_utf8_lossy_owned / into_utf8_lossy（Rust 1.99） ----------
+    //
+    // 已有的 `String::from_utf8_lossy(&[u8])` 返回 `Cow<str>`：
+    // 输入合法时借用原数据，非法时才分配新字符串，调用者还得处理 `Cow`。
+    // 如果你手里本来就是一个拥有所有权的 `Vec<u8>`，想直接要一个 `String`：
+    // - `String::from_utf8_lossy_owned(vec)`：非法字节替换成 �，直接得到 `String`
+    // - `FromUtf8Error::into_utf8_lossy()`：`String::from_utf8(vec)` 失败后，
+    //   错误值里还握着那个 `Vec`，可以直接把它容错转换，不必重新拿一遍字节
+    // （输入合法时当前实现会复用 `Vec` 的缓冲区，但文档并不保证这一点。）
+    let dirty = vec![b'a', 0xFF, b'b'];
+    println!("from_utf8_lossy_owned: {:?}", String::from_utf8_lossy_owned(dirty.clone()));
+    match String::from_utf8(dirty) {
+        Ok(text) => println!("本来就合法: {text}"),
+        Err(err) => println!("先尝试严格解码失败，再容错恢复: {:?}", err.into_utf8_lossy()),
+    }
+
+    // ---------- VecDeque::retain_back（Rust 1.99） ----------
+    //
+    // `truncate(n)` 保留**前** n 个、丢掉后面的；
+    // `retain_back(n)` 反过来：保留**后** n 个、丢掉前面的（别名 `truncate_front`）。
+    // 它非常适合“只保留最近 N 条记录”的滑动窗口，比如最近的日志、最近的采样值。
+    let mut recent: VecDeque<i32> = VecDeque::new();
+    for sample in 1..=8 {
+        recent.push_back(sample);
+        recent.retain_back(3); // 每次追加后，只保留最近的 3 条
+    }
+    println!("滑动窗口里最近的 3 条: {recent:?}");
+
+    let mut forward: VecDeque<i32> = (1..=5).collect();
+    forward.truncate(2);
+    println!("对比 truncate(2) 保留前 2 个: {forward:?}");
+
+    // 小结：
+    // 1. 偏移量类需求：`substr_range` / `subslice_range` 用“地址包含关系”代替手工记账
+    // 2. 成对符号：`strip_circumfix` 一次去掉前后缀
+    // 3. 编码转换：UTF-16 字节流直接解码，UTF-8 容错转换有了 owned 版本
+    // 4. 容器窗口：`retain_back` 与 `truncate` 方向相反，别混用
+    println!();
+}
+
+// ===========================================
+// 10. 按分隔符一分为二：split_once 与 rsplit_once（Rust 1.52）
+// ===========================================
+
+// 解析 "key=value"、"host:port"、"文件名.扩展名" 这类“在第一个（或最后一个）分隔符处一分为二”的文本，
+// 是最常见的字符串处理需求。过去的写法要用 `split(':')` 配合 `next()` / `collect()`，
+// 或者用 `find` 加手动切片，既啰嗦，又容易在“没有分隔符”“分隔符出现多次”时把边界写错。
+// 1.52 起提供了专门的两个方法：
+// - `split_once(分隔符)`：在**第一次**出现处切开，返回 `Option<(&str, &str)>`；没有分隔符就是 `None`
+// - `rsplit_once(分隔符)`：在**最后一次**出现处切开
+// 返回的是借用原字符串的切片，没有任何分配；分隔符本身不在结果里；
+// 分隔符可以是 `char`、`&str`、闭包等任何实现了 Pattern 的类型。
+
+// 典型场景：解析 “键 = 整数值” 的配置行，格式不对一律返回 None
+fn parse_setting(line: &str) -> Option<(&str, i32)> {
+    let (key, value) = line.split_once('=')?;
+    let value = value.trim().parse().ok()?;
+    Some((key.trim(), value))
+}
+
+fn split_once_and_rsplit_once() {
+    println!("=== 按分隔符一分为二：split_once 与 rsplit_once（Rust 1.52） ===");
+
+    // 第一次出现 vs 最后一次出现：分隔符出现多次时，两者的结果不同
+    let text = "a=b=c";
+    println!("split_once('=')  -> {:?}", text.split_once('='));
+    println!("rsplit_once('=') -> {:?}", text.rsplit_once('='));
+
+    // rsplit_once 的典型用途：取文件扩展名，因为文件名里可能有多个点
+    println!("archive.tar.gz 的扩展名: {:?}", "archive.tar.gz".rsplit_once('.'));
+    // 没有分隔符时返回 None，不会 panic，也不需要先判断 `contains`
+    println!("README 没有扩展名: {:?}", "README".rsplit_once('.'));
+
+    for line in ["timeout = 30", "retries=5", "missing equals sign", "level = high"] {
+        println!("解析 {line:?} -> {:?}", parse_setting(line));
+    }
+
+    // 分隔符可以是字符串，也可以是一个字符判断闭包
+    println!("按字符串分隔: {:?}", "host::8080".split_once("::"));
+    println!("按闭包分隔(第一个空白字符): {:?}", "name  value".split_once(char::is_whitespace));
+
+    // 最佳实践：
+    // 1. 只需要在第一个 / 最后一个分隔符处切一刀时，用 split_once / rsplit_once，别用 split + collect
+    // 2. 返回 Option，配合 `?` 或 let-else 处理“格式不对”的情况，比 unwrap 安全
+    // 3. 需要把整段文本切成多段时才用 `split`；需要限定段数用 `splitn`
+    println!();
+}
+
+// ===========================================
+// 11. 同时可变借用多个元素：get_disjoint_mut（Rust 1.86）
+// ===========================================
+
+// 想同时修改同一个集合里的两个不同元素，是借用检查器的经典难题：
+//     let a = &mut v[0];
+//     let b = &mut v[1];   // 错误：不能对 v 同时可变借用两次
+// 0 和 1 显然是不同的元素，但编译器只看到“对 v 的两次可变借用”。
+// 过去的绕法是 `split_at_mut`（只能一分为二，下标还得自己换算），或者写 unsafe。
+// 1.86 稳定了 `get_disjoint_mut`：一次传入多个下标（或键），运行时检查它们互不相同、都在范围内，
+// 通过就返回对应的多个 `&mut`，借用检查器也满意。
+// - 切片 / Vec：`get_disjoint_mut([i, j, ..]) -> Result<[&mut T; N], GetDisjointMutError>`；
+//   下标越界或有重复，返回对应的错误，不会 panic。下标也可以换成范围
+// - HashMap：`get_disjoint_mut([&k1, &k2, ..]) -> [Option<&mut V>; N]`；
+//   键不存在对应位置是 None；如果传入了重复的键则会 panic（因为那等于要求同一个值的两个可变引用）
+
+fn disjoint_mutable_borrows() {
+    println!("=== 同时可变借用多个元素：get_disjoint_mut（Rust 1.86） ===");
+
+    use std::collections::HashMap;
+    use std::slice::GetDisjointMutError;
+
+    // 典型场景：转账。同时修改两个账户的余额
+    let mut balances = vec![100_i64, 50, 25];
+    match balances.get_disjoint_mut([0, 2]) {
+        Ok([from, to]) => {
+            *from -= 30;
+            *to += 30;
+        }
+        Err(error) => println!("无法转账: {error:?}"),
+    }
+    println!("转账之后: {balances:?}");
+
+    // 下标重复或越界，得到错误而不是 panic
+    let overlapping = balances.get_disjoint_mut([1, 1]).map(|_| ());
+    let out_of_bounds = balances.get_disjoint_mut([0, 9]).map(|_| ());
+    println!("重复的下标: {overlapping:?}；越界的下标: {out_of_bounds:?}");
+    assert_eq!(overlapping, Err(GetDisjointMutError::OverlappingIndices));
+    assert_eq!(out_of_bounds, Err(GetDisjointMutError::IndexOutOfBounds));
+
+    // HashMap 版本：返回的是 Option 数组，键不存在的位置是 None
+    let mut accounts: HashMap<&str, i64> = HashMap::from([("alice", 100), ("bob", 20)]);
+    let [alice, bob, carol] = accounts.get_disjoint_mut(["alice", "bob", "carol"]);
+    if let (Some(alice), Some(bob)) = (alice, bob) {
+        *alice -= 40;
+        *bob += 40;
+    }
+    println!("carol 不存在: {}", carol.is_none());
+    let mut sorted: Vec<_> = accounts.iter().collect();
+    sorted.sort();
+    println!("HashMap 转账之后: {sorted:?}");
+
+    // 最佳实践：
+    // 1. 需要同时改两个元素时，先想能不能拆成两步（先读后写）；确实要同时持有，用 get_disjoint_mut
+    // 2. 对下标来自外部输入的场景，处理好 Err 分支；HashMap 版本里不要传重复的键
+    // 3. 只是把切片一分为二时，split_at_mut 依然更直接
+    println!();
+}
+
+// ===========================================
+// 12. 有序切片的分界点：partition_point（Rust 1.52）
+// ===========================================
+
+// `binary_search` 回答“有没有这个值”；而很多场景真正要问的是：
+// “满足条件的元素和不满足条件的元素，分界线在哪里？”
+// 例如：在按时间排序的日志里，找出“第一条晚于某时刻”的位置；在有序数组里，统计小于 x 的元素个数；
+// 为了保持有序而决定新元素的插入位置。
+// `slice::partition_point(|元素| 条件)` 要求切片已经按“条件为 true 的元素全在前面”排好，
+// 然后用二分查找，返回第一个让条件为 false 的位置（全部满足就是切片长度）。时间复杂度 O(log n)。
+// 它和手写二分查找的区别：不容易写错边界，也不需要元素真的等于某个值。
+
+fn partition_point_demo() {
+    println!("=== 有序切片的分界点：partition_point（Rust 1.52） ===");
+
+    let scores = [10, 20, 30, 40, 50, 60];
+
+    // 分界点既是“小于 35 的元素个数”，也是“保持有序时 35 应该插入的位置”
+    let boundary = scores.partition_point(|&score| score < 35);
+    println!("小于 35 的元素有 {boundary} 个，35 应该插在下标 {boundary}");
+
+    // 典型场景：往有序 Vec 里插入，保持有序
+    let mut sorted = scores.to_vec();
+    sorted.insert(sorted.partition_point(|&score| score < 35), 35);
+    println!("插入 35 之后: {sorted:?}");
+
+    // 有重复元素时，条件的写法决定分界线落在哪一边（相当于下界 / 上界）
+    let with_duplicates = [1, 2, 2, 2, 3];
+    let lower = with_duplicates.partition_point(|&x| x < 2); // 第一个 >= 2 的位置
+    let upper = with_duplicates.partition_point(|&x| x <= 2); // 第一个 > 2 的位置
+    println!("元素 2 出现的范围是 {lower}..{upper}，共 {} 个", upper - lower);
+
+    // 最佳实践：
+    // 1. 切片必须已按条件分好区（条件为 true 的在前），否则结果没有意义（不会 panic，也不是未定义行为）
+    // 2. 只想判断值是否存在，用 `binary_search`；要范围、个数或插入位置，用 `partition_point`
+    println!();
+}
+
+// ===========================================
+// 13. 给优化器的提示：black_box 与 cold_path（Rust 1.66 / 1.95）
+// ===========================================
+
+// 写微基准（测量一小段代码的耗时）有个经典的坑：编译器发现某段计算的结果没被用到，
+// 或者输入是编译期常量，就会把整段计算直接优化掉（甚至折叠成一个常量），
+// 你测到的只是“什么都没做”的时间。
+// `std::hint::black_box(值)` 的作用是：对编译器来说，这个值“来源不明、去向不明”，
+// 从而阻止这类优化。它对程序语义没有影响，原样返回传入的值。
+// 它是尽力而为（best effort）的提示，不保证每个编译器版本都能阻止所有优化。
+// 正式的性能测量请用 criterion、divan 之类的成熟库（它们内部就用了 black_box），这里只演示原理。
+//
+// 同属 `std::hint` 的还有 `cold_path`（1.95）：方向相反，它告诉编译器“这条分支几乎不会走到”，
+// 让编译器把热路径排得更紧凑。同样是不改变程序行为的优化提示。
+
+fn optimizer_hints_demo() {
+    println!("=== 给优化器的提示：black_box 与 cold_path（Rust 1.66 / 1.95） ===");
+
+    use std::hint::black_box;
+    use std::time::Instant;
+
+    // 输入经过 black_box：编译器不知道 n 的值，不能把求和折叠成公式
+    let n = black_box(10_000_000_u64);
+    let start = Instant::now();
+    let sum: u64 = (1..=n).sum();
+    // 结果也经过 black_box：编译器必须认为结果“被使用了”，不能删掉上面的计算
+    let sum = black_box(sum);
+    let elapsed = start.elapsed();
+    println!("1 到 {n} 求和 = {sum}，耗时 {elapsed:?}（具体数字因机器而异）");
+
+    // black_box 不改变值
+    assert_eq!(black_box(42), 42);
+
+    // Rust 1.95: `std::hint::cold_path`
+    //
+    // “cold path” 表示极少进入的路径，例如：
+    // - 罕见错误
+    // - 保底 fallback
+    // - 理论上不应该发生，但仍要处理的异常情况
+    //
+    // 调用这个函数不会改变程序行为，
+    // 它更像是告诉编译器：“这条分支很冷门，可以按低频路径优化。”
+    let config_parse_result: Result<u16, _> = "not-a-port".parse();
+    if config_parse_result.is_err() {
+        std::hint::cold_path();
+        println!("cold_path: 进入低频错误分支");
+    }
+
+    // 最佳实践：
+    // 1. 测量代码时，把输入和结果都包进 black_box；只包一边通常不够
+    // 2. black_box 只能用于测量和实验，业务代码里不需要它
+    // 3. cold_path 只用在确实罕见的分支上；标错了会让真正的热路径变慢，没有把握就不要标
+    println!();
+}
+
+// ===========================================
 // Rust 集合教程
 // ===========================================
 
@@ -1441,6 +1766,11 @@ pub fn main() {
     collection_performance_optimization();
     data_processing_pipeline_system();
     latest_collection_updates();
+    collection_updates_198_199();
+    split_once_and_rsplit_once();
+    disjoint_mutable_borrows();
+    partition_point_demo();
+    optimizer_hints_demo();
 
     println!("集合类型解析完成！");
     println!("\n关键要点总结:");
@@ -1461,6 +1791,69 @@ pub fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_collection_updates_198_199() {
+        use std::collections::VecDeque;
+
+        // substr_range 比较的是地址而不是内容
+        // 返回值是新范围类型 core::range::Range，要用 From 从旧类型构造来比较
+        use std::range::Range;
+        let source = "let answer = 42;";
+        let token = source.split_whitespace().nth(1).unwrap();
+        assert_eq!(source.substr_range(token), Some(Range::from(4..10)));
+        assert_eq!(&source[source.substr_range(token).unwrap()], "answer");
+        let lookalike = String::from("answer");
+        assert_eq!(source.substr_range(&lookalike), None);
+
+        let data = [10, 20, 30, 40, 50];
+        let middle = &data[1..4];
+        assert_eq!(data.subslice_range(middle), Some(Range::from(1..4)));
+        assert!(data.subslice_range(&[20, 30, 40]).is_none());
+
+        // strip_circumfix：两端都匹配才成功
+        assert_eq!("[core]".strip_circumfix('[', ']'), Some("core"));
+        assert_eq!("[core".strip_circumfix('[', ']'), None);
+        assert_eq!("<b>x</b>".strip_circumfix("<b>", "</b>"), Some("x"));
+        assert_eq!(
+            [0x7E_u8, 1, 2, 0x7E].strip_circumfix(&[0x7E][..], &[0x7E][..]),
+            Some(&[1_u8, 2][..])
+        );
+
+        // UTF-16 字节流解码，字节序决定结果
+        assert_eq!(
+            String::from_utf16le(&[0x68, 0x00, 0x69, 0x00, 0x60, 0x4F]).unwrap(),
+            "hi你"
+        );
+        assert_eq!(
+            String::from_utf16be(&[0x00, 0x68, 0x00, 0x69, 0x4F, 0x60]).unwrap(),
+            "hi你"
+        );
+        assert!(String::from_utf16le(&[0x68, 0x00, 0x69]).is_err());
+        assert_eq!(
+            String::from_utf16le_lossy(&[0x68, 0x00, 0x00, 0xD8, 0x69, 0x00]),
+            "h\u{FFFD}i"
+        );
+
+        // UTF-8 容错转换的 owned 版本
+        let dirty = vec![b'a', 0xFF, b'b'];
+        assert_eq!(String::from_utf8_lossy_owned(dirty.clone()), "a\u{FFFD}b");
+        assert_eq!(String::from_utf8(dirty).unwrap_err().into_utf8_lossy(), "a\u{FFFD}b");
+
+        // retain_back 保留末尾，truncate 保留开头
+        let mut recent: VecDeque<i32> = VecDeque::new();
+        for sample in 1..=8 {
+            recent.push_back(sample);
+            recent.retain_back(3);
+        }
+        assert_eq!(recent, [6, 7, 8]);
+        let mut forward: VecDeque<i32> = (1..=5).collect();
+        forward.truncate(2);
+        assert_eq!(forward, [1, 2]);
+        let mut short: VecDeque<i32> = (1..=2).collect();
+        short.retain_back(10); // len 不小于现有长度时没有任何效果
+        assert_eq!(short, [1, 2]);
+    }
 
     #[test]
     fn test_vector_operations() {
@@ -1653,5 +2046,86 @@ mod tests {
         *linked.push_front_mut(0) += 1;
         let collected: Vec<i32> = linked.into_iter().collect();
         assert_eq!(collected, vec![1, 10, 20, 35]);
+    }
+
+    #[test]
+    fn test_split_once_and_rsplit_once() {
+        assert_eq!("a=b=c".split_once('='), Some(("a", "b=c")));
+        assert_eq!("a=b=c".rsplit_once('='), Some(("a=b", "c")));
+        assert_eq!("archive.tar.gz".rsplit_once('.'), Some(("archive.tar", "gz")));
+        assert_eq!("README".rsplit_once('.'), None);
+        assert_eq!("host::8080".split_once("::"), Some(("host", "8080")));
+        assert_eq!("name  value".split_once(char::is_whitespace), Some(("name", " value")));
+
+        assert_eq!(parse_setting("timeout = 30"), Some(("timeout", 30)));
+        assert_eq!(parse_setting("retries=5"), Some(("retries", 5)));
+        assert_eq!(parse_setting("missing equals sign"), None);
+        assert_eq!(parse_setting("level = high"), None);
+    }
+
+    #[test]
+    fn test_get_disjoint_mut() {
+        use std::slice::GetDisjointMutError;
+
+        let mut balances = vec![100_i64, 50, 25];
+        let [from, to] = balances.get_disjoint_mut([0, 2]).unwrap();
+        *from -= 30;
+        *to += 30;
+        assert_eq!(balances, [70, 50, 55]);
+
+        // 重复与越界：返回错误，不 panic
+        assert_eq!(balances.get_disjoint_mut([1, 1]).map(|_| ()), Err(GetDisjointMutError::OverlappingIndices));
+        assert_eq!(balances.get_disjoint_mut([0, 9]).map(|_| ()), Err(GetDisjointMutError::IndexOutOfBounds));
+
+        // HashMap：缺失的键是 None，重复的键会 panic
+        let mut accounts: HashMap<&str, i64> = HashMap::from([("alice", 100), ("bob", 20)]);
+        let [alice, bob, carol] = accounts.get_disjoint_mut(["alice", "bob", "carol"]);
+        assert!(carol.is_none());
+        *alice.unwrap() -= 40;
+        *bob.unwrap() += 40;
+        assert_eq!((accounts["alice"], accounts["bob"]), (60, 60));
+        let result = std::panic::catch_unwind(move || {
+            let mut accounts = accounts;
+            let _ = accounts.get_disjoint_mut(["alice", "alice"]);
+        });
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_partition_point_and_optimizer_hints() {
+        let scores = [10, 20, 30, 40, 50, 60];
+        assert_eq!(scores.partition_point(|&score| score < 35), 3);
+        assert_eq!(scores.partition_point(|&score| score < 5), 0);
+        assert_eq!(scores.partition_point(|&score| score < 100), scores.len());
+
+        let mut sorted = scores.to_vec();
+        sorted.insert(sorted.partition_point(|&score| score < 35), 35);
+        assert_eq!(sorted, [10, 20, 30, 35, 40, 50, 60]);
+
+        let with_duplicates = [1, 2, 2, 2, 3];
+        let lower = with_duplicates.partition_point(|&x| x < 2);
+        let upper = with_duplicates.partition_point(|&x| x <= 2);
+        assert_eq!((lower, upper), (1, 4));
+
+        // black_box 原样返回传入的值
+        assert_eq!(std::hint::black_box(42), 42);
+        assert_eq!(std::hint::black_box("文本"), "文本");
+
+        // cold_path 只是提示，不改变行为
+        let parsed: Result<u16, _> = "not-a-port".parse::<u16>();
+        if parsed.is_err() {
+            std::hint::cold_path();
+        }
+        assert!(parsed.is_err());
+    }
+
+    #[test]
+    fn test_peekable_next_if_map_mut() {
+        let mut names = vec![String::from("ada"), String::from("bob")].into_iter().peekable();
+        let taken = names.next_if_map_mut(|name| name.starts_with('a').then(|| std::mem::take(name)));
+        assert_eq!(taken.as_deref(), Some("ada"));
+        let rejected = names.next_if_map_mut(|name| name.starts_with('a').then(|| std::mem::take(name)));
+        assert_eq!(rejected, None);
+        assert_eq!(names.next().as_deref(), Some("bob")); // 被拒绝的元素原样保留
     }
 }

@@ -1,10 +1,6 @@
-#![allow(
-    dead_code,
-    unused_variables,
-    unused_imports,
-    unused_mut,
-    unused_assignments
-)]
+// 教程里的类型、字段和方法经常只为演示语法而定义，不一定会被全部读取或调用，所以允许 dead_code；
+// 其他 lint（未使用的导入、变量、可变性等）必须保持干净，不要再给模块添加新的 allow。
+#![allow(dead_code)]
 
 // Rust 所有权系统
 // 深入讲解所有权、借用、切片等 Rust 内存安全的核心机制
@@ -268,6 +264,8 @@ fn references_and_borrowing() {
     let mut s = String::from("hello");
 
     let r1 = &mut s; // 第一个可变引用
+    r1.push_str(", world"); // 通过这个唯一的可变引用修改数据
+    println!("通过可变引用修改后: {r1}");
     // let r2 = &mut s; // 编译错误：不能有多个可变引用
     // println!("{}, {}", r1, r2);
 

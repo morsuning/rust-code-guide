@@ -1,10 +1,6 @@
-#![allow(
-    dead_code,
-    unused_variables,
-    unused_imports,
-    unused_mut,
-    unused_assignments
-)]
+// 教程里的类型、字段和方法经常只为演示语法而定义，不一定会被全部读取或调用，所以允许 dead_code；
+// 其他 lint（未使用的导入、变量、可变性等）必须保持干净，不要再给模块添加新的 allow。
+#![allow(dead_code)]
 
 // Rust 泛型系统
 // 深入讲解 Rust 泛型的各个方面，包括泛型函数、结构体、枚举、约束、实现和高级模式
@@ -45,7 +41,8 @@ fn generic_functions() {
 
     // 多个泛型参数：函数可以有多个类型参数
     // 这使得函数可以处理不同类型的组合
-    fn pick<T, U>(t: T, u: U) -> T {
+    // 参数名前的下划线表示有意不使用这个参数，这里只是为了演示“可以有多个类型参数”
+    fn pick<T, U>(t: T, _u: U) -> T {
         t // 返回第一个参数的类型
     }
 
@@ -551,7 +548,7 @@ fn generics_in_std_lib() {
     use std::rc::Rc;
     let shared_data = Rc::new(String::from("Hello"));
     let shared1 = Rc::clone(&shared_data);
-    let shared2 = Rc::clone(&shared_data);
+    let _shared2 = Rc::clone(&shared_data); // 再克隆一份，让引用计数变成 3
 
     println!("Rc 共享数据: {}", shared1);
     println!("引用计数: {}", Rc::strong_count(&shared_data));
@@ -559,6 +556,7 @@ fn generics_in_std_lib() {
     // Arc<T>：原子引用计数，用于线程间共享
     use std::sync::Arc;
     let thread_safe_data = Arc::new(vec![1, 2, 3]);
+    println!("Arc 共享数据: {:?}，引用计数: {}", thread_safe_data, Arc::strong_count(&thread_safe_data));
 
     // Cell<T> 和 RefCell<T>：内部可变性
     use std::cell::RefCell;
@@ -1125,6 +1123,63 @@ fn generic_example_program() {
 }
 
 // ===========================================
+// 10. 查看推断出的类型：type_name_of_val（Rust 1.76）
+// ===========================================
+
+// 写泛型和闭包代码时，经常想知道“编译器到底把这个变量推断成了什么类型”，
+// 尤其是迭代器链、闭包这类根本没法手写出类型名的情况。
+// `std::any::type_name::<T>()` 需要你自己把类型写出来；对一个已经存在的变量，这等于要求你先知道答案。
+// 1.76 新增了 `type_name_of_val(&值)`：直接拿变量去问，不用写类型。
+//
+// 注意：返回的字符串只适合调试和日志。它的格式没有任何稳定性承诺（不同编译器版本可能不同），
+// 也不保证唯一，所以不能用来判断两个类型是否相同——比较类型请用 `TypeId`。
+
+fn type_name_of_val_demo() {
+    println!("=== 查看推断出的类型：type_name_of_val（Rust 1.76） ===");
+
+    use std::any::{type_name, type_name_of_val};
+
+    // 整数字面量默认推断为 i32，浮点字面量默认推断为 f64
+    let count = 42;
+    let ratio = 0.5;
+    let name = "rust";
+    println!(
+        "count: {}，ratio: {}，name: {}",
+        type_name_of_val(&count),
+        type_name_of_val(&ratio),
+        type_name_of_val(&name)
+    );
+
+    // 典型场景：迭代器链和闭包的类型写不出来，但可以直接问
+    let doubled = [1, 2, 3].iter().map(|x| x * 2);
+    println!("迭代器链的类型: {}", type_name_of_val(&doubled));
+
+    // 对同一个类型，两个函数的结果一致；参数可以是动态大小类型，所以也能直接问切片的类型
+    let slice: &[i32] = &[1, 2, 3];
+    println!("切片的类型: {}（与 type_name::<[i32]>() 相同: {}）", type_name_of_val(slice), type_name_of_val(slice) == type_name::<[i32]>());
+
+    // 类型名不能当作类型的“身份证”：同一个作用域里的两个不同闭包，类型名完全一样，
+    // 都叫 `...::{{closure}}`，但它们是两个互不相同的类型。要区分类型，用 `TypeId`。
+    use std::any::TypeId;
+    fn type_id_of<T: 'static>(_value: &T) -> TypeId {
+        TypeId::of::<T>()
+    }
+    let double = |x: i32| x * 2;
+    let triple = |x: i32| x * 3;
+    println!(
+        "两个闭包的类型名相同: {}；TypeId 相同: {}",
+        type_name_of_val(&double) == type_name_of_val(&triple),
+        type_id_of(&double) == type_id_of(&triple)
+    );
+    println!("double(21) = {}，triple(14) = {}", double(21), triple(14));
+
+    // 最佳实践：
+    // 1. 只在调试时用它确认类型推断的结果，不要把返回的字符串写进业务逻辑
+    // 2. 要判断两个值是不是同一个类型，用 `TypeId::of::<T>()`，而不是比较类型名
+    println!();
+}
+
+// ===========================================
 // 主函数
 // ===========================================
 
@@ -1141,6 +1196,7 @@ pub fn main() {
     generic_performance();
     advanced_generic_patterns();
     generic_example_program();
+    type_name_of_val_demo();
 
     println!("泛型演示完成！");
 }
@@ -1151,8 +1207,6 @@ pub fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_largest_function() {
         fn largest<T: PartialOrd>(list: &[T]) -> &T {
@@ -1388,5 +1442,30 @@ mod tests {
 
         let string_array: [String; 2] = create_array();
         assert_eq!(string_array, ["".to_string(), "".to_string()]);
+    }
+
+    #[test]
+    fn test_type_name_of_val() {
+        use std::any::{type_name, type_name_of_val};
+
+        // 对同一个类型，两个函数的结果一致（不依赖具体的字符串格式）
+        let count = 42;
+        assert_eq!(type_name_of_val(&count), type_name::<i32>());
+        let ratio = 0.5;
+        assert_eq!(type_name_of_val(&ratio), type_name::<f64>());
+
+        // 动态大小类型：参数是 &[i32] 时，T 就是 [i32]
+        let slice: &[i32] = &[1, 2, 3];
+        assert_eq!(type_name_of_val(slice), type_name::<[i32]>());
+
+        // 类型名不是类型的唯一标识：两个不同的闭包，类型名一样，TypeId 却不同
+        use std::any::TypeId;
+        fn type_id_of<T: 'static>(_value: &T) -> TypeId {
+            TypeId::of::<T>()
+        }
+        let double = |x: i32| x * 2;
+        let triple = |x: i32| x * 3;
+        assert_eq!(type_name_of_val(&double), type_name_of_val(&triple));
+        assert_ne!(type_id_of(&double), type_id_of(&triple));
     }
 }

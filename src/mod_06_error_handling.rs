@@ -1,12 +1,6 @@
-#![allow(
-    dead_code,
-    unused_variables,
-    unused_imports,
-    unused_mut,
-    unused_assignments,
-    unused_macros,
-    deprecated
-)]
+// 教程里的类型、字段和方法经常只为演示语法而定义，不一定会被全部读取或调用，所以允许 dead_code；
+// 其他 lint（未使用的导入、变量、可变性等）必须保持干净，不要再给模块添加新的 allow。
+#![allow(dead_code)]
 
 // Rust 错误处理
 // 深入讲解 Rust 错误处理系统，包括 panic、Result、Option、错误传播和自定义错误类型
@@ -971,16 +965,19 @@ fn error_handling_example_program() {
 // 10. Rust 1.81 core::error::Error trait（Enhanced Error Trait）
 // ===========================================
 
-// Rust 1.81 把 Error trait 从 std 下沉到 core，
-// 让无标准库（no_std）环境也能使用统一的错误抽象
-// 同时引入了 Request 机制，为错误提供类型化的上下文查询
-
-// Error trait 改进的核心价值：
-// 1. 增强的错误链：提供更清晰的错误溯源能力
-// 2. 源码位置信息：自动记录错误发生的位置
-// 3. 上下文信息：为错误添加更多的上下文数据
-// 4. 更好的诊断：改进的错误显示和调试信息
-// 5. 向后兼容：保持与现有代码的兼容性
+// Rust 1.81 把 Error trait 稳定地放进了 core（`core::error::Error`），
+// `std::error::Error` 现在只是它的重新导出——两者是同一个 trait。
+// 这让无标准库（no_std）的库也能给自己的错误类型实现标准的 `Error`，
+// 并且与使用 std 的应用无缝互通（应用里可以直接把它装进 `Box<dyn std::error::Error>`）。
+//
+// 需要澄清的是：1.81 只做了“搬家 + 稳定”这一件事。下面这些常被误认为是它带来的能力，其实都不是：
+// - 错误链（`source()` 方法）自 Rust 1.30 起就有，与 1.81 无关
+// - 让错误附带“类型化的上下文数据”（`provide` / `Request`）至今仍是不稳定特性，只能在 nightly 上使用
+// - Error 不会自动记录错误发生的位置；要调用栈请用 `std::backtrace::Backtrace`（1.65 稳定），
+//   要位置信息请自己在错误类型里保存（例如 `std::panic::Location::caller()`）
+//
+// 所以本节代码的主体，讲的是怎样写一个好的自定义错误类型、怎样用 `source()` 串起错误链，
+// 这些在所有 stable 版本里都成立。
 
 fn enhanced_error_trait() {
     println!("=== Rust 1.81 core::error::Error trait ===");
@@ -991,6 +988,11 @@ fn enhanced_error_trait() {
 
     use std::error::Error;
     use std::fmt;
+
+    // 验证“两者是同一个 trait”：把标准库的 io::Error 当作 `core::error::Error` 的 trait 对象使用，
+    // 不需要任何转换。这说明在 no_std 库里按 core::error::Error 写的实现，可以直接用在 std 应用中。
+    let as_core_error: &dyn core::error::Error = &std::io::Error::other("磁盘已满");
+    println!("io::Error 同时就是 core::error::Error: {as_core_error}");
 
     // 基础自定义错误类型
     #[derive(Debug)]
@@ -1029,16 +1031,22 @@ fn enhanced_error_trait() {
                 .map(|s| s.as_ref() as &(dyn Error + 'static))
         }
 
-        // 提供更多的错误详情（需要 nightly 编译器和 unstable 特性）
-        // fn provide<'a>(&'a self, request: &mut std::error::Request<'a>) {
-        // 在实际应用中，这里可以提供更多的上下文信息
-        //     request.provide_value("query", &self.query);
-        //     request.provide_value("error_type", "database");
-        // }
+        // 【仅 nightly】`provide` 是尚未稳定的方法（feature = error_generic_member_access，
+        // 需要 nightly 工具链，并在 crate 根部写 `#![feature(error_generic_member_access)]`）。
+        // 它允许错误对象向外“按类型”提供附加数据——注意是按**类型**索引，不是按字符串键：
+        //
+        //     fn provide<'a>(&'a self, request: &mut std::error::Request<'a>) {
+        //         request.provide_ref::<str>(&self.query); // 以 &str 的形式提供查询语句
+        //     }
+        //
+        // 调用方也按类型取用：
+        //     let query: Option<&str> = std::error::request_ref::<str>(&error);
+        // （按值提供数据用 `provide_value::<T>(value)` / `request_value::<T>(&error)`。）
+        // 在 stable 上，需要结构化信息时请直接给自己的错误类型加访问器方法。
     }
 
-    // 2. 错误链和上下文（Rust 1.81+ 改进）
-    // 新的 Error trait 提供了更好的错误链处理能力
+    // 2. 错误链和上下文
+    // `source()` 把底层错误串起来，形成一条可以逐层回溯的错误链
 
     #[derive(Debug)]
     struct NetworkError {
@@ -1053,16 +1061,8 @@ fn enhanced_error_trait() {
         }
     }
 
-    impl Error for NetworkError {
-        // fn provide<'a>(&'a self, request: &mut std::error::Request<'a>) {
-        // error_generic_member_access 是实验性特性，暂时注释
-        //     request.provide_value("url", &self.url);
-        //     if let Some(code) = self.status_code {
-        //         request.provide_value("status_code", code);
-        //     }
-        //     request.provide_value("error_type", "network");
-        // }
-    }
+    // 没有嵌套的源错误，也不需要附加数据：空实现，直接使用所有方法的默认实现即可
+    impl Error for NetworkError {}
 
     // 创建嵌套的错误链
     fn fetch_user_data(user_id: u32) -> Result<String, DatabaseError> {
@@ -1091,26 +1091,14 @@ fn enhanced_error_trait() {
                 println!("  源错误: {}", source);
             }
 
-            // 使用增强的错误信息（需要 nightly 编译器和 unstable 特性）
-            // 注意：std::error::request_value 是不稳定的特性，需要以下配置：
-            // 在 Cargo.toml 中添加：
-            // ```toml
-            // [unstable]
-            // error_generic_member_access = true
-            // ```
-            // 或者在代码顶部添加 #![feature(error_generic_member_access)]
-            println!("  错误详情:");
-            // if let Some(query) = std::error::request_value::<String>(&e, "query") {
-            //     println!("    查询: {}", query);
-            // }
-            // if let Some(error_type) = std::error::request_value::<&str>(&e, "error_type") {
-            //     println!("    错误类型: {}", error_type);
-            // }
+            // 需要结构化的错误详情时，在 stable 上最直接的办法是访问错误类型自己的字段或方法
+            // （按类型向外提供数据的 `provide` / `request_ref` 机制仍是 nightly-only，见上文）：
+            println!("  出错的查询语句: {}", e.query);
         }
     }
 
-    // 3. 错误转换和包装（Rust 1.81+ 改进）
-    // 更好的错误类型转换和包装机制
+    // 3. 错误包装：把底层错误包进更高层的错误里，同时保留原因
+    // 高层错误说明“在做什么时失败了”，`source()` 指向“为什么失败”
 
     #[derive(Debug)]
     struct ServiceError {
@@ -1139,16 +1127,6 @@ fn enhanced_error_trait() {
         fn source(&self) -> Option<&(dyn Error + 'static)> {
             Some(self.source.as_ref() as &(dyn Error + 'static))
         }
-
-        // fn provide<'a>(&'a self, request: &mut std::error::Request<'a>) {
-        // error_generic_member_access 是实验性特性，暂时注释
-        //     request.provide_value("operation", &self.operation);
-        //     request.provide_value("context", &self.context);
-        //     request.provide_value("error_type", "service");
-
-        // 将源错误的信息也传递出去
-        //     self.source.provide(request);
-        // }
     }
 
     // 使用错误包装
@@ -1181,8 +1159,8 @@ fn enhanced_error_trait() {
         }
     }
 
-    // 4. 错误报告和诊断（Rust 1.81+ 改进）
-    // 更好的错误报告和诊断信息
+    // 4. 错误报告：在错误里保留足够的诊断信息
+    // Display 给用户看（说清楚哪里错了、期望什么），Debug 给开发者看（保留完整的字段）
 
     #[derive(Debug)]
     struct ConfigError {
@@ -1201,15 +1179,7 @@ fn enhanced_error_trait() {
         }
     }
 
-    impl Error for ConfigError {
-        // fn provide<'a>(&'a self, request: &mut std::error::Request<'a>) {
-        //     // error_generic_member_access 是实验性特性，暂时注释
-        //     request.provide_value("config_key", &self.key);
-        //     request.provide_value("config_value", &self.value);
-        //     request.provide_value("expected_type", &self.expected_type);
-        //     request.provide_value("error_type", "configuration");
-        // }
-    }
+    impl Error for ConfigError {}
 
     fn parse_config_value(key: &str, value: &str, expected_type: &str) -> Result<(), ConfigError> {
         match expected_type {
@@ -1251,40 +1221,22 @@ fn enhanced_error_trait() {
             Err(e) => {
                 println!("配置 '{}' = '{}' (类型: {}) ✗", key, value, expected_type);
                 println!("  错误: {}", e);
-
-                // 使用增强的错误信息（需要 nightly 编译器和 unstable 特性）
-                // if let Some(config_key) = std::error::request_value::<String>(&e, "config_key") {
-                //     println!("  配置键: {}", config_key);
-                // }
-                // if let Some(config_value) = std::error::request_value::<String>(&e, "config_value") {
-                //     println!("  配置值: {}", config_value);
-                // }
             }
         }
     }
 
-    // 5. 错误日志和监控（Rust 1.81+ 改进）
-    // 更好的错误日志记录和监控支持
+    // 5. 错误日志：沿着 source() 记录整条错误链
+    // 只打印最外层错误会丢掉真正的根因，日志里应当把每一层原因都记录下来
 
     fn log_error_enhanced(error: &dyn Error) {
         println!("[ERROR] {}", error);
 
-        // 记录错误源信息
-        if let Some(source) = error.source() {
-            println!("[ERROR]   源: {}", source);
+        // 一层层向下追溯，直到没有更底层的原因
+        let mut current = error.source();
+        while let Some(cause) = current {
+            println!("[ERROR]   caused by: {}", cause);
+            current = cause.source();
         }
-
-        // 记录结构化的错误信息
-        // let mut request = std::error::Request::new();
-        // error.provide(&mut request);
-
-        // println!("[ERROR]   详细信息:");
-        // if let Some(operation) = request.value::<String>() {
-        //     println!("[ERROR]     操作: {}", operation);
-        // }
-        // if let Some(error_type) = request.value::<&str>() {
-        //     println!("[ERROR]     类型: {}", error_type);
-        // }
     }
 
     // 模拟一个复杂错误
@@ -1300,13 +1252,370 @@ fn enhanced_error_trait() {
 
     log_error_enhanced(&complex_error);
 
-    // Rust 1.81+ Error trait 改进的最佳实践：
-    // 1. 实现provide方法：为错误提供丰富的上下文信息
-    // 2. 正确的错误链：使用source()方法提供错误溯源
-    // 3. 结构化错误信息：使用request_value等方法提供结构化数据
-    // 4. 清晰的错误消息：Display trait 实现应该提供用户友好的信息
-    // 5. 错误分类：通过错误类型和上下文进行分类处理
+    // 自定义错误类型的最佳实践：
+    // 1. 实现 Display（给用户看的一句话）和 Debug（给开发者看的完整字段），再实现 Error
+    // 2. 用 source() 提供底层原因，让调用方和日志能回溯整条错误链
+    // 3. Display 里不要把 source 的内容再重复拼一遍：
+    //    要么放进 Display，要么通过 source() 暴露，二选一，否则整条链打印时同一个原因会出现两次
+    // 4. 错误种类多时，库用 `thiserror` 自动生成 Display / Error / From，
+    //    应用层用 `anyhow` 汇总各种错误并附加上下文，不要重复造轮子
+    // 5. 需要让调用方按种类做不同处理时，用枚举表示错误种类，而不是解析错误消息字符串
 
+    println!();
+}
+
+// ===========================================
+// 11. Rust 1.98 Option / Result 便利方法
+// ===========================================
+
+// 下面几个小而实用的方法在 Rust 1.98 稳定：
+// - `bool::ok_or(err)` / `bool::ok_or_else(f)`：把“条件是否成立”直接变成 `Result<(), E>`
+// - `Option::map_or_default(f)` / `Result::map_or_default(f)`：
+//   “有值就映射，没值就用返回类型的默认值”
+//
+// 它们没有引入新概念，只是把两类很常见的样板写法收进了标准库。
+// 学会它们的意义在于：看到旧代码里的 `if !cond { return Err(..) }` 或
+// `opt.map(f).unwrap_or_default()` 时，知道有更贴近意图的写法。
+
+fn option_result_conveniences() {
+    println!("=== Rust 1.98 Option/Result 便利方法 ===");
+
+    // ---------- bool::ok_or / bool::ok_or_else ----------
+    //
+    // 校验函数里最常见的需求是：“条件成立就继续，不成立就返回错误”。
+    // 以前要写 `if !cond { return Err(..); }`，
+    // 或者绕一圈：`cond.then_some(()).ok_or(..)`（先变成 Option 再变成 Result）。
+    // 现在 `bool` 自己就有 `ok_or`：true 得到 `Ok(())`，false 得到 `Err(err)`。
+    // 配合 `?` 运算符，一行就能完成“不满足就提前返回”。
+    //
+    // 错误值是 `&'static str` 这类几乎零成本的值时，直接用 `ok_or`：
+    fn check_name(name: &str) -> Result<(), &'static str> {
+        (!name.is_empty()).ok_or("名字不能为空")
+    }
+
+    // 错误信息要现拼（例如 `format!` 会分配 String）时，用 `ok_or_else`：
+    // `ok_or` 的参数会“先求值”，哪怕条件成立、错误根本用不上；
+    // `ok_or_else` 接收闭包，只有条件不成立时才会执行，成功路径上没有多余开销。
+    fn check_age(age: u8) -> Result<(), String> {
+        (age >= 18).ok_or_else(|| format!("年龄 {age} 未满 18 岁"))
+    }
+
+    // 两个校验可以用 `?` 串起来。它们的错误类型并不相同（`&'static str` 与 `String`），
+    // 但 `?` 会自动通过 `From` 把错误转换成函数返回的错误类型——标准库有 `impl From<&str> for String`，
+    // 所以这里不需要手写 `map_err`。
+    fn register(name: &str, age: u8) -> Result<String, String> {
+        check_name(name)?;
+        check_age(age)?;
+        Ok(format!("{name} 注册成功"))
+    }
+
+    println!("register(\"Ferris\", 20) = {:?}", register("Ferris", 20));
+    println!("register(\"\", 20) = {:?}", register("", 20));
+    println!("register(\"Ferris\", 15) = {:?}", register("Ferris", 15));
+
+    // ---------- map_or_default ----------
+    //
+    // 旧写法：`opt.map(f).unwrap_or_default()`，或 `opt.map_or(Default::default(), f)`。
+    // 新写法：`opt.map_or_default(f)`。
+    // 语义：`Some(v)` 得到 `f(v)`；`None` 得到返回类型的 `Default::default()`
+    // （数字是 0，字符串是空串，Vec 是空 Vec……）。要求返回类型实现 `Default`。
+    let name: Option<&str> = Some("Rust");
+    let nothing: Option<&str> = None;
+    println!(
+        "Option::map_or_default: Some(\"Rust\") -> {}，None -> {}",
+        name.map_or_default(|s| s.len()),
+        nothing.map_or_default(|s| s.len())
+    );
+
+    // `Result` 上也有同名方法：`Ok(v)` 得到 `f(v)`，`Err(_)` 得到默认值。
+    // 注意这会把错误信息直接丢掉，只适合“出错了也无所谓，按默认值处理”的场合；
+    // 如果需要区分错误原因，请继续使用 `match` 或 `map_err`。
+    let good: Result<u32, _> = "21".parse::<u32>();
+    let bad: Result<u32, _> = "abc".parse::<u32>();
+    println!(
+        "Result::map_or_default: Ok(21) -> {}，Err(_) -> {}",
+        good.map_or_default(|n| n * 2),
+        bad.map_or_default(|n| n * 2)
+    );
+
+    // 小结：
+    // 1. `bool::ok_or`：把“条件校验”接入 `Result` 与 `?` 的世界
+    // 2. `ok_or` 先求值、`ok_or_else` 惰性求值——错误值有开销时选后者
+    // 3. `map_or_default`：默认值恰好就是 `Default::default()` 时，比 `map_or` 更简洁
+    println!();
+}
+
+// ===========================================
+// 12. #[must_use]：不要悄悄忽略返回值（Rust 1.27 起，标准库在 1.58 补全）
+// ===========================================
+
+// 有些返回值一旦被忽略，几乎一定是 bug：
+// - 返回 `Result` 的函数：忽略它，就等于忽略了错误
+// - 纯函数（只有返回值有意义）：`s.trim();` 并不会修改 `s`，单独写一行毫无作用
+// - 惰性的迭代器：`v.iter().map(f);` 不消费的话，什么都不会发生
+// `#[must_use]` 让编译器在“返回值被直接丢弃”时发出警告（lint 名叫 `unused_must_use`，默认 warn）。
+// 它可以标在函数 / 方法上（1.27）、类型上（结构体、枚举），也可以标在 trait 上（1.32）。
+// `Result`、各种迭代器适配器本来就标了；1.57–1.58 又把标准库里所有“该标”的函数补标齐全。
+// 标在 `async fn` 上时，对它 `.await` 之后得到的结果同样生效（1.67 起）。
+// 带消息的写法 `#[must_use = "原因"]` 会把原因显示在警告里，告诉使用者“为什么不能忽略”。
+
+// 标在函数上：校验结果必须有人看
+#[must_use = "忽略校验结果，非法的用户名就会悄悄溜过去"]
+fn is_valid_username(name: &str) -> bool {
+    (3..=16).contains(&name.chars().count()) && name.chars().all(char::is_alphanumeric)
+}
+
+// 标在类型上：这个值创建之后必须被使用，否则几乎肯定是漏写了后续步骤
+#[must_use = "事务没有提交就被丢弃了"]
+struct Transaction {
+    amount: i64,
+}
+
+impl Transaction {
+    fn new(amount: i64) -> Self {
+        Transaction { amount }
+    }
+
+    // 消耗事务并返回提交的金额
+    fn commit(self) -> i64 {
+        self.amount
+    }
+}
+
+fn must_use_attribute() {
+    println!("=== #[must_use]：不要悄悄忽略返回值（Rust 1.27 起，标准库在 1.58 补全） ===");
+
+    // 正确用法：使用返回值
+    if is_valid_username("rustacean") {
+        println!("用户名合法");
+    }
+    let committed = Transaction::new(100).commit();
+    println!("已提交的金额: {committed}");
+
+    // 下面这些写法都会触发 unused_must_use 警告，所以只写在注释里：
+    //     is_valid_username("ab");           // warning: unused return value of `is_valid_username` that must be used
+    //     "  hi ".trim();                    // warning: unused return value of `core::str::<impl str>::trim` that must be used
+    //     vec![1, 2].iter().map(|x| x + 1);  // warning: unused `Map` that must be used
+    //     Transaction::new(5);               // warning: unused `Transaction` that must be used
+    // 带消息的属性，警告里会附上我们写下的那句原因。
+
+    // 确实想忽略返回值时，要明确表态：`let _ = ...;`。读代码的人由此知道你是有意为之，而不是忘了。
+    let _ = is_valid_username("ab");
+
+    // 最佳实践：
+    // 1. 给“忽略了就一定出错”的函数和类型加 `#[must_use]`，并写上原因
+    // 2. 不要用 `#[allow(unused_must_use)]` 压警告；真的要忽略，写 `let _ = ...;`
+    // 3. 返回 `Result` 的函数不需要再标，`Result` 本身就是 must_use
+    println!();
+}
+
+// ===========================================
+// 13. #[track_caller]：让 panic 指向调用者，而不是内部实现（Rust 1.46）
+// ===========================================
+
+// panic 的报错信息里带有出错的文件和行号。默认情况下，它指向 `panic!` 所在的那一行。
+// 但对一个“检查参数，不满足就 panic”的辅助函数来说，真正出问题的是**调用它的那一行**，
+// 指向辅助函数内部毫无帮助——你还得顺着调用栈自己去找。
+// 标准库的 `unwrap()`、`expect()`、`RefCell::borrow_mut()`、切片下标越界等，报错时指向的都是**你的代码**，
+// 靠的就是 `#[track_caller]`。
+//
+// 给函数加上 `#[track_caller]` 之后：
+// - 函数里 panic（或调用 `Location::caller()`）所看到的位置，是调用这个函数的位置
+// - 如果它又调用了另一个带 `#[track_caller]` 的函数，位置会一路向上传递到最外层的调用者
+// - 代价是每次调用多传一个隐藏参数，几乎可以忽略
+// 典型用法：给自己写的 `unwrap` 风格辅助函数、断言函数、检查参数的构造函数加上它。
+
+use std::panic::Location;
+
+// 带 `#[track_caller]`：返回的是“调用本函数的那一行”
+#[track_caller]
+fn caller_location() -> &'static Location<'static> {
+    Location::caller()
+}
+
+// 不带：返回的是本函数里 `Location::caller()` 所在的那一行，与谁调用无关
+fn plain_location() -> &'static Location<'static> {
+    Location::caller()
+}
+
+fn track_caller_attribute() {
+    println!("=== #[track_caller]：让 panic 指向调用者，而不是内部实现（Rust 1.46） ===");
+
+    let tracked = caller_location(); // 返回的行号，就是上面这一行
+    let untracked = plain_location();
+    println!("带 #[track_caller] 的函数报告的位置: {}:{}", tracked.file(), tracked.line());
+    println!("不带的函数报告的位置: {}:{}（指向它自己内部）", untracked.file(), untracked.line());
+
+    // 最佳实践：
+    // 1. 凡是“检查参数不满足就 panic”的公开辅助函数，都加上 `#[track_caller]`，让使用者一眼看到是哪一行出的错
+    // 2. 它只改变“报告的位置”，不改变程序行为
+    println!();
+}
+
+// ===========================================
+// 14. 调用栈回溯：RUST_BACKTRACE 与 std::backtrace::Backtrace（Rust 1.65）
+// ===========================================
+
+// panic 时，默认只打印错误信息和位置，并提示：
+//     note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// 设置环境变量后重新运行，就会打印调用栈，一路追到出错的位置：
+// - `RUST_BACKTRACE=1`：简短回溯，隐藏运行时内部的栈帧，只留下和你的代码相关的部分（1.47 起输出更紧凑）
+// - `RUST_BACKTRACE=full`：完整回溯，包含所有栈帧
+//
+// 1.65 起，你的代码也能主动捕获回溯：`std::backtrace::Backtrace`。
+// 典型用途是把回溯存进自定义错误里。因为 `?` 传播错误时，错误本身并不记录“从哪里一路传上来的”，
+// 事后看日志就只剩一句错误信息；带上回溯，就能直接看到源头。
+//
+// 两种捕获方式：
+// - `Backtrace::capture()`：受环境变量控制（先看 `RUST_LIB_BACKTRACE`，再看 `RUST_BACKTRACE`）；
+//   没有启用时几乎没有开销，所以可以放心地写在错误的构造函数里
+// - `Backtrace::force_capture()`：无视环境变量，一定捕获，代价较高（要遍历调用栈）
+// 回溯的状态用 `status()` 查询：`Unsupported`（平台不支持）、`Disabled`（环境变量没开）、`Captured`（已捕获）。
+
+fn backtrace_support() {
+    println!("=== 调用栈回溯：RUST_BACKTRACE 与 std::backtrace::Backtrace（Rust 1.65） ===");
+
+    use std::backtrace::{Backtrace, BacktraceStatus};
+
+    // 典型用法：在自定义错误的构造函数里捕获回溯
+    #[derive(Debug)]
+    struct AppError {
+        message: String,
+        backtrace: Backtrace,
+    }
+    impl AppError {
+        fn new(message: &str) -> Self {
+            AppError { message: message.to_string(), backtrace: Backtrace::capture() }
+        }
+    }
+
+    let error = AppError::new("配置文件格式错误");
+    let status_text = match error.backtrace.status() {
+        BacktraceStatus::Captured => "已捕获（环境变量已启用）",
+        BacktraceStatus::Disabled => "未启用（设置 RUST_BACKTRACE=1 后重新运行即可）",
+        // BacktraceStatus 标了 #[non_exhaustive]，所以必须有 `_` 分支
+        _ => "当前平台不支持",
+    };
+    println!("错误「{}」的回溯状态: {status_text}", error.message);
+
+    // 强制捕获：无视环境变量，一定拿到回溯
+    let forced = Backtrace::force_capture();
+    println!("force_capture 的状态: {:?}，回溯共 {} 行", forced.status(), forced.to_string().lines().count());
+
+    // 最佳实践：
+    // 1. 自定义错误的构造函数里用 `capture()`，平时零开销，排查问题时开环境变量就有回溯
+    // 2. 线上服务不要常开 `force_capture()`，它会遍历调用栈，在高频错误路径上开销可观
+    println!();
+}
+
+// ===========================================
+// 15. 顺便看一眼，不改变值：Option / Result 的 inspect（Rust 1.76）
+// ===========================================
+
+// 在一串链式调用中间，想“顺便打印或记录一下当前的值”，但又不能改变它。
+// 迭代器里早就有 `Iterator::inspect`；1.76 给 `Option` 和 `Result` 也补上了：
+// - `Option::inspect(|值| ..)`：是 `Some` 时调用闭包（拿到 `&T`），然后原样返回这个 Option
+// - `Result::inspect(|值| ..)`：是 `Ok` 时调用闭包；`Result::inspect_err(|错误| ..)`：是 `Err` 时调用闭包
+// 在这之前只能用 `map` 再把原值返回（`map(|v| { log(&v); v })`），既啰嗦，又要把引用换成移动。
+// 典型场景：在 `?` 链、`and_then` 链的中间加调试日志或指标统计，而不打断数据流。
+
+// 解析端口号：成功和失败时各记一条日志，值本身原样往下传
+fn parse_port_with_log(text: &str, log: &mut Vec<String>) -> Result<u16, std::num::ParseIntError> {
+    text.parse::<u16>()
+        .inspect(|port| log.push(format!("解析成功: {port}")))
+        .inspect_err(|error| log.push(format!("解析失败: {error}")))
+}
+
+fn option_result_inspect() {
+    println!("=== 顺便看一眼，不改变值：Option / Result 的 inspect（Rust 1.76） ===");
+
+    let mut log = Vec::new();
+    println!("{:?}", parse_port_with_log("8080", &mut log));
+    println!("{:?}", parse_port_with_log("http", &mut log));
+    println!("日志: {log:?}");
+
+    // Option 版本：在链条中间看一眼找到的元素
+    let first_even = [1, 3, 4, 6].iter().find(|n| *n % 2 == 0).inspect(|n| println!("找到偶数 {n}")).copied();
+    println!("find 的结果仍然原样传了下来: {first_even:?}");
+
+    // 最佳实践：
+    // 1. 调试日志、指标统计放进 inspect，而不是 `map(|v| { log(&v); v })`
+    // 2. inspect 的闭包只能拿到引用，不能修改值；要修改就老老实实用 map
+    println!();
+}
+
+// ===========================================
+// 16. main 返回自定义退出码：ExitCode（Rust 1.61）
+// ===========================================
+
+// 命令行程序要用进程的退出码告诉调用者（shell、脚本、CI）：成功了，还是失败了、是哪一类失败。
+// 1.61 之前，`main` 只能返回 `()` 或 `Result<(), E>`（出错时退出码固定为 1）；
+// 想要自定义退出码，只能调用 `std::process::exit(码)`——它会立刻终止进程，局部变量的析构函数（drop）都不会运行，
+// 缓冲区里没写完的数据可能就丢了。
+// 1.61 稳定了 `std::process::ExitCode` 和 `Termination` trait：
+// - `main` 可以返回 `ExitCode`：`ExitCode::SUCCESS`、`ExitCode::FAILURE`，或者 `ExitCode::from(0..=255)`
+// - 函数正常返回，所有析构照常运行，退出码由你决定
+// - 能用作 `main` 返回值的类型，都实现了 `Termination`：`()`、`ExitCode`、`Result<T, E: Debug>` 等
+//   （`Err` 时会把错误的 Debug 输出打印到 stderr，退出码为 1）
+
+use std::process::ExitCode;
+
+// 应用自己的错误分类，每一类对应一个退出码（命令行工具的常见约定：2 = 用法错误，3 = 配置错误……）
+#[derive(Debug)]
+enum CliError {
+    Usage(String),
+    Config(String),
+}
+
+impl CliError {
+    fn exit_code(&self) -> u8 {
+        match self {
+            CliError::Usage(_) => 2,
+            CliError::Config(_) => 3,
+        }
+    }
+}
+
+fn run_cli(args: &[&str]) -> Result<(), CliError> {
+    match args.first() {
+        None => Err(CliError::Usage("缺少参数".to_string())),
+        Some(&"bad-config") => Err(CliError::Config("配置文件格式错误".to_string())),
+        Some(_) => Ok(()),
+    }
+}
+
+// 这就是 `fn main() -> ExitCode` 的典型写法：把业务错误转换成退出码，错误信息打印到 stderr
+fn exit_code_of(result: Result<(), CliError>) -> ExitCode {
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("错误: {error:?}");
+            ExitCode::from(error.exit_code())
+        }
+    }
+}
+
+fn custom_exit_code() {
+    println!("=== main 返回自定义退出码：ExitCode（Rust 1.61） ===");
+
+    for args in [&["run"][..], &[], &["bad-config"]] {
+        let result = run_cli(args);
+        let expected = match &result {
+            Ok(()) => 0,
+            Err(error) => error.exit_code(),
+        };
+        let code = exit_code_of(result);
+        println!("参数 {args:?} -> 退出码 {expected}（等于 SUCCESS: {}）", code == ExitCode::SUCCESS);
+    }
+
+    // 真实程序里，main 直接返回它即可：
+    //     fn main() -> ExitCode {
+    //         exit_code_of(run_cli(&args))
+    //     }
+
+    // 最佳实践：
+    // 1. 想要自定义退出码时返回 ExitCode，不要在函数中间调用 `process::exit`（它会跳过所有析构）
+    // 2. 约定好每个退出码的含义并写进文档，脚本和 CI 才能据此区分失败原因
     println!();
 }
 
@@ -1328,6 +1637,12 @@ pub fn main() {
     error_handling_best_practices();
     enhanced_error_trait();
     error_handling_example_program();
+    option_result_conveniences();
+    must_use_attribute();
+    track_caller_attribute();
+    backtrace_support();
+    option_result_inspect();
+    custom_exit_code();
 
     println!("错误处理演示完成！");
 }
@@ -1339,6 +1654,33 @@ pub fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_bool_ok_or_and_map_or_default() {
+        use std::cell::Cell;
+
+        // ok_or：true -> Ok(())，false -> Err(err)
+        assert_eq!(true.ok_or("错误"), Ok(()));
+        assert_eq!(false.ok_or("错误"), Err("错误"));
+
+        // ok_or_else 是惰性的：条件成立时闭包不会被调用
+        let calls = Cell::new(0);
+        let build_err = || {
+            calls.set(calls.get() + 1);
+            "构造出的错误".to_string()
+        };
+        assert_eq!(true.ok_or_else(build_err), Ok(()));
+        assert_eq!(calls.get(), 0);
+        assert_eq!(false.ok_or_else(build_err), Err("构造出的错误".to_string()));
+        assert_eq!(calls.get(), 1);
+
+        // map_or_default：None / Err 时得到返回类型的默认值
+        assert_eq!(Some("Rust").map_or_default(|s| s.len()), 4);
+        assert_eq!(None::<&str>.map_or_default(|s| s.len()), 0);
+        assert_eq!(Ok::<u32, ()>(21).map_or_default(|n| n * 2), 42);
+        assert_eq!(Err::<u32, ()>(()).map_or_default(|n| n * 2), 0);
+        assert_eq!(None::<&str>.map_or_default(|s| s.to_string()), String::new());
+    }
 
     #[test]
     fn test_divide_function() {
@@ -1488,7 +1830,7 @@ mod tests {
         assert!(error_msg.contains("读取文件"));
     }
 
-    // Rust 1.81+ 增强的 Error trait 特性测试
+    // 自定义错误类型：Display 文本与 source() 错误链
     #[test]
     fn test_enhanced_error_trait() {
         use std::error::Error;
@@ -1513,14 +1855,6 @@ mod tests {
                     .as_ref()
                     .map(|s| s.as_ref() as &(dyn Error + 'static))
             }
-
-            // fn provide<'a>(&'a self, request: &mut std::error::Request<'a>) {
-            // error_generic_member_access 是实验性特性，暂时注释
-            //     request
-            //         .provide_value::<&str>(&self.message)
-            //         .provide_value("error_code", &500u16)
-            //         .provide_value("context_data", &self.context_data);
-            // }
         }
 
         let error = EnhancedError {
@@ -1535,12 +1869,8 @@ mod tests {
         // 测试错误源
         assert!(error.source().is_none());
 
-        // 测试结构化错误数据访问（需要 nightly 编译器和 unstable 特性）
-        // let mut request = std::error::Request::new();
-        // error.provide(&mut request);
-        //
-        // 验证提供了结构化数据
-        // assert!(request.value::<&str>().is_some());
+        // 结构化数据直接通过字段访问（按类型向外提供数据的 `provide` 机制仍是 nightly-only）
+        assert_eq!(error.context_data, 42);
     }
 
     #[test]
@@ -1560,15 +1890,7 @@ mod tests {
             }
         }
 
-        impl Error for NetworkError {
-            // fn provide<'a>(&'a self, request: &mut std::error::Request<'a>) {
-            //     // error_generic_member_access 是实验性特性，暂时注释
-            //     request
-            //         .provide_value("url", &self.url)
-            //         .provide_value("status_code", &self.status_code)
-            //         .provide_value("error_type", "network");
-            // }
-        }
+        impl Error for NetworkError {}
 
         #[derive(Debug)]
         struct ServiceError {
@@ -1586,15 +1908,6 @@ mod tests {
             fn source(&self) -> Option<&(dyn Error + 'static)> {
                 Some(&self.source)
             }
-
-            // fn provide<'a>(&'a self, request: &mut std::error::Request<'a>) {
-            //     // error_generic_member_access 是实验性特性，暂时注释
-            //     request
-            //         .provide_value("service", &self.service)
-            //         .provide_value("error_type", "service");
-            //     // 委托给源错误以提供更多信息
-            //     self.source.provide(request);
-            // }
         }
 
         let network_error = NetworkError {
@@ -1613,5 +1926,58 @@ mod tests {
             service_error.source().unwrap().to_string(),
             "Network Error: https://example.com - 404"
         );
+    }
+
+    #[test]
+    fn test_must_use_attribute() {
+        assert!(is_valid_username("rustacean"));
+        assert!(!is_valid_username("ab")); // 太短
+        assert!(!is_valid_username("has space")); // 含空格
+        assert_eq!(Transaction::new(100).commit(), 100);
+    }
+
+    #[test]
+    fn test_track_caller_attribute() {
+        // 带 #[track_caller] 的函数：报告的是调用点所在的行
+        let (tracked, line) = (caller_location(), line!());
+        assert_eq!(tracked.line(), line);
+        assert!(tracked.file().ends_with("mod_06_error_handling.rs"));
+
+        // 不带的函数：报告的是它内部 Location::caller() 所在的行，与调用点不同
+        let untracked = plain_location();
+        assert_ne!(untracked.line(), line);
+    }
+
+    #[test]
+    fn test_backtrace_support() {
+        use std::backtrace::{Backtrace, BacktraceStatus};
+        // force_capture 无视环境变量，一定捕获
+        assert_eq!(Backtrace::force_capture().status(), BacktraceStatus::Captured);
+    }
+
+    #[test]
+    fn test_option_result_inspect() {
+        // inspect / inspect_err 看一眼，原值原样返回
+        let mut log = Vec::new();
+        assert_eq!(parse_port_with_log("8080", &mut log), Ok(8080));
+        assert!(parse_port_with_log("http", &mut log).is_err());
+        assert_eq!(log.len(), 2);
+        assert_eq!(log[0], "解析成功: 8080");
+        assert!(log[1].starts_with("解析失败"));
+
+        let mut seen = Vec::new();
+        assert_eq!(Some(3).inspect(|v| seen.push(*v)), Some(3));
+        assert_eq!(None::<i32>.inspect(|v| seen.push(*v)), None);
+        assert_eq!(seen, [3]);
+    }
+
+    #[test]
+    fn test_custom_exit_code() {
+        use std::process::ExitCode;
+
+        assert_eq!(exit_code_of(run_cli(&["run"])), ExitCode::SUCCESS);
+        assert_eq!(exit_code_of(run_cli(&[])), ExitCode::from(2));
+        assert_eq!(exit_code_of(run_cli(&["bad-config"])), ExitCode::from(3));
+        assert_ne!(ExitCode::SUCCESS, ExitCode::FAILURE);
     }
 }

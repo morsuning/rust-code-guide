@@ -1,10 +1,6 @@
-#![allow(
-    dead_code,
-    unused_variables,
-    unused_imports,
-    unused_mut,
-    unused_assignments
-)]
+// 教程里的类型、字段和方法经常只为演示语法而定义，不一定会被全部读取或调用，所以允许 dead_code；
+// 其他 lint（未使用的导入、变量、可变性等）必须保持干净，不要再给模块添加新的 allow。
+#![allow(dead_code)]
 
 // Rust 结构体（Structs）
 // 深入讲解结构体定义、方法实现、所有权、泛型等核心概念
@@ -117,7 +113,7 @@ fn basic_structs() {
     struct AlwaysEqual; // 总是相等的类型
 
     let subject = AlwaysEqual;
-    println!("类单元结构体创建成功");
+    println!("类单元结构体创建成功，大小为 {} 字节（不占任何内存）", std::mem::size_of_val(&subject));
 
     // 类单元结构体的用途：
     // 1. 标记类型：用于表示某些状态或特性
@@ -1217,8 +1213,6 @@ pub fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     // 测试矩形面积计算
     #[test]
     fn test_rectangle_area() {

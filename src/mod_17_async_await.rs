@@ -1,10 +1,6 @@
-#![allow(
-    dead_code,
-    unused_variables,
-    unused_imports,
-    unused_mut,
-    unused_assignments
-)]
+// 教程里的类型、字段和方法经常只为演示语法而定义，不一定会被全部读取或调用，所以允许 dead_code；
+// 其他 lint（未使用的导入、变量、可变性等）必须保持干净，不要再给模块添加新的 allow。
+#![allow(dead_code)]
 
 // Rust 异步编程与 async/await
 // 深入讲解 Rust 中的异步编程模型，包括 Future、async/await、执行器等核心概念
@@ -68,7 +64,7 @@ fn future_trait_basics() {
     // 3. Waker 唤醒：在操作完成时唤醒任务
     // 4. 状态管理：管理异步操作的不同状态
 
-    // 简单的 Future 实现
+    // 简单的 Future 实现：第一次被轮询时返回 Pending，第二次才返回 Ready
     struct SimpleFuture {
         value: i32,
         completed: bool,
@@ -77,15 +73,27 @@ fn future_trait_basics() {
     impl Future for SimpleFuture {
         type Output = i32;
 
-        fn poll(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+        fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
             if self.completed {
                 Poll::Ready(self.value)
             } else {
                 self.completed = true;
+                // 返回 Pending 之前，必须先安排好“将来由谁来唤醒我”：
+                // 执行器只有在被唤醒（wake）之后才会再次轮询这个任务，不唤醒就会永远挂起。
+                // 真实的 Future 会把 waker 交给 I/O 驱动或定时器，等事件发生时再调用 wake；
+                // 这里没有外部事件，所以直接请求“立刻再轮询我一次”。
+                cx.waker().wake_by_ref();
                 Poll::Pending
             }
         }
     }
+
+    // 用 futures 自带的最小执行器 block_on 把它跑完（futures 已经是本项目的依赖）。
+    // block_on 会反复轮询直到拿到 Ready：第一次得到 Pending，
+    // 因为上面调用了 wake_by_ref，所以马上会被再次轮询并得到结果。
+    // 如果删掉那一行 wake_by_ref，这里就会永远卡住——这是手写 Future 时最经典的错误。
+    let value = futures::executor::block_on(SimpleFuture { value: 7, completed: false });
+    println!("SimpleFuture 被轮询两次后得到: {value}");
 
     // Future 的生命周期：
     // 1. 创建：创建 Future 实例
@@ -479,7 +487,7 @@ async fn async_patterns_and_best_practices() {
     use futures::stream::{self, StreamExt};
 
     let items = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    let results = stream::iter(items)
+    stream::iter(items)
         .for_each_concurrent(3, |item| async move {
             println!("处理项目: {}", item);
             sleep(Duration::from_millis(100)).await;
@@ -488,7 +496,7 @@ async fn async_patterns_and_best_practices() {
 
     // 模式 3: 缓存异步结果
     use std::collections::HashMap;
-    use std::sync::{Arc, Condvar, Mutex};
+    use std::sync::Arc;
     use tokio::sync::RwLock;
 
     #[derive(Clone)]
@@ -534,6 +542,12 @@ async fn async_patterns_and_best_practices() {
         .await;
 
     println!("缓存结果: {} {}", result1, result2);
+
+    // 注意：这个缓存只有在“顺序调用”时才能保证 factory 只执行一次。
+    // 读锁释放之后、拿到写锁之前有一段空隙：如果两个任务同时用同一个 key 调用 get_or_insert，
+    // 它们会都发现缓存里没有，于是都去执行一遍 factory（常说的“缓存击穿”）。
+    // 要保证并发下只计算一次，可以给每个 key 配一个 `tokio::sync::OnceCell`，
+    // 或者直接使用成熟的缓存库（例如 moka 的 `get_with`），不要自己重新发明。
 
     // 异步编程的最佳实践：
     // 1. 合理设置并发度：避免过度并发
@@ -869,7 +883,10 @@ async fn async_trait_methods() {
     println!("=== 异步 trait 方法（async fn in traits，Rust 1.75+） ===");
 
     // 异步 trait 方法的背景和意义：
-    // 1. 简化语法：不再需要 async-trait 宏或其他辅助工具
+    // 1. 简化语法：静态分发（泛型 `T: Trait`）下不再需要 async-trait 宏。
+    //    但要把它当作 `dyn Trait` 使用时，带 `async fn` 的 trait 本身不是 dyn 兼容的，
+    //    目前仍需借助成熟的库：`async-trait`（把返回值装箱）或 `dynosaur`（专门为此设计）；
+    //    另外，要求返回的 Future 必须 `Send`（例如交给 `tokio::spawn`）时可以用 `trait-variant` 生成带 Send 的版本
     // 2. 性能优化：编译器级别的支持减少了运行时开销
     // 3. 类型系统改进：更好的错误信息和类型推断
     // 4. 生态系统标准化：为异步 trait 提供官方支持
@@ -994,7 +1011,7 @@ async fn async_trait_methods() {
             result
         }
 
-        async fn validate(&self, item: &T) -> bool {
+        async fn validate(&self, _item: &T) -> bool {
             // 模拟异步验证过程
             // T::default() 需要 T: Default trait bound，暂时注释
             // item != &T::default()
@@ -1244,9 +1261,6 @@ async fn practical_async_trait_examples() {
     // 场景 2: 数据库连接池的异步 trait
     // 注意：包含 async 方法的 trait 目前不能用于 dyn dispatch
     mod database_pool {
-        use std::time::Duration;
-        use tokio::time::sleep;
-
         #[derive(Debug, Clone)]
         pub struct DatabaseConnection {
             id: u32,
@@ -1424,14 +1438,17 @@ async fn practical_async_trait_examples() {
 async fn async_function_lifetimes() {
     println!("=== 异步函数与借用引用（生命周期模式） ===");
 
-    // 异步函数生命周期改进的背景和意义：
-    // 1. 简化语法：减少显式生命周期标注的需要
-    // 2. 更好的推断：编译器能够更智能地推断异步函数中的生命周期
-    // 3. 减少错误：避免常见的生命周期相关编译错误
-    // 4. 代码可读性：使异步函数的签名更加简洁清晰
-    // 5. 性能优化：优化的生命周期处理可能带来更好的性能
+    // 异步函数与借用引用的几个要点：
+    // 1. `async fn` 返回的 Future 会捕获**所有参数**，包括引用参数的生命周期：
+    //    这个 Future 不能比被借用的数据活得更久，所以 `.await` 它的时候，数据必须还在
+    // 2. 带引用参数的 `async fn` 返回的 Future 不是 `'static` 的，
+    //    不能直接交给要求 `'static` 的 `tokio::spawn`；要先转成拥有所有权的数据（clone、Arc），
+    //    或者改用不要求 `'static` 的方式（如 `join!`）
+    // 3. 生命周期标注只存在于编译期，编译后就被擦除了，不影响运行时性能
+    // 4. 2024 edition 起，返回位置的 `impl Trait` 默认也会捕获作用域内的所有生命周期（与 async fn 一致），
+    //    需要排除时用 `+ use<..>`（Rust 1.82 稳定）
 
-    // 示例 1: 改进的异步函数生命周期推断
+    // 示例 1: 借用切片参数的异步函数
     // 下面的函数借用了 `data`，其返回的 Future 也携带该生命周期。
     // 只要调用时借用源仍然存活，就能正常工作。
     async fn process_data_ref(data: &[u8]) -> Vec<u8> {
@@ -1471,10 +1488,10 @@ async fn async_function_lifetimes() {
     let config_str = apply_config_ref(&config).await;
     println!("配置字符串: {}", config_str);
 
-    // 示例 4: 异步闭包的生命周期改进
+    // 示例 4: async 块中借用外部变量
     let numbers = vec![1, 2, 3, 4, 5];
     let doubled = async { numbers.iter().map(|&x| x * 2).collect::<Vec<_>>() }.await;
-    println!("异步闭包结果: {:?}", doubled);
+    println!("async 块结果: {:?}", doubled);
 
     // 示例 5: 异步函数中的泛型处理器生命周期
     trait AsyncProcessor: Send + Sync {
@@ -1873,8 +1890,6 @@ async fn practical_async_lifetime_examples() {
     // 场景 6: 流处理中的生命周期
     // 注意：包含 async 方法的 trait 目前不能用于 dyn dispatch
     mod stream_lifetimes {
-        use std::future::Future;
-
         // 注意：以下 trait 定义在当前 Rust 版本中无法用于 dyn dispatch
         /*
         pub trait StreamProcessor<T>: Send + Sync {
@@ -1966,6 +1981,351 @@ pub async fn async_closures_demo() {
 }
 
 // ===========================================
+// 14. 异步闭包的 trait：AsyncFn、AsyncFnMut、AsyncFnOnce（Rust 1.85）
+// ===========================================
+
+// 上一节用 `F: FnOnce(i32) -> Fut, Fut: Future<Output = i32>` 接收异步闭包。
+// 这种写法在“返回的 Future 不借用任何东西”时没问题，但表达不了两类常见需求：
+// - 闭包的参数是引用（比如 `&str`），并且返回的 Future 在 `.await` 之后还要用这个引用
+// - 返回的 Future 借用了闭包自己捕获的变量
+// 原因是 `Fut` 是一个独立的泛型参数，它的类型不能依赖“每次调用时借来的那个引用的生命周期”，
+// 编译器会报 “lifetime may not live long enough”。
+// 1.85 随异步闭包一起稳定了三个 trait，与 Fn / FnMut / FnOnce 一一对应：
+// - `AsyncFn`：可以反复调用，只借用捕获的变量
+// - `AsyncFnMut`：可以反复调用，会修改捕获的变量
+// - `AsyncFnOnce`：只能调用一次，会消耗捕获的变量
+// 写法：`F: AsyncFn(&str) -> String`——直接写“返回 String 的异步函数”，不用再单独声明 `Fut`。
+
+// 对每个名字依次调用异步处理函数。闭包的参数是引用，返回的 Future 在 await 之后还要用它——
+// 如果写成 `F: Fn(&str) -> Fut, Fut: Future<Output = String>`，调用方传入这样的闭包就无法通过编译。
+async fn apply_all<F>(items: &[&str], handler: F) -> Vec<String>
+where
+    F: AsyncFn(&str) -> String,
+{
+    let mut results = Vec::new();
+    for item in items {
+        results.push(handler(item).await);
+    }
+    results
+}
+
+// 反复调用、并且允许闭包修改自己捕获的状态
+async fn run_twice<F: AsyncFnMut(i32) -> i32>(mut task: F) -> (i32, i32) {
+    let first = task(5).await;
+    let second = task(7).await;
+    (first, second)
+}
+
+// 只调用一次，闭包可以把捕获的变量整个消耗掉
+async fn run_once<F: AsyncFnOnce() -> String>(task: F) -> String {
+    task().await
+}
+
+pub async fn async_fn_traits_demo() {
+    println!("=== 异步闭包的 trait：AsyncFn、AsyncFnMut、AsyncFnOnce（Rust 1.85） ===");
+
+    // AsyncFn：闭包借用了 prefix，参数 name 是借来的引用，并且带着它越过了 await
+    let prefix = String::from("你好，");
+    let greetings = apply_all(&["小明", "小红"], async |name| {
+        sleep(Duration::from_millis(1)).await;
+        format!("{prefix}{name}")
+    })
+    .await;
+    println!("AsyncFn 的结果: {greetings:?}");
+
+    // AsyncFnMut：闭包修改它捕获的 total
+    let mut total = 0;
+    let (first, second) = run_twice(async |n| {
+        sleep(Duration::from_millis(1)).await;
+        total += n;
+        total
+    })
+    .await;
+    println!("AsyncFnMut 的结果: ({first}, {second})，闭包结束之后 total = {total}");
+
+    // AsyncFnOnce：用 move 把 report 移进闭包，调用时被消耗
+    let report = String::from("月度报告");
+    let sent = run_once(async move || {
+        sleep(Duration::from_millis(1)).await;
+        format!("已发送：{report}")
+    })
+    .await;
+    println!("AsyncFnOnce 的结果: {sent}");
+
+    // 最佳实践：
+    // 1. 接收异步回调的函数，用 `AsyncFn*` 约束，而不是 `Fn(..) -> Fut` 加 `Fut: Future`
+    // 2. 选哪一个的规则和 Fn 系列相同：只调用一次用 AsyncFnOnce，依次调用多次用 AsyncFnMut，需要并发共享调用才用 AsyncFn；
+    //    约束越弱，调用方能传入的闭包越多
+    // 3. 调用方写 `async |x| { .. }`，而不是 `|x| async move { .. }`：
+    //    后者返回的 async 块不能借用闭包的参数和捕获的变量，更容易遇到生命周期错误
+    println!();
+}
+
+// ===========================================
+// 15. 手动驱动 Future：pin!、Waker::noop 与自定义 Waker（Rust 1.68 / 1.85 / 1.83）
+// ===========================================
+
+// 执行器（tokio 之类）做的事，说到底就是：把 Future 固定住，反复调用 `poll`，直到它返回 `Ready`。
+// 理解这个过程最好的办法，是自己动手做一遍。两个绕不开的细节：
+//
+// 1. 固定（Pin）：`poll` 要求 `Pin<&mut Self>`，因为 async 块可能是自引用的，开始运行之后就不能再移动。
+//    过去在栈上固定要么用 `Box::pin`（堆分配），要么用 unsafe 的 `Pin::new_unchecked`；
+//    1.68 起，`std::pin::pin!(future)` 宏可以安全地把 future 固定在**当前栈帧**上，没有分配。
+// 2. 唤醒器（Waker）：`poll` 需要一个 `Context`，里面装着 `Waker`，Future 靠它通知执行器“我准备好了，请再来轮询我”。
+//    - 1.85 起 `Waker::noop()` 提供了一个“什么也不做”的 waker，适合“我会自己反复去 poll，不需要被唤醒”的场景：
+//      测试、在同步代码里驱动一个简单的 future、写教学用的迷你执行器
+//    - 需要自己观察或响应唤醒时，推荐实现标准库的 `Wake` trait（基于 `Arc`，全是安全代码，1.51 起）
+//    - 没有堆分配器（嵌入式）等特殊场景，才手写 `RawWakerVTable`，并用 `Waker::new`（1.83 起是 const 的）创建，需要 unsafe
+
+use std::pin::pin;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::task::{RawWaker, RawWakerVTable, Wake, Waker};
+
+// 一个倒计时 Future：前 n 次被轮询时返回 Pending，之后返回 Ready
+struct Countdown(u32);
+
+impl Future for Countdown {
+    type Output = &'static str;
+
+    fn poll(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+        if self.0 == 0 {
+            Poll::Ready("发射！")
+        } else {
+            self.0 -= 1;
+            // 真实的 Future 在返回 Pending 之前，必须安排好“将来什么时候调用 cx.waker().wake()”，
+            // 否则执行器不知道该什么时候再来轮询它。这里的轮询者是下面的循环，它一直在主动轮询，所以不需要。
+            Poll::Pending
+        }
+    }
+}
+
+// 极简执行器：用 pin! 把 future 固定在栈上，不断轮询直到完成；返回结果和轮询次数
+fn poll_until_ready<F: Future>(future: F) -> (F::Output, u32) {
+    let mut future = pin!(future);
+    let mut context = Context::from_waker(Waker::noop());
+    let mut polls = 0;
+    loop {
+        polls += 1;
+        if let Poll::Ready(output) = future.as_mut().poll(&mut context) {
+            return (output, polls);
+        }
+    }
+}
+
+// 第一次被轮询时先唤醒自己再返回 Pending（相当于“让出一次执行权”），第二次才完成。
+// 这是标准的“让步”写法：唤醒和 Pending 成对出现，执行器才知道要再轮询。
+struct YieldOnce(bool);
+
+impl Future for YieldOnce {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
+        if self.0 {
+            Poll::Ready(())
+        } else {
+            self.0 = true;
+            cx.waker().wake_by_ref();
+            Poll::Pending
+        }
+    }
+}
+
+// 安全的做法：实现 `Wake` trait，再用 `Waker::from(Arc<..>)` 变成 Waker
+struct CountingWake(AtomicUsize);
+
+impl Wake for CountingWake {
+    fn wake(self: Arc<Self>) {
+        self.0.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+// 底层的做法：手写虚表。data 指针指向一个 AtomicUsize（唤醒计数器）。
+// 四个函数的契约（来自标准库文档）：clone 返回一个等价的 RawWaker；wake 消耗掉这个 waker；
+// wake_by_ref 不消耗；drop 释放 waker 持有的资源。这里 data 只是借来的指针，没有资源需要释放。
+unsafe fn counting_raw_clone(data: *const ()) -> RawWaker {
+    RawWaker::new(data, &COUNTING_RAW_VTABLE)
+}
+unsafe fn counting_raw_wake(data: *const ()) {
+    // SAFETY: 契约与 wake_by_ref 相同，因为没有需要释放的资源。
+    unsafe { counting_raw_wake_by_ref(data) }
+}
+unsafe fn counting_raw_wake_by_ref(data: *const ()) {
+    // SAFETY: data 来自 `&AtomicUsize`，创建 waker 的人保证计数器比所有 waker 都活得久。
+    unsafe { &*(data as *const AtomicUsize) }.fetch_add(1, Ordering::SeqCst);
+}
+unsafe fn counting_raw_drop(_data: *const ()) {}
+
+static COUNTING_RAW_VTABLE: RawWakerVTable =
+    RawWakerVTable::new(counting_raw_clone, counting_raw_wake, counting_raw_wake_by_ref, counting_raw_drop);
+
+fn manual_future_driving() {
+    println!("=== 手动驱动 Future：pin!、Waker::noop 与自定义 Waker（Rust 1.68 / 1.85 / 1.83） ===");
+
+    // ---------- pin! + Waker::noop：自己写一个迷你执行器 ----------
+    let (message, polls) = poll_until_ready(Countdown(3));
+    println!("倒计时 Future 的结果: {message}，一共轮询了 {polls} 次（3 次 Pending + 1 次 Ready）");
+    let (answer, polls) = poll_until_ready(async { 40 + 2 });
+    println!("async 块的结果: {answer}，轮询了 {polls} 次（没有 await 点，一次就完成）");
+
+    // ---------- 安全的自定义 Waker：Wake trait ----------
+    let counter = Arc::new(CountingWake(AtomicUsize::new(0)));
+    let waker = Waker::from(Arc::clone(&counter));
+    let mut context = Context::from_waker(&waker);
+    let mut future = pin!(YieldOnce(false));
+    let first = future.as_mut().poll(&mut context);
+    println!(
+        "第一次轮询: {}，Future 在返回 Pending 前唤醒了自己 {} 次",
+        if first.is_pending() { "Pending" } else { "Ready" },
+        counter.0.load(Ordering::SeqCst)
+    );
+    let second = future.as_mut().poll(&mut context);
+    println!("第二次轮询: {}", if second.is_ready() { "Ready" } else { "Pending" });
+
+    // ---------- 底层的自定义 Waker：Waker::new + 手写虚表 ----------
+    let wake_count = AtomicUsize::new(0);
+    // SAFETY: 虚表里的四个函数满足 RawWaker 的契约；wake_count 先于 waker 声明，所以比 waker 活得更久；
+    // AtomicUsize 可以跨线程共享，满足 Waker 要求的 Send + Sync。
+    let raw_waker = unsafe { Waker::new(&wake_count as *const AtomicUsize as *const (), &COUNTING_RAW_VTABLE) };
+    let mut context = Context::from_waker(&raw_waker);
+    let mut future = pin!(YieldOnce(false));
+    let _ = future.as_mut().poll(&mut context);
+    println!("手写虚表的 waker 被唤醒了 {} 次", wake_count.load(Ordering::SeqCst));
+
+    // 最佳实践：
+    // 1. 栈上固定 Future 用 `pin!`，不要为了固定一个 future 去 `Box::pin`
+    // 2. 测试里想同步地驱动一个不依赖运行时的 future，`pin!` 加 `Waker::noop()` 就够了；
+    //    依赖定时器、网络 I/O 的 future 必须交给真正的运行时
+    // 3. 需要自定义 Waker 时优先用安全的 `Wake` trait，只有没有 `Arc` 可用时才写 RawWakerVTable
+    println!();
+}
+
+// ===========================================
+// 16. IntoFuture：让任意类型都能被 .await（Rust 1.64）
+// ===========================================
+
+// `.await` 只能作用于实现了 `Future` 的类型。很多 API 采用“构建器”风格：先链式地设置各种参数，最后才发起请求。
+// 以前，链条的末尾必须再调用一个方法（`.send()`、`.run()`……）才能得到 Future：
+//     let response = client.get(url).header(..).timeout(..).send().await;
+// 1.64 稳定了 `IntoFuture` trait：实现了它的类型可以直接 `.await`——
+// `.await` 会先调用 `into_future()` 把它变成真正的 Future，再去等待。
+//     let response = client.get(url).header(..).timeout(..).await;
+// 所有 `Future` 自己也实现了 `IntoFuture`（返回自身），所以 `.await` 对原有的 Future 照旧工作。
+//
+// 实现 `IntoFuture` 要提供三样东西：
+// - `type Output`：最终结果的类型
+// - `type IntoFuture`：转换出来的具体 Future 类型
+// - `fn into_future(self)`：做转换的方法
+// 因为 async 块的类型没法写出名字，常见做法是把 `IntoFuture` 写成装箱的 `Pin<Box<dyn Future<Output = ..>>>`；
+// 如果只是立即得到结果，可以用 `std::future::Ready<T>`，不需要装箱。
+
+// 一个“问候语”构建器：链式设置之后可以直接 .await
+struct Greeting {
+    name: String,
+    excited: bool,
+}
+
+impl Greeting {
+    fn new(name: &str) -> Self {
+        Greeting { name: name.to_string(), excited: false }
+    }
+
+    fn excited(mut self) -> Self {
+        self.excited = true;
+        self
+    }
+}
+
+impl IntoFuture for Greeting {
+    type Output = String;
+    // 结果是立即得到的，所以用 Ready，不需要装箱
+    type IntoFuture = std::future::Ready<String>;
+
+    fn into_future(self) -> Self::IntoFuture {
+        let punctuation = if self.excited { "！" } else { "。" };
+        std::future::ready(format!("你好，{}{punctuation}", self.name))
+    }
+}
+
+// 需要真正异步等待的情况：用装箱的 Future
+struct DelayedLookup {
+    key: u32,
+}
+
+impl IntoFuture for DelayedLookup {
+    type Output = String;
+    type IntoFuture = Pin<Box<dyn Future<Output = String>>>;
+
+    fn into_future(self) -> Self::IntoFuture {
+        Box::pin(async move {
+            sleep(Duration::from_millis(1)).await; // 模拟一次异步查询
+            format!("键 {} 对应的值", self.key)
+        })
+    }
+}
+
+pub async fn into_future_demo() {
+    println!("=== IntoFuture：让任意类型都能被 .await（Rust 1.64） ===");
+
+    // 直接对构建器 .await，不需要再写 .send() 之类的收尾方法
+    let plain = Greeting::new("小明").await;
+    let excited = Greeting::new("小红").excited().await;
+    println!("{plain} / {excited}");
+
+    let value = DelayedLookup { key: 7 }.await;
+    println!("{value}");
+
+    // 最佳实践：
+    // 1. 构建器风格的异步 API，可以让构建器实现 IntoFuture，调用方少写一个收尾方法
+    // 2. 同时保留显式的收尾方法（如 `.send()`）也无妨：它让“在这里发起请求”更显眼，选择哪种取决于 API 的风格
+    println!();
+}
+
+// ===========================================
+// 17. 异步递归（Rust 1.77）
+// ===========================================
+
+// 普通函数可以直接递归，`async fn` 以前却不行：编译器要为每个 async fn 生成一个状态机类型，
+// 状态机里要保存“它正在 await 的那个 Future”；而递归调用的 Future 就是它自己，
+// 类型的大小就成了无穷大。编译器报错 E0733：recursion in an async fn requires boxing。
+// 1.77 起允许异步递归，条件是递归调用必须经过一层**间接引用**（通常是 `Box::pin`），让 Future 的大小变得有限：
+//     async fn factorial(n: u64) -> u64 { if n <= 1 { 1 } else { n * Box::pin(factorial(n - 1)).await } }
+// 如果忘了装箱，编译器会明确提示：a recursive `async fn` call must introduce indirection such as `Box::pin`。
+// 典型场景：异步地遍历目录树、嵌套的配置、树形的远程资源——每一层都要做一次异步 I/O。
+
+struct TreeNode {
+    value: u32,
+    children: Vec<TreeNode>,
+}
+
+// 异步地累加整棵树：每个节点都模拟一次异步 I/O
+async fn sum_tree(node: &TreeNode) -> u32 {
+    sleep(Duration::from_millis(1)).await;
+    let mut total = node.value;
+    for child in &node.children {
+        total += Box::pin(sum_tree(child)).await; // 递归调用经过 Box::pin 这层间接引用
+    }
+    total
+}
+
+pub async fn async_recursion_demo() {
+    println!("=== 异步递归（Rust 1.77） ===");
+
+    let tree = TreeNode {
+        value: 1,
+        children: vec![
+            TreeNode { value: 2, children: vec![TreeNode { value: 4, children: vec![] }] },
+            TreeNode { value: 3, children: vec![] },
+        ],
+    };
+    println!("整棵树的节点值之和 = {}", sum_tree(&tree).await);
+
+    // 最佳实践：
+    // 1. 递归的 async fn 里，递归调用写成 `Box::pin(自己(..)).await`
+    // 2. 每一层递归都会分配一次堆内存；层数很深、或对性能敏感时，考虑改成显式的栈 / 队列，用循环代替递归
+    println!();
+}
+
+// ===========================================
 // 主函数
 // ===========================================
 
@@ -1986,6 +2346,10 @@ pub async fn main() {
     practical_examples().await;
     async_trait_methods().await;
     async_closures_demo().await;
+    async_fn_traits_demo().await;
+    manual_future_driving();
+    into_future_demo().await;
+    async_recursion_demo().await;
     async_function_lifetimes().await;
     practical_async_lifetime_examples().await;
 
@@ -2119,5 +2483,81 @@ mod tests {
 
         assert_eq!(result1, "computed_value");
         assert_eq!(result2, "computed_value");
+    }
+
+    #[tokio::test]
+    async fn test_async_fn_traits() {
+        // AsyncFn：参数是引用，返回的 Future 带着它越过 await
+        let prefix = String::from("你好，");
+        let greetings = apply_all(&["小明", "小红"], async |name| {
+            sleep(Duration::from_millis(1)).await;
+            format!("{prefix}{name}")
+        })
+        .await;
+        assert_eq!(greetings, ["你好，小明", "你好，小红"]);
+
+        // AsyncFnMut：闭包修改它捕获的状态
+        let mut total = 0;
+        let pair = run_twice(async |n| {
+            sleep(Duration::from_millis(1)).await;
+            total += n;
+            total
+        })
+        .await;
+        assert_eq!(pair, (5, 12));
+        assert_eq!(total, 12);
+
+        // AsyncFnOnce：消耗捕获的变量
+        let report = String::from("月度报告");
+        let sent = run_once(async move || format!("已发送：{report}")).await;
+        assert_eq!(sent, "已发送：月度报告");
+    }
+
+    #[test]
+    fn test_manual_future_driving() {
+        // pin! + Waker::noop 的迷你执行器
+        assert_eq!(poll_until_ready(Countdown(3)), ("发射！", 4));
+        assert_eq!(poll_until_ready(Countdown(0)), ("发射！", 1));
+        assert_eq!(poll_until_ready(async { 40 + 2 }), (42, 1));
+
+        // 安全的自定义 Waker：Future 在返回 Pending 之前唤醒了自己
+        let counter = Arc::new(CountingWake(AtomicUsize::new(0)));
+        let waker = Waker::from(Arc::clone(&counter));
+        let mut context = Context::from_waker(&waker);
+        let mut future = pin!(YieldOnce(false));
+        assert!(future.as_mut().poll(&mut context).is_pending());
+        assert_eq!(counter.0.load(Ordering::SeqCst), 1);
+        assert!(future.as_mut().poll(&mut context).is_ready());
+        assert_eq!(counter.0.load(Ordering::SeqCst), 1); // 第二次没有再唤醒
+
+        // 手写虚表的 Waker：wake_by_ref 与 clone 之后再 wake 都计数
+        let wake_count = AtomicUsize::new(0);
+        let raw_waker = unsafe { Waker::new(&wake_count as *const AtomicUsize as *const (), &COUNTING_RAW_VTABLE) };
+        raw_waker.wake_by_ref();
+        let cloned = raw_waker.clone();
+        cloned.wake(); // wake 会消耗掉克隆出来的 waker
+        assert_eq!(wake_count.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn test_into_future() {
+        // 直接对实现了 IntoFuture 的构建器 .await
+        assert_eq!(Greeting::new("小明").await, "你好，小明。");
+        assert_eq!(Greeting::new("小红").excited().await, "你好，小红！");
+        assert_eq!(DelayedLookup { key: 7 }.await, "键 7 对应的值");
+        // Future 自己也实现了 IntoFuture，.await 照旧工作
+        assert_eq!(async { 1 + 1 }.await, 2);
+    }
+
+    #[tokio::test]
+    async fn test_async_recursion() {
+        let tree = TreeNode {
+            value: 1,
+            children: vec![
+                TreeNode { value: 2, children: vec![TreeNode { value: 4, children: vec![] }] },
+                TreeNode { value: 3, children: vec![] },
+            ],
+        };
+        assert_eq!(sum_tree(&tree).await, 10);
     }
 }

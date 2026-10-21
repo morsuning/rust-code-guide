@@ -1,12 +1,6 @@
-#![allow(
-    dead_code,
-    unused_variables,
-    unused_imports,
-    unused_mut,
-    unused_assignments,
-    unused_macros,
-    deprecated
-)]
+// 教程里的类型、字段和方法经常只为演示语法而定义，不一定会被全部读取或调用，所以允许 dead_code；
+// 其他 lint（未使用的导入、变量、可变性等）必须保持干净，不要再给模块添加新的 allow。
+#![allow(dead_code)]
 
 // Rust 特征系统 (Traits)
 // 深入讲解 Rust 中 trait 的定义、实现、高级用法和最佳实践
@@ -430,7 +424,7 @@ fn trait_objects_and_dynamic_dispatch() {
     println!("=== Trait 对象与动态分发 ===");
 
     // 定义一个可绘制的 trait
-    // 注意：trait 对象要求 trait 是对象安全的（object-safe）
+    // 注意：trait 对象要求 trait 是 dyn 兼容的（dyn compatible，旧称“对象安全” object-safe）
     trait Drawable {
         fn draw(&self);
         fn area(&self) -> f64;
@@ -608,15 +602,16 @@ fn trait_objects_and_dynamic_dispatch() {
 
     // Trait 对象的特点和注意事项：
     // 1. 动态分发：在运行时确定调用哪个实现
-    // 2. 对象安全：trait 必须满足特定条件才能作为 trait 对象
+    // 2. dyn 兼容性：trait 必须满足特定条件才能作为 trait 对象
     // 3. 内存布局：trait 对象是胖指针，包含数据和虚表指针
     // 4. 性能考虑：静态分发（泛型）通常比动态分发更高效
 
-    // 对象安全的条件：
-    // - trait 不能有泛型类型参数
-    // - trait 不能包含 Self 类型（除了方法的第一个参数）
-    // - trait 的方法不能使用 Self 语法糖
-    // - trait 的所有方法必须符合对象安全的要求
+    // dyn 兼容的主要条件（完整规则和验证见面向对象一章的“dyn 兼容性”一节）：
+    // - 方法不能带类型参数（trait 自己带泛型参数是允许的，如 `dyn Convert<i32>`）
+    // - 除接收者外，方法的参数和返回值里不能出现 `Self`
+    //   （例如 `fn clone(&self) -> Self` 不行，所以上面的 `clone_box` 改成返回 `Box<dyn Drawable>`）
+    // - 不能有关联常量，也不能要求 `Self: Sized`
+    // - 不满足条件的方法可以加 `where Self: Sized`，把它排除在 trait 对象之外
 
     println!();
 }
@@ -827,7 +822,7 @@ fn operator_overloading_and_default_generics() {
     }
 
     // 其他运算符的实现
-    use std::ops::{Div, Mul, Neg, Sub};
+    use std::ops::{Mul, Neg, Sub};
 
     impl Sub for Vector2D {
         type Output = Self;
@@ -1644,7 +1639,7 @@ fn comprehensive_graphics_system() {
 // 11. 实验性补充：Type Alias Impl Trait (TAIT)
 // ===========================================
 
-// TAIT 截至 Rust 1.97 仍然不是稳定特性。
+// TAIT 截至 Rust 1.99 仍然不是稳定特性。
 // 这里保留注释示例，方便对照理解它未来可能带来的 trait 返回类型表达方式。
 
 /*
@@ -1689,6 +1684,246 @@ pub fn tait_demo() {
 */
 
 // ===========================================
+// 12. trait 对象向上转型（Rust 1.86）
+// ===========================================
+
+// 当一个 trait 继承另一个 trait（`trait Dog: Animal`）时，`&dyn Dog` 能不能当作 `&dyn Animal` 使用？
+// 直觉上应该可以——实现了 Dog 的类型必然也实现了 Animal。但在 1.86 之前，编译器不允许这样转换（叫“向上转型”，upcasting），
+// 因为 trait 对象的虚表（vtable）里没有记录“如何变成父 trait 的虚表”。
+// 常见的绕法是在父 trait 里手写一个转换方法（`fn as_animal(&self) -> &dyn Animal;`），每个实现者都要重复实现一遍。
+// 1.86 起，编译器自己把这份信息放进了虚表，向上转型可以直接用：
+// - `&dyn Sub` → `&dyn Super`，`Box<dyn Sub>` → `Box<dyn Super>`，`Rc<dyn Sub>`、`Arc<dyn Sub>` 同理
+// - 转换是隐式的（强制转换），不需要手写任何方法
+// 最重要的应用场景：给 trait 加上 `Any` 作为父 trait，随时可以从 trait 对象“向下转型”回具体类型。
+
+fn trait_object_upcasting() {
+    println!("=== trait 对象向上转型（Rust 1.86） ===");
+
+    trait Animal {
+        fn name(&self) -> String;
+    }
+    trait Dog: Animal {
+        fn fetch(&self) -> String;
+    }
+
+    struct Labrador;
+    impl Animal for Labrador {
+        fn name(&self) -> String {
+            "拉布拉多".to_string()
+        }
+    }
+    impl Dog for Labrador {
+        fn fetch(&self) -> String {
+            format!("{}叼回了球", self.name())
+        }
+    }
+
+    // 只关心 Animal 能力的函数
+    fn introduce(animal: &dyn Animal) -> String {
+        format!("这是一只{}", animal.name())
+    }
+
+    let dog: Box<dyn Dog> = Box::new(Labrador);
+    println!("{}", dog.fetch());
+    // 1.86 之前这一行编译不过；现在 &dyn Dog 可以直接当作 &dyn Animal 传入
+    println!("{}", introduce(&*dog));
+    // 所有权也可以整体转型：Box<dyn Dog> -> Box<dyn Animal>
+    let animal: Box<dyn Animal> = dog;
+    println!("转型之后只能使用 Animal 的方法: {}", animal.name());
+
+    // ---------- 典型场景：trait 对象向下转型回具体类型 ----------
+    // 游戏里的“组件”集合，元素是 `Box<dyn Component>`。要取出具体组件的数据，需要把它还原成具体类型，
+    // 这依赖 `Any::downcast_ref`。让 Component 继承 Any，再向上转型成 `&dyn Any` 就行了。
+    use std::any::Any;
+    trait Component: Any {
+        fn label(&self) -> &str;
+    }
+    struct Position {
+        x: i32,
+    }
+    struct Health(u32);
+    impl Component for Position {
+        fn label(&self) -> &str {
+            "位置"
+        }
+    }
+    impl Component for Health {
+        fn label(&self) -> &str {
+            "生命值"
+        }
+    }
+
+    let components: Vec<Box<dyn Component>> = vec![Box::new(Position { x: 3 }), Box::new(Health(100))];
+    for component in &components {
+        // 注意写 `&**component`：先解开 & 和 Box，再取引用，得到 `&dyn Component`，才转型成 `&dyn Any`。
+        // 如果写成 `component as &dyn Any` 之类的形式，转的是 Box 本身，downcast 永远失败。
+        let any: &dyn Any = &**component;
+        if let Some(position) = any.downcast_ref::<Position>() {
+            println!("{}: x = {}", component.label(), position.x);
+        } else if let Some(health) = any.downcast_ref::<Health>() {
+            println!("{}: {}", component.label(), health.0);
+        }
+    }
+
+    // 最佳实践：
+    // 1. 需要“拿到 trait 对象再还原具体类型”时，让 trait 继承 `Any`，不必在每个实现里手写 `as_any`
+    // 2. 向下转型是设计上的“逃生舱”，能用 trait 方法表达的行为，就不要靠 downcast 去分支
+    println!();
+}
+
+// ===========================================
+// 13. 自定义编译器报错：#[diagnostic] 命名空间（Rust 1.78 / 1.85）
+// ===========================================
+
+// 泛型和 trait 用得多的库，常常让使用者面对一大段难懂的 trait 报错。
+// 库作者可以用 `#[diagnostic]` 命名空间下的属性向编译器提供“提示”，让报错更友好。
+// 这些属性只是提示：编译器可以采纳，也可以不采纳；遇到不认识的诊断属性也不会报错。
+// 所以库可以放心使用，不用担心使用者的编译器版本太旧而无法编译。
+//
+// 目前稳定的两个：
+// 1. `#[diagnostic::on_unimplemented(message = "..", label = "..", note = "..")]`（Rust 1.78）
+//    标在 trait 上：当某个类型缺少这个 trait 的实现时，用你写的文字替换（补充）默认的报错。
+//    文字里可以用 `{Self}` 插入类型名，用 trait 的泛型参数名（如 `{A}`）插入对应的类型。
+// 2. `#[diagnostic::do_not_recommend]`（Rust 1.85）
+//    标在 impl 上：告诉编译器“报错时不要把这个 impl 当成线索”。
+//    典型场景是覆盖面很广的 blanket impl（`impl<T: Display> Foo for T`）：
+//    不标的话，报错会一路追到 `T: Display` 没满足，使用者看到的是一个陌生的 Display，而不是他真正要面对的 Foo。
+
+fn diagnostic_attributes() {
+    println!("=== 自定义编译器报错：#[diagnostic] 命名空间（Rust 1.78 / 1.85） ===");
+
+    // ---------- on_unimplemented ----------
+    #[diagnostic::on_unimplemented(
+        message = "`{Self}` 不能作为导出格式",
+        label = "该类型没有实现 `Exportable`",
+        note = "请为它实现 Exportable，或者换用 String、Vec<u8>"
+    )]
+    trait Exportable {
+        fn export(&self) -> String;
+    }
+    impl Exportable for String {
+        fn export(&self) -> String {
+            self.clone()
+        }
+    }
+    fn export_all(item: impl Exportable) -> String {
+        item.export()
+    }
+    println!("{}", export_all(String::from("报表内容")));
+    // 如果传入没有实现 Exportable 的类型，比如 `export_all(1_u8)`，编译器会这样报错（真实输出，节选）：
+    //     error[E0277]: `u8` 不能作为导出格式
+    //       |     ------ ^^^^ 该类型没有实现 `Exportable`
+    //       = help: the trait `Exportable` is not implemented for `u8`
+    //       = note: 请为它实现 Exportable，或者换用 String、Vec<u8>
+    // 对比没有这个属性的 trait，只有一句 “the trait bound `u8: Exportable` is not satisfied”，使用者要自己猜该怎么办。
+
+    // ---------- do_not_recommend ----------
+    use std::fmt::Display;
+    trait Loggable {
+        fn log_line(&self) -> String;
+    }
+    #[diagnostic::do_not_recommend]
+    impl<T: Display> Loggable for T {
+        fn log_line(&self) -> String {
+            format!("[日志] {self}")
+        }
+    }
+    fn log(item: impl Loggable) -> String {
+        item.log_line()
+    }
+    println!("{}", log(42));
+    // 传入没有实现 Display 的类型，比如 `log(vec![1])`：
+    // - 不加 do_not_recommend：报错说的是 “the trait `std::fmt::Display` is not implemented for `Vec<{integer}>`”，
+    //   再附一条 “required for `Vec<{integer}>` to implement `Loggable`”——使用者看到的是 Display
+    // - 加了 do_not_recommend：报错直接说 “the trait `Loggable` is not implemented for `Vec<{integer}>`”，
+    //   这才是调用 log 时真正面对的约束
+
+    // 最佳实践：
+    // 1. 给“使用者很容易漏实现”的 trait 加 `on_unimplemented`，在 message / note 里写清楚该怎么办
+    // 2. 给覆盖面很广的 blanket impl 加 `do_not_recommend`，避免报错里出现与使用者无关的内部约束
+    // 3. 这些属性只影响报错文字，不影响程序行为，随时可以加
+    println!();
+}
+
+// ===========================================
+// 14. 返回位置 impl Trait 的捕获规则：use<..>（Rust 1.82 / 1.87）
+// ===========================================
+
+// 函数返回 `impl Trait` 时，那个“隐藏类型”可能依赖（借用）函数的某些参数，这叫“捕获”。
+// 捕获了谁，直接决定调用方还能不能继续使用那个参数：
+//     let it = shout_all(&names);   // 如果 it 捕获了 names 的借用，it 活着的时候，names 就不能被修改
+// 捕获规则随 edition 而不同：
+// - 2021：类型参数总是被捕获；生命周期只有写出来（如 `+ '_`）才会被捕获
+// - 2024：作用域内所有的类型参数和生命周期都自动被捕获——省事，但有时捕获得“太多”
+// 当隐藏类型其实并不依赖某个借用（比如数据已经收集成了自己拥有的 Vec）时，多余的捕获会无谓地延长借用。
+// 1.82 稳定了 `use<..>`：直接列出这个返回类型要捕获的生命周期和类型参数，想捕获什么就精确地列什么。
+// 规则：
+// 1. 类型参数必须全部列出（它们本来就总是被捕获），否则报错：
+//        `impl Trait` must mention all type parameters in scope in `use<...>`
+//    能省略的只有生命周期；`use<>` 表示一个都不捕获（只适用于没有类型参数的函数）
+// 2. 一旦写了 `use<..>`，列表之外的生命周期不再被捕获，与 edition 无关
+// 3. 1.87 起，trait 里的 `fn f(&self) -> impl Trait` 也可以写 `use<..>`。
+//    在 trait 声明里写 `use<Self>`，意思是“返回值只可能依赖 Self 这个类型，而不会借用 &self”，
+//    这样泛型代码才能在拿到返回值之后继续修改 self
+
+// 隐藏类型是自己拥有的 Vec 迭代器，与参数的借用无关，所以用 `use<>` 声明“什么都不捕获”。
+// 不写的话，2024 里它会捕获 `names` 的生命周期，调用方在使用返回值期间就没法修改 names。
+fn shout_all(names: &[String]) -> impl Iterator<Item = String> + use<> {
+    names.iter().map(|name| name.to_uppercase()).collect::<Vec<_>>().into_iter()
+}
+
+// trait 里的 use<Self>：返回的迭代器不借用 &self
+trait PrecisionSource {
+    fn values(&self) -> impl Iterator<Item = u32> + use<Self>;
+    fn bump(&mut self);
+}
+
+struct PrecisionCounter(u32);
+
+impl PrecisionSource for PrecisionCounter {
+    // 实现可以捕获得比声明更少：这里连 Self 都不需要，写 `use<>`
+    fn values(&self) -> impl Iterator<Item = u32> + use<> {
+        (0..self.0).collect::<Vec<_>>().into_iter()
+    }
+
+    fn bump(&mut self) {
+        self.0 += 1;
+    }
+}
+
+// 泛型代码：先取得返回值，再修改 source。
+// 这能通过编译，正是因为 trait 声明里写了 `use<Self>`；
+// 如果声明里没有写，默认会捕获 `&self` 的生命周期，下面的 `source.bump()` 就会报 E0502（同时借用）。
+fn collect_then_bump<S: PrecisionSource>(source: &mut S) -> Vec<u32> {
+    let snapshot = source.values();
+    source.bump();
+    snapshot.collect()
+}
+
+fn precise_capturing() {
+    println!("=== 返回位置 impl Trait 的捕获规则：use<..>（Rust 1.82 / 1.87） ===");
+
+    // 函数：返回值不借用 names，所以拿着返回值的同时可以继续修改 names
+    let mut names = vec!["alice".to_string()];
+    let shouted = shout_all(&names);
+    names.push("bob".to_string()); // 如果 shout_all 的返回类型捕获了 names 的借用，这一行在 2024 里会报 E0502
+    println!("{:?}，names 现在有 {} 个元素", shouted.collect::<Vec<_>>(), names.len());
+    // 没有 `use<>` 时，编译器会这样提示（真实输出，节选）：
+    //     note: this call may capture more lifetimes than intended, because Rust 2024 has adjusted the `impl Trait` lifetime capture rules
+    //     help: use the precise capturing `use<...>` syntax to make the captures explicit
+
+    // trait：泛型代码里先取值再修改
+    let mut counter = PrecisionCounter(3);
+    println!("取值后再 bump: {:?}，counter 现在是 {}", collect_then_bump(&mut counter), counter.0);
+
+    // 最佳实践：
+    // 1. 返回的迭代器 / 闭包如果自己拥有数据，不依赖参数的借用，就写 `use<..>` 只捕获真正需要的部分
+    // 2. 返回值确实借用参数时，什么都不写（2024）或写 `+ '_`（2021）即可，不要为了“看起来精确”硬加 use
+    // 3. 编译器报“捕获了多余的生命周期”（E0502 等）时，注意看它给出的 `use<..>` 建议
+    println!();
+}
+
+// ===========================================
 // 主函数
 // ===========================================
 
@@ -1706,6 +1941,9 @@ pub fn main() {
     supertraits_and_trait_hierarchy();
     newtype_pattern_and_type_safety();
     comprehensive_graphics_system();
+    trait_object_upcasting();
+    diagnostic_attributes();
+    precise_capturing();
 
     println!("特征系统演示完成！");
     println!("\n关键要点总结:");
@@ -1916,5 +2154,86 @@ mod tests {
         let p = Point { x: 1, y: 2 };
         // 测试 OutlinePrint 可以被调用
         p.outline_print();
+    }
+
+    #[test]
+    fn test_trait_object_upcasting() {
+        use std::any::Any;
+
+        trait Animal {
+            fn name(&self) -> String;
+        }
+        trait Dog: Animal {}
+        struct Labrador;
+        impl Animal for Labrador {
+            fn name(&self) -> String {
+                "拉布拉多".to_string()
+            }
+        }
+        impl Dog for Labrador {}
+
+        fn introduce(animal: &dyn Animal) -> String {
+            animal.name()
+        }
+        let dog: Box<dyn Dog> = Box::new(Labrador);
+        assert_eq!(introduce(&*dog), "拉布拉多"); // &dyn Dog -> &dyn Animal
+        let animal: Box<dyn Animal> = dog; // Box<dyn Dog> -> Box<dyn Animal>
+        assert_eq!(animal.name(), "拉布拉多");
+
+        // 继承 Any 的 trait：向上转型成 &dyn Any 之后可以还原回具体类型
+        trait Component: Any {}
+        struct Position(i32);
+        struct Health(u32);
+        impl Component for Position {}
+        impl Component for Health {}
+        let components: Vec<Box<dyn Component>> = vec![Box::new(Position(3)), Box::new(Health(100))];
+        let any_first: &dyn Any = &*components[0];
+        assert_eq!(any_first.downcast_ref::<Position>().map(|p| p.0), Some(3));
+        assert!(any_first.downcast_ref::<Health>().is_none());
+        let any_second: &dyn Any = &*components[1];
+        assert_eq!(any_second.downcast_ref::<Health>().map(|h| h.0), Some(100));
+    }
+
+    #[test]
+    fn test_diagnostic_attributes() {
+        // 诊断属性只影响报错文字，不改变行为：带属性的 trait 与 blanket impl 照常工作
+        #[diagnostic::on_unimplemented(message = "`{Self}` 不能导出")]
+        trait Exportable {
+            fn export(&self) -> String;
+        }
+        impl Exportable for u8 {
+            fn export(&self) -> String {
+                format!("u8:{self}")
+            }
+        }
+        assert_eq!(7_u8.export(), "u8:7");
+
+        use std::fmt::Display;
+        trait Loggable {
+            fn log_line(&self) -> String;
+        }
+        #[diagnostic::do_not_recommend]
+        impl<T: Display> Loggable for T {
+            fn log_line(&self) -> String {
+                format!("[日志] {self}")
+            }
+        }
+        assert_eq!(42.log_line(), "[日志] 42");
+        assert_eq!("文本".log_line(), "[日志] 文本");
+    }
+
+    #[test]
+    fn test_precise_capturing() {
+        // use<>：返回值不借用参数，拿着返回值时可以继续修改参数
+        let mut names = vec!["alice".to_string()];
+        let shouted = shout_all(&names);
+        names.push("bob".to_string());
+        assert_eq!(shouted.collect::<Vec<_>>(), ["ALICE"]);
+        assert_eq!(names.len(), 2);
+
+        // trait 里的 use<Self>：泛型代码先取值、再可变使用 source
+        let mut counter = PrecisionCounter(3);
+        assert_eq!(collect_then_bump(&mut counter), [0, 1, 2]);
+        assert_eq!(counter.0, 4);
     }
 }

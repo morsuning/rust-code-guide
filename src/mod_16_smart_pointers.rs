@@ -1,12 +1,6 @@
-#![allow(
-    dead_code,
-    unused_variables,
-    unused_imports,
-    unused_mut,
-    unused_assignments,
-    unused_macros,
-    deprecated
-)]
+// 教程里的类型、字段和方法经常只为演示语法而定义，不一定会被全部读取或调用，所以允许 dead_code；
+// 其他 lint（未使用的导入、变量、可变性等）必须保持干净，不要再给模块添加新的 allow。
+#![allow(dead_code)]
 
 // Rust 智能指针 (Smart Pointers)
 // 深入讲解 Rust 中的智能指针概念，包括 Box、Rc、Arc、RefCell 等
@@ -20,10 +14,9 @@
 // 它们的行为类似于指针但拥有额外的元数据和功能
 // 智能指针的核心价值在于提供更灵活的内存管理方式
 
-use std::cell::{Ref, RefCell, RefMut};
-use std::collections::LinkedList;
+use std::cell::RefCell;
 use std::ops::{Deref, DerefMut};
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 fn smart_pointer_concepts() {
@@ -212,7 +205,7 @@ fn drop_trait() {
         }
     }
 
-    let c = CustomSmartPointer {
+    let _c = CustomSmartPointer {
         data: String::from("我的数据"),
     };
 
@@ -265,11 +258,11 @@ fn rc_smart_pointer() {
 
     println!("引用计数: {}", Rc::strong_count(&a)); // 1
 
-    let b = Rc::clone(&a); // 增加引用计数
+    let _b = Rc::clone(&a); // 增加引用计数
     println!("引用计数: {}", Rc::strong_count(&a)); // 2
 
     {
-        let c = Rc::clone(&a); // 增加引用计数
+        let _c = Rc::clone(&a); // 增加引用计数
         println!("引用计数: {}", Rc::strong_count(&a)); // 3
         // c 离开作用域
     }
@@ -299,7 +292,7 @@ fn rc_smart_pointer() {
         children: vec![Rc::clone(&node1)], // node3 也拥有 node1 的引用
     });
 
-    println!("图结构: node1 被多个节点共享");
+    println!("图结构: node1 被 node{} 和 node{} 共享，强引用计数 = {}", node2.value, node3.value, Rc::strong_count(&node1));
 
     // Rc 的限制：
     // 1. 不可变性：只能共享不可变数据
@@ -429,7 +422,7 @@ fn weak_reference() {
         }
 
         fn add_child(self: &Rc<Self>, child: Rc<Node>) {
-            let child_weak = Rc::downgrade(&child); // 创建弱引用
+            let _child_weak = Rc::downgrade(&child); // 创建弱引用
             let mut children = self.children.clone();
             children.push(child);
         }
@@ -445,7 +438,7 @@ fn weak_reference() {
     root.add_child(child.clone());
 
     // 设置父节点的弱引用
-    if let Some(mut node_data) = Rc::get_mut(&mut child.clone()) {
+    if let Some(node_data) = Rc::get_mut(&mut child.clone()) {
         node_data.parent = Some(Rc::downgrade(&root));
     }
 
@@ -612,10 +605,10 @@ fn smart_pointer_combinations() {
 
         fn add_neighbor(self: &Rc<Self>, neighbor: Rc<Self>) {
             let self_weak = Rc::downgrade(self);
-            if let Some(mut neighbor_data) = Rc::get_mut(&mut neighbor.clone()) {
+            if let Some(neighbor_data) = Rc::get_mut(&mut neighbor.clone()) {
                 neighbor_data.back_edges.push(self_weak);
             }
-            if let Some(mut self_data) = Rc::get_mut(&mut self.clone()) {
+            if let Some(self_data) = Rc::get_mut(&mut self.clone()) {
                 self_data.neighbors.push(neighbor);
             }
         }
@@ -861,56 +854,64 @@ fn practical_examples() {
 }
 
 // ===========================================
-// 11. Rust 1.92 零初始化智能指针分配
+// 11. 取出 Rc / Arc 里的值：unwrap_or_clone（Rust 1.76）
 // ===========================================
 
-// Rust 1.92 为 Box、Rc、Arc 提供了 new_zeroed
-// 这让“先分配一块全零内存，再在确认初始化完成后 assume_init”成为标准库支持的流程
+// 场景：手里有一个 `Rc<T>`（或 `Arc<T>`），最终需要的是一个拥有所有权的 `T`。
+// - 如果你是**唯一的持有者**（强引用计数为 1），最省的做法是直接把 `T` 取出来，不用克隆
+// - 如果还有别的持有者，就只能克隆一份，别的持有者不受影响
+// 过去要手写这个套路：`Rc::try_unwrap(rc).unwrap_or_else(|rc| (*rc).clone())`。
+// 1.76 起标准库直接提供了 `Rc::unwrap_or_clone(rc)` 和 `Arc::unwrap_or_clone(arc)`（要求 `T: Clone`）。
 //
-// 这类 API 的使用动机通常是：
-// 1. 我想先拿到一块堆内存
-// 2. 之后再通过底层逻辑、FFI 或逐步写入把它初始化完成
-// 3. 我不想一开始就构造一个完整值再移动到堆上
-//
-// 但它也比普通 `new` 更危险，因为“所有字节都为 0”并不一定是一个合法值。
-// 所以这节的重点不只是“怎么用”，还包括“什么时候不能乱用”。
+// 和 `Rc::make_mut` 的分工：
+// - 需要**原地修改**共享数据：用 `Rc::make_mut(&mut rc)`，它在共享时才克隆（写时复制）
+// - 需要拿到一个**有所有权的 T**（比如要把它移动给别的函数）：用 `unwrap_or_clone`
 
-fn zeroed_allocations() {
-    println!("=== Rust 1.92 零初始化智能指针分配 ===");
+use std::cell::Cell;
 
-    // `Box::new_zeroed()`：
-    // 在堆上分配足够容纳 `u32` 的内存，并把所有字节清零。
-    //
-    // 返回值还不是普通的 `Box<u32>`，
-    // 而是一个“可能尚未完全初始化”的中间状态，因此最后要 `assume_init()`。
-    //
-    // 这里是安全的，因为 `u32` 的全零位模式就是合法值 `0`。
-    let boxed = Box::<u32>::new_zeroed();
-    let boxed = unsafe { boxed.assume_init() };
-    println!("Box::new_zeroed -> {}", boxed);
+// 带克隆计数的文档类型：每克隆一次，共享的计数器加一，方便观察“到底克隆了没有”
+#[derive(Debug)]
+struct Document {
+    text: String,
+    clone_counter: Rc<Cell<u32>>,
+}
 
-    // `Rc::new_zeroed()`：
-    // 用于单线程共享所有权场景。
-    // 示例里仍然选一个“全零合法”的基础整数类型，避免误导新手。
-    let rc = Rc::<u16>::new_zeroed();
-    let rc = unsafe { rc.assume_init() };
-    println!("Rc::new_zeroed -> {}", rc);
+impl Clone for Document {
+    fn clone(&self) -> Self {
+        self.clone_counter.set(self.clone_counter.get() + 1);
+        Document { text: self.text.clone(), clone_counter: Rc::clone(&self.clone_counter) }
+    }
+}
 
-    // `Arc::new_zeroed()`：
-    // 与 Rc 类似，但面向多线程共享所有权。
-    // 如果某些共享数据需要“先分配，再初始化，再共享”，这个 API 会很有价值。
-    let arc = Arc::<u8>::new_zeroed();
-    let arc = unsafe { arc.assume_init() };
-    println!("Arc::new_zeroed -> {}", arc);
+fn rc_unwrap_or_clone() {
+    println!("=== 取出 Rc / Arc 里的值：unwrap_or_clone（Rust 1.76） ===");
 
-    // 非常重要的警告：
-    // 下面这些类型通常不能随便用 `new_zeroed + assume_init`：
-    // 1. 引用类型 `&T`
-    // 2. `bool`
-    // 3. 具有内部不变量的结构体
-    // 4. 依赖特定标签值的枚举
-    //
-    // 原因是：全零位模式不一定是这些类型的合法值。
+    let clones = Rc::new(Cell::new(0));
+
+    // 唯一持有者：直接取出，没有克隆
+    let sole = Rc::new(Document { text: "草稿".to_string(), clone_counter: Rc::clone(&clones) });
+    let owned = Rc::unwrap_or_clone(sole);
+    println!("唯一持有者取出 {:?}，克隆次数 = {}", owned.text, clones.get());
+
+    // 还有别的持有者：克隆一份，原来的那份依旧存在
+    let shared = Rc::new(Document { text: "共享稿".to_string(), clone_counter: Rc::clone(&clones) });
+    let other_holder = Rc::clone(&shared);
+    let copy = Rc::unwrap_or_clone(shared);
+    println!(
+        "有其他持有者时取出 {:?}，克隆次数 = {}，另一个持有者仍然持有 {:?}",
+        copy.text,
+        clones.get(),
+        other_holder.text
+    );
+
+    // Arc 版本用法相同，适合跨线程共享的配置：最后一个持有者取走时不用克隆
+    let config = std::sync::Arc::new(vec![1, 2, 3]);
+    let taken = std::sync::Arc::unwrap_or_clone(config);
+    println!("Arc 的唯一持有者取出: {taken:?}");
+
+    // 最佳实践：
+    // 1. 需要所有权的值又不确定自己是不是最后一个持有者时，用 unwrap_or_clone，不要无条件 `(*rc).clone()`
+    // 2. 只是想修改共享数据，用 `Rc::make_mut`（写时复制）
     println!();
 }
 
@@ -930,9 +931,9 @@ pub fn main() {
     refcell_smart_pointer();
     weak_reference();
     arc_smart_pointer();
-    zeroed_allocations();
     smart_pointer_combinations();
     practical_examples();
+    rc_unwrap_or_clone();
 
     println!("智能指针演示完成！");
 }
@@ -954,7 +955,7 @@ mod tests {
     #[test]
     fn test_rc_reference_counting() {
         let a = Rc::new(5);
-        let b = Rc::clone(&a);
+        let _b = Rc::clone(&a);
         assert_eq!(Rc::strong_count(&a), 2);
     }
 
@@ -1058,17 +1059,29 @@ mod tests {
     }
 
     #[test]
-    fn test_zeroed_allocations() {
-        let boxed = Box::<u32>::new_zeroed();
-        let boxed = unsafe { boxed.assume_init() };
-        assert_eq!(*boxed, 0);
+    fn test_rc_unwrap_or_clone() {
+        use std::cell::Cell;
 
-        let rc = Rc::<u16>::new_zeroed();
-        let rc = unsafe { rc.assume_init() };
-        assert_eq!(*rc, 0);
+        let clones = Rc::new(Cell::new(0));
+        // 唯一持有者：直接取出，不克隆
+        let sole = Rc::new(Document { text: "草稿".to_string(), clone_counter: Rc::clone(&clones) });
+        let owned = Rc::unwrap_or_clone(sole);
+        assert_eq!(owned.text, "草稿");
+        assert_eq!(clones.get(), 0);
 
-        let arc = Arc::<u8>::new_zeroed();
-        let arc = unsafe { arc.assume_init() };
-        assert_eq!(*arc, 0);
+        // 还有其他持有者：克隆一份，另一个持有者不受影响
+        let shared = Rc::new(Document { text: "共享稿".to_string(), clone_counter: Rc::clone(&clones) });
+        let other = Rc::clone(&shared);
+        let copy = Rc::unwrap_or_clone(shared);
+        assert_eq!(copy.text, "共享稿");
+        assert_eq!(clones.get(), 1);
+        assert_eq!(Rc::strong_count(&other), 1); // shared 被消耗后，只剩 other 一个强引用
+        assert_eq!(other.text, "共享稿");
+
+        // Arc 同理
+        let arc = std::sync::Arc::new(vec![1, 2, 3]);
+        let other_arc = std::sync::Arc::clone(&arc);
+        assert_eq!(std::sync::Arc::unwrap_or_clone(arc), [1, 2, 3]);
+        assert_eq!(*other_arc, [1, 2, 3]);
     }
 }

@@ -264,6 +264,7 @@ name = "rust-code-guide"
 version = "1.0.0"
 dependencies = [
  "futures",
+ "libc",
  "rand",
  "tokio",
  "twox-hash",

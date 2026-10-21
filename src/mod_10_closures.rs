@@ -1,12 +1,6 @@
-#![allow(
-    dead_code,
-    unused_variables,
-    unused_imports,
-    unused_mut,
-    unused_assignments,
-    unused_macros,
-    deprecated
-)]
+// 教程里的类型、字段和方法经常只为演示语法而定义，不一定会被全部读取或调用，所以允许 dead_code；
+// 其他 lint（未使用的导入、变量、可变性等）必须保持干净，不要再给模块添加新的 allow。
+#![allow(dead_code)]
 
 // Rust 闭包（Closures）
 // 深入讲解闭包语法、环境捕获、Fn trait 系统等函数式编程特性
@@ -87,11 +81,14 @@ fn closure_types_and_capturing() {
     let x = String::from("hello");
     let consume = || {
         println!("消费: {}", x);
-        // x 被移动，不能再次使用
-        // x 的所有权被转移到闭包中，调用闭包时 x 被消耗（drop）
+        // 关键在这一行：drop(x) 在闭包体里“按值”使用了 x，把它的所有权消耗掉了。
+        // 因此闭包只能实现 FnOnce，调用一次之后 x 就不存在了。
+        // 注意：如果闭包体里只有上面那句 println!，x 只是被“借用”，闭包就是 Fn，可以调用任意多次——
+        // 判断闭包属于哪个 trait，看的是闭包体对捕获变量做了什么，而不是闭包里有没有用到它。
+        drop(x);
     };
     consume();
-    // consume(); // 编译错误：x 已被消费，无法再次调用
+    // consume(); // 编译错误：闭包体里把 x 移动走了，只能调用一次（use of moved value: `consume`）
 
     // FnMut - 可变借用环境的闭包
     // FnMut 闭包可以多次调用，并且可以修改其捕获的变量

@@ -1,10 +1,6 @@
-#![allow(
-    dead_code,
-    unused_variables,
-    unused_imports,
-    unused_mut,
-    unused_assignments
-)]
+// 教程里的类型、字段和方法经常只为演示语法而定义，不一定会被全部读取或调用，所以允许 dead_code；
+// 其他 lint（未使用的导入、变量、可变性等）必须保持干净，不要再给模块添加新的 allow。
+#![allow(dead_code)]
 
 // Rust 基础语法特性
 // 包含变量、数据类型、函数、注释和控制流的深入讲解
@@ -118,6 +114,10 @@ fn data_types() {
     let byte = b'A'; // 字节字面量（仅适用于 u8）
 
     println!("各种整数类型和表示方式");
+    println!("有符号整数的最小值: i8 = {a}，i16 = {c}，i32 = {e}，i64 = {g}，i128 = {i}");
+    println!("无符号整数的最大值: u8 = {b}，u16 = {d}，u32 = {f}，u64 = {h}，u128 = {j}");
+    println!("与指针同宽的类型: isize = {k}，usize = {l}");
+    println!("字面量: 十进制 {decimal}，十六进制 {hex}，八进制 {octal}，二进制 {binary}，字节 {byte}");
 
     // 浮点类型：IEEE 754 标准的浮点数
     // f32：单精度浮点数，精度约为 6-9 位十进制数
@@ -132,6 +132,7 @@ fn data_types() {
     let nan: f64 = f64::NAN;
 
     println!("浮点类型示例: {}, {}", m, n);
+    println!("浮点数的特殊值: {infinity}，{negative_infinity}，{nan}（NaN 与任何值都不相等，包括它自己）");
 
     // 布尔类型：逻辑运算的基础
     // 占用 1 字节内存，只能取 true 或 false
@@ -207,10 +208,12 @@ fn data_types() {
         "November",
         "December",
     ];
+    println!("一年有 {} 个月，第一个月是 {}", months.len(), months[0]);
 
     // 显式类型标注
     let b: [i32; 5] = [1, 2, 3, 4, 5];
     let c = [3; 5]; // 创建包含 5 个 3 的数组
+    println!("显式类型标注: {b:?}；重复初始化 [3; 5]: {c:?}");
 
     // 访问数组元素
     let first = a[0];
@@ -294,6 +297,7 @@ fn functions() {
 
     // 表达式示例
     let x = 5; // 5 是表达式
+    println!("语句里绑定的 y = {y}，表达式绑定的 x = {x}");
     let y = {
         let x = 3;
         x + 1 // 这是表达式（没有分号）
@@ -370,6 +374,7 @@ fn comments_example() {
         0.0 // 没有项目时返回 0
     };
 
+    println!("平均值: {average}（还没有处理任何项目，所以是 0）");
     println!("注释示例完成");
     println!();
 }
@@ -793,7 +798,12 @@ fn practical_examples() {
 
 // Rust 1.81 引入了 #[expect(lint)] 属性，这是一个重要的编译器改进
 // 它允许开发者明确预期某些 lint 警告，从而提供更好的代码维护体验
-// 与 #[allow] 不同，#[expect] 会确保如果预期的警告没有出现，编译器会报错
+// 与 #[allow] 不同，#[expect] 在预期的 lint 没有被触发时，会发出 `unfulfilled_lint_expectations` 警告：
+// 提醒你这个“预期”已经过期了，可以删掉。它默认是 warn 级别，不是错误；
+// 在 CI 里用 `-D warnings` 把警告当错误处理时，才会让构建失败。
+//
+// 1.81 同时稳定了 lint 的 `reason` 参数：`#[expect(dead_code, reason = "留给下个版本使用")]`，
+// 把“为什么要放过这条警告”直接写在属性里，编译器输出提示时也会带上这段理由。
 
 fn compiler_attributes() {
     println!("=== Rust 1.81 #[expect(lint)] 属性 ===");
@@ -807,7 +817,7 @@ fn compiler_attributes() {
 
     // 传统方法与 #[expect] 的对比：
     // #[allow(dead_code)] - 静默警告，没有维护保障
-    // #[expect(dead_code)] - 预期警告，如果警告消失会报错
+    // #[expect(dead_code)] - 预期警告，如果警告消失会得到 unfulfilled_lint_expectations 警告
 
     // 示例 1: 预期 dead_code 警告
     #[expect(dead_code)]
@@ -873,6 +883,14 @@ fn compiler_attributes() {
         let unused = "多个 lint 预期";
         println!("同时预期多个 lint 警告");
     }
+
+    // 示例 6.5: 用 reason 写明理由（Rust 1.81）
+    // reason 对 allow / warn / deny / expect 都适用，让以后读代码的人知道为什么要这么做
+    #[expect(dead_code, reason = "接口已经约定好，下个迭代才会有调用方")]
+    fn reserved_for_next_iteration() {}
+
+    #[allow(unused_variables, reason = "回调签名固定，这个参数暂时用不上")]
+    fn callback_with_unused_arg(event_id: u32) {}
 
     // 示例 7: 条件性预期警告
     #[cfg(debug_assertions)]
@@ -1032,7 +1050,7 @@ fn numeric_and_conversion_enhancements() {
 
     // 有符号整数同样适用：它按“补码位模式”计算，不关心符号语义。
     let neg: i32 = -4; // 二进制是 ...1111_1100
-    println!("-4 的 highest_one = {:?}（补码中从低到高第一个 1 在第 2 位）", neg.lowest_one());
+    println!("-4 的 lowest_one = {:?}（补码 ...1111_1100 中，从低到高第一个 1 在第 2 位）", neg.lowest_one());
 
     // Rust 1.97: `bit_width`
     //
@@ -1050,6 +1068,8 @@ fn numeric_and_conversion_enhancements() {
     //
     // 对新手来说，这里想强调 NonZero 类型的价值：
     // 类型系统直接排除 0，调用方少写一次判断。
+    // 注意返回类型和普通整数不同：`NonZeroU32::bit_width()` 返回 `NonZeroU8`（非零数至少需要 1 位，类型里直接排除了 0），
+    // 而 `u32::bit_width()` 返回 `u32`。
     use std::num::NonZeroU32;
     let nonzero = NonZeroU32::new(0b1010_0100).unwrap();
     println!("NonZeroU32(0b1010_0100): highest_one = {}, lowest_one = {}, bit_width = {}",
@@ -1074,6 +1094,386 @@ fn numeric_and_conversion_enhancements() {
 }
 
 // ===========================================
+// 10. Rust 1.98 数值增强：代数浮点运算与整数缓冲格式化
+// ===========================================
+
+// 数值类型新增了三组工具（均在 Rust 1.98 稳定）：
+// - 浮点“代数”运算：`algebraic_add / sub / mul / div / rem`，允许编译器重排浮点运算来换取性能
+// - 整数缓冲格式化：`NumBuffer` + `format_into`，不分配堆内存就能把整数转成字符串
+// - `NonZero<T>::from_str_radix`：按指定进制把字符串直接解析成非零整数
+//
+// 对新手来说，这一节想传达三件事：
+// 1. 浮点数不满足结合律，所以编译器默认“不敢”重排你写的运算顺序
+// 2. 性能优化经常是“由你明确表态：这里我愿意牺牲一点精确性”，而不是编译器自作主张
+// 3. “少一次堆分配”是标准库持续优化的方向，`format_into` 就是这个思路的产物
+
+fn numeric_enhancements_198() {
+    println!("=== Rust 1.98 数值增强 ===");
+
+    // ---------- 一、代数浮点运算 ----------
+    //
+    // 先看一个事实：浮点加法不满足结合律。
+    // 同样三个数，加的顺序不同，结果可能相差最低的一两位。
+    let left = (0.1_f64 + 0.2) + 0.3;
+    let right = 0.1_f64 + (0.2 + 0.3);
+    println!("(0.1 + 0.2) + 0.3 = {left}，0.1 + (0.2 + 0.3) = {right}，相等吗？{}", left == right);
+
+    // 正因为如此，Rust 默认严格按源码顺序求值：`a + b + c + d` 一定是 `((a + b) + c) + d`。
+    // 这保证了结果可复现，代价是编译器无法把一个求和循环改成“多路并行累加再合并”，
+    // 而那正是 SIMD 向量化加速求和/点积的做法。
+    //
+    // `algebraic_*` 就是让你明确告诉编译器：“这里把浮点数当成实数来对待，运算顺序随你重排。”
+    // 它的效果类似其他语言里的 `-ffast-math`，但只作用于你显式调用的这几个运算，
+    // 不会像全局开关那样悄悄影响整个程序。
+    let samples = [0.1_f64, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8];
+    let strict_sum: f64 = samples.iter().sum();
+    let algebraic_sum = samples.iter().fold(0.0_f64, |acc, &x| acc.algebraic_add(x));
+    println!("严格顺序求和 = {strict_sum}，代数求和 = {algebraic_sum}");
+    // 在没有优化的 debug 构建里，两个结果往往逐位相同：编译器没有去重排。
+    // 差异（以及向量化带来的加速）主要出现在 `cargo run --release` 这类开启优化的构建中。
+
+    // 点积是最典型的受益场景：乘加链很长、对最后一位误差不敏感。
+    fn dot(a: &[f64], b: &[f64]) -> f64 {
+        a.iter()
+            .zip(b)
+            .fold(0.0, |acc, (&x, &y)| acc.algebraic_add(x.algebraic_mul(y)))
+    }
+    println!("点积 = {}", dot(&[1.0, 2.0, 3.0], &[4.0, 5.0, 6.0]));
+
+    // 使用时必须清楚四点（出自标准库文档）：
+    // 1. 结果“非确定”：即使输入相同，同一次运行里两次调用也可能得到不同的结果；
+    //    单次运算的精度没有任何保证，只保证得到“某个合法的浮点数”
+    // 2. NaN、±Inf、-0.0 这类“非数学”的值可能表现得出乎意料（编译器可以忽略零的符号、
+    //    把除法改写成乘以倒数……），处理含有这些值的数据要格外小心
+    // 3. 它“不是未定义行为”，但 unsafe 代码不能依赖返回值的任何性质来保证内存安全
+    // 4. 依赖精确运算顺序的算法不能用它，例如 Kahan 补偿求和——
+    //    那个算法靠的正是“看起来多余的 (t - sum) - y”来抵消舍入误差，
+    //    一旦允许按实数代数化简，补偿项会被当成 0 优化掉，算法就失效了
+    //
+    // 五个方法分别对应 + - * / %，在 f32 和 f64 上都有，而且都是 const fn。
+    println!(
+        "sub = {}, div = {}, rem = {}",
+        5.0_f64.algebraic_sub(2.0),
+        9.0_f64.algebraic_div(3.0),
+        7.5_f64.algebraic_rem(2.0)
+    );
+
+    // ---------- 二、整数缓冲格式化 ----------
+    //
+    // 把整数变成字符串，最常见的两种写法各有代价：
+    // - `n.to_string()`：每次调用都分配一个新的 `String`（堆分配）
+    // - `write!(out, "{n}")`：要经过 `fmt::Formatter`，中间有动态分发
+    //
+    // 1.98 新增的 `format_into` 换了个思路：由调用者提供一块缓冲区 `NumBuffer<T>`，
+    // 数字直接写进去，返回一个借用这块缓冲区的 `&str`。
+    // 缓冲区放在栈上，大小由类型决定（刚好够放下该类型最长的十进制表示，含负号），
+    // 因此不需要堆分配，也绕开了动态分发。
+    //
+    // 路径说明：1.98 里 `NumBuffer` 只能从 `core::fmt` 引入，
+    // 1.99 起 `std::fmt::NumBuffer` 也可以使用（标准库补了一条 re-export）。
+    use std::fmt::NumBuffer;
+
+    let mut buf = NumBuffer::<u64>::new();
+    let text: &str = 1_234_567_u64.format_into(&mut buf);
+    println!("format_into 得到 {text:?}，长度 {}", text.len());
+
+    // 负数同样可以，符号会包含在结果里。
+    let mut signed_buf = NumBuffer::<i32>::new();
+    println!("负数: {:?}", (-2026_i32).format_into(&mut signed_buf));
+
+    // 同一块缓冲区可以在循环里反复使用，这正是“零分配”的价值所在。
+    // 编译器会保证：下一次 `format_into` 之前，上一次返回的 `&str` 必须已经用完，
+    // 因为它们借用的是同一块内存（这是借用检查在这里帮我们避免“读到被覆盖的旧数据”）。
+    let mut loop_buf = NumBuffer::<u32>::new();
+    for n in [7_u32, 1024, 65_535] {
+        let s: &str = n.format_into(&mut loop_buf);
+        println!("  {n} 的十进制文本是 {s:?}");
+    }
+
+    // 所有基本整数类型（i8..i128、u8..u128、isize、usize）都有这个方法。
+    // 缓冲区的具体字节数属于实现细节，不要依赖它，只需知道它“够用”。
+
+    // ---------- 三、NonZero::from_str_radix ----------
+    //
+    // `NonZero<T>` 在类型层面排除了 0。以前想从“带进制的文本”解析出它，
+    // 得先 `u32::from_str_radix` 再 `NonZero::new`，要处理两层失败。
+    // 现在 `from_str_radix` 直接可用：文本解析失败，或解析结果为 0，都会返回 `ParseIntError`。
+    use std::num::NonZeroU32;
+    let hex = NonZeroU32::from_str_radix("ff", 16);
+    let zero = NonZeroU32::from_str_radix("0", 10);
+    println!("\"ff\"(16 进制) 解析为 {hex:?}");
+    println!(
+        "\"0\" 解析失败，原因是 {:?}（IntErrorKind::Zero 表示“解析出来是 0”）",
+        zero.as_ref().err().map(|e| e.kind())
+    );
+
+    // 附带一提：1.79 起，`NonZeroU32`、`NonZeroU8` 等都只是 `NonZero<u32>`、`NonZero<u8>` 的类型别名，
+    // 泛型写法 `NonZero<T>` 和具体别名可以互换使用。
+    let generic_form: std::num::NonZero<u32> = std::num::NonZero::new(7).unwrap();
+    let alias_form: NonZeroU32 = generic_form;
+    println!("NonZero<u32> 与 NonZeroU32 是同一个类型: {alias_form}");
+
+    // 小结：
+    // 1. `algebraic_*`：用确定性换速度，只在能接受舍入误差的数值循环里用
+    // 2. `format_into`：热点路径上避免为“整数转文本”反复分配 String
+    // 3. `NonZero::from_str_radix`：把“解析”和“非零校验”合成一步
+    println!();
+}
+
+// ===========================================
+// 11. 整数运算补充：整数平方根、无符号减有符号与严格运算（Rust 1.84 / 1.90 / 1.91）
+// ===========================================
+
+// 这一节的几组 API 都在回答同一个问题：整数运算遇到意外情况（溢出、负数开方）时，怎样处理才最清楚？
+// - `isqrt` / `checked_isqrt`（1.84）：整数平方根，不再绕道浮点数
+// - `checked_sub_signed` 等四个方法（1.90）：无符号数减有符号数
+// - `strict_add` / `strict_sub` / `strict_mul` 等一整族（1.91）：不论 debug 还是 release，溢出一律 panic
+// - 旧的整数模块（`std::i32::MAX` 这种写法）在 1.99 起全面弃用，请改用 `i32::MAX`
+
+fn integer_arithmetic_updates() {
+    println!("=== 整数运算补充：isqrt、无符号减有符号、严格运算（Rust 1.84 / 1.90 / 1.91） ===");
+
+    // ---------- 整数平方根 isqrt（Rust 1.84） ----------
+    //
+    // 它求“不超过平方根的最大整数”（向下取整）。过去的常见写法是 `(n as f64).sqrt() as u64`，有两个隐患：
+    // 1. f64 只有 53 位有效数字，大整数转成浮点数时就已经丢了精度，结果可能差 1
+    // 2. 来回转换，意图不清晰
+    // `isqrt` 全程使用整数运算，结果总是精确的。
+    let big = u64::MAX;
+    println!("u64::MAX 经过浮点数求平方根: {}（差了 1）", (big as f64).sqrt() as u64);
+    println!("u64::MAX 的 isqrt: {}", big.isqrt());
+
+    // 典型场景：判断素数。试除只需要检查到 √n，也就是 `n.isqrt()`。
+    fn is_prime(n: u64) -> bool {
+        n >= 2 && (2..=n.isqrt()).all(|divisor| !n.is_multiple_of(divisor))
+    }
+    println!("97 是素数吗？{}；91 呢？{}（91 = 7 × 13）", is_prime(97), is_prime(91));
+
+    // 有符号数没有负数的实数平方根：`isqrt` 遇到负数会 panic，`checked_isqrt` 返回 None。
+    println!(
+        "(-4).checked_isqrt() = {:?}，16.checked_isqrt() = {:?}",
+        (-4_i32).checked_isqrt(),
+        16_i32.checked_isqrt()
+    );
+
+    // ---------- 无符号数减有符号数（Rust 1.90） ----------
+    //
+    // 场景：库存、余额、下标这类量用无符号类型，而变动量可能带符号。
+    // “加有符号数”这半边早在 1.66 就有了（`checked_add_signed` 等）；1.90 补齐了减法这半边，
+    // 一共四种溢出策略，和其他整数运算一致：
+    // - `checked_sub_signed`：溢出返回 None
+    // - `saturating_sub_signed`：卡在 0 或类型最大值上
+    // - `wrapping_sub_signed`：回绕
+    // - `overflowing_sub_signed`：返回（回绕后的结果，是否溢出）
+    // 以前要先判断变动量的正负，再分别走 `-` 或 `+`，而且 `i32::MIN` 取反本身就会溢出，边界很容易写错。
+    let stock: u8 = 5;
+    println!("库存 5 减 3: {:?}", stock.checked_sub_signed(3));
+    println!("库存 5 减 -3（减去负数等于加上它的绝对值）: {:?}", stock.checked_sub_signed(-3));
+    println!(
+        "库存 5 减 10 会溢出: checked = {:?}，saturating = {}，wrapping = {}，overflowing = {:?}",
+        stock.checked_sub_signed(10),
+        stock.saturating_sub_signed(10),
+        stock.wrapping_sub_signed(10),
+        stock.overflowing_sub_signed(10)
+    );
+
+    // ---------- 严格运算 strict_*（Rust 1.91） ----------
+    //
+    // 整数溢出的默认行为取决于构建模式：debug 构建会 panic，release 构建则悄悄回绕（wrap around）。
+    // 这是出了名的陷阱——测试（debug）里一切正常的代码，上线（release）后可能静默算错。
+    // 想要固定的行为，过去有三种选择：`wrapping_*`（永远回绕）、`checked_*`（返回 Option，由你处理）、
+    // `saturating_*`（卡在边界）。唯独缺一种：“溢出就是 bug，请在任何构建里立刻 panic”。
+    // 1.91 的 `strict_*` 补上了它：`strict_add`、`strict_sub`、`strict_mul`、`strict_neg`、`strict_pow`、
+    // `strict_div`、`strict_shl` 等，在 debug 和 release 里行为完全一致——溢出就 panic。
+    // 它们都是 const fn：在常量里溢出，就是编译错误（E0080）。
+    // 典型场景：金额、长度、下标这类计算，溢出意味着数据已经坏了，继续运行只会扩大破坏。
+    let price: u32 = 1999;
+    let quantity: u32 = 3;
+    println!("总价 = {}（任何构建模式下，溢出都会 panic，而不是静默回绕）", price.strict_mul(quantity));
+    const SAFE_SUM: u8 = 100u8.strict_add(100); // 200，没有溢出，编译通过
+    println!("常量里的严格加法: {SAFE_SUM}");
+    // 还有混合符号的版本：`strict_add_signed`（无符号加有符号）、`strict_sub_unsigned`（有符号减无符号）等。
+    println!("10_u32.strict_add_signed(-4) = {}", 10_u32.strict_add_signed(-4));
+
+    // ---------- 旧整数模块全面弃用（Rust 1.99） ----------
+    //
+    // 1.43 之前，整数的最大最小值只能写成 `std::i32::MAX` 这样的“模块常量”；
+    // 1.43 引入了关联常量 `i32::MAX`，直接写在类型上，更短也更直观。
+    // 1.99 起，旧模块里的常量（`std::i32::MAX`、`std::u8::MAX` 等）全面弃用，使用它们会收到警告：
+    //     use of deprecated constant `std::i32::MAX`: replaced by the `MAX` associated constant on this type
+    // 新代码一律写 `i32::MAX` / `u8::MIN` / `f64::EPSILON`。
+    println!("i32::MAX = {}，u8::MIN = {}", i32::MAX, u8::MIN);
+
+    // 小结：
+    // 1. 求整数的平方根用 `isqrt`，不要 `as f64` 绕一圈
+    // 2. 无符号数加减有符号数，用 `*_add_signed` / `*_sub_signed`，不要手写正负分支
+    // 3. 溢出就是 bug 的地方，用 `strict_*` 让它在任何构建里都立刻暴露
+    println!();
+}
+
+// ===========================================
+// 12. 解构赋值与 Unicode 标识符（Rust 1.59 / 1.53）
+// ===========================================
+
+// - 解构赋值（1.59）：`=` 左边也可以写模式，把右边的值拆开，赋给**已经存在**的变量
+// - Unicode 标识符（1.53）：变量名、函数名、类型名可以直接用中文等非 ASCII 字符
+
+fn destructuring_assignment_and_unicode_identifiers() {
+    println!("=== 解构赋值与 Unicode 标识符（Rust 1.59 / 1.53） ===");
+
+    // ---------- 解构赋值（Rust 1.59） ----------
+    //
+    // `let (a, b) = ...` 是**声明**新变量；解构赋值则是给**已有**的变量重新赋值，
+    // 左边的形状（元组、数组、结构体）要和右边对应。
+    // 最典型的场景：一次更新多个相互依赖的状态变量。下面的斐波那契迭代里，
+    // `(a, b) = (b, a + b)` 先把右边整体算完，再同时赋给 a 和 b；
+    // 如果拆成 `a = b; b = a + b;` 两条语句，第二条用到的就是已经被改写的 a，结果是错的。
+    let (mut a, mut b) = (0_u64, 1_u64);
+    for _ in 0..10 {
+        (a, b) = (b, a + b);
+    }
+    println!("迭代 10 次后的斐波那契数对: ({a}, {b})");
+
+    // 不借助临时变量交换两个值
+    let (mut left, mut right) = ("左", "右");
+    (left, right) = (right, left);
+    println!("交换之后: left = {left}，right = {right}");
+
+    // 左边也可以是结构体或数组；用 `_` 忽略不需要的部分，用 `..` 跳过中间的元素
+    struct Point {
+        x: i32,
+        y: i32,
+    }
+    let (px, py);
+    Point { x: px, y: py } = Point { x: 3, y: 4 }; // 结构体：字段名: 目标变量
+    let (first, last);
+    (first, .., last) = (10, 20, 30, 40);
+    let second;
+    [_, second, _] = [7, 8, 9];
+    println!("结构体: ({px}, {py})，元组首尾: ({first}, {last})，数组中间: {second}");
+
+    // ---------- Unicode 标识符（Rust 1.53） ----------
+    //
+    // 标识符可以包含 Unicode 字符（规则出自 Unicode 标准的 UAX #31），变量、函数、类型都可以直接用中文命名。
+    // 在教学、领域建模（比如财务、法律术语）和个人项目里，这很直观：
+    fn 计算面积(长: f64, 宽: f64) -> f64 {
+        长 * 宽
+    }
+    let 房间面积 = 计算面积(5.0, 4.0);
+    println!("房间面积 = {房间面积} 平方米");
+    // 但团队协作和开源项目的最佳实践依旧是：公共 API 使用 ASCII 英文名——
+    // 便于检索和输入，也避免外观相似的字符造成混淆。编译器提供了几条 lint 帮你把关：
+    // - `non_ascii_idents`（默认 allow）：想在项目里整体禁止非 ASCII 标识符，就把它设成 deny
+    // - `confusable_idents`（默认 warn）：两个标识符长得几乎一样（比如拉丁字母 a 与西里尔字母 а）时警告
+    // - `mixed_script_confusables`、`uncommon_codepoints`（默认 warn）：混用多种文字或用到罕见字符时警告
+
+    // 小结：
+    // 1. 同时更新多个互相依赖的变量，用解构赋值，右边先整体求值，不会读到更新到一半的值
+    // 2. 中文标识符适合教学和领域建模，对外公开的接口还是用英文
+    println!();
+}
+
+// ===========================================
+// 13. 带标签的代码块：break '标签 值（Rust 1.65）
+// ===========================================
+
+// `loop` 可以用 `break 值` 返回结果，带标签的循环 `'outer: loop` 还能一次跳出多层。
+// 但有时只是想“按顺序做几项检查，一旦命中就提前给出结果”，并不需要循环，
+// 写成 `loop { ..; break; }` 很别扭，拆成独立函数又显得小题大做。
+// 1.65 起，任何带标签的代码块都可以用 `break '标签 值` 提前跳出，并把这个值作为整个块的结果：
+//     let 结果 = '标签: { .. break '标签 值; .. 默认值 };
+// 块里最后一个表达式，是“没有任何检查命中时”的默认结果，类型必须和每个 break 带出的值一致。
+// 它和提前 `return` 的区别：`return` 退出的是整个函数；带标签的块只是让这一小段表达式提前得出值，
+// 函数后面的代码照常执行。
+
+fn labeled_block_break() {
+    println!("=== 带标签的代码块：break '标签 值（Rust 1.65） ===");
+
+    // 典型场景：给输入分类，规则按优先级排列，命中就停；分类之后函数还要继续做别的事
+    fn describe(input: &str) -> String {
+        let kind = 'classify: {
+            if input.is_empty() {
+                break 'classify "空";
+            }
+            if input.chars().all(|c| c.is_ascii_digit()) {
+                break 'classify "数字";
+            }
+            if input.chars().all(char::is_alphabetic) {
+                break 'classify "字母或汉字";
+            }
+            "混合内容" // 没有任何规则命中时的默认结果
+        };
+        format!("{input:?} 属于「{kind}」")
+    }
+    for input in ["", "2026", "rust", "你好", "a1!"] {
+        println!("{}", describe(input));
+    }
+
+    // 另一个典型场景：在嵌套循环里找到第一个满足条件的位置，并一次跳出所有循环、同时带出结果
+    let grid = [[1, 2, 3], [4, 5, 6], [7, 8, 9]];
+    let position = 'search: {
+        for (row, cells) in grid.iter().enumerate() {
+            for (col, &cell) in cells.iter().enumerate() {
+                if cell == 6 {
+                    break 'search Some((row, col));
+                }
+            }
+        }
+        None // 找遍了也没有
+    };
+    println!("数字 6 在二维数组中的位置（行，列）: {position:?}");
+
+    // 最佳实践：
+    // 1. 一连串“命中即停”的判断，用带标签的块比层层嵌套的 if-else 更扁平
+    // 2. 如果这些判断本身就是一个独立的概念，仍然优先拆成函数并使用 `return`
+    println!();
+}
+
+// ===========================================
+// 14. char 的关联常量与方法（Rust 1.52）
+// ===========================================
+
+// 和整数一样，`char` 的常量和转换函数以前是放在 `std::char` 模块里的独立项（`std::char::MAX`、`std::char::from_u32(..)`），
+// 1.52 起它们成了 `char` 类型自己的关联项，直接写 `char::MAX`、`char::from_u32(..)`，更好找也更好读：
+// - `char::MAX`：最大的合法字符 U+10FFFF；`char::REPLACEMENT_CHARACTER`：替换字符 U+FFFD（�）
+// - `char::UNICODE_VERSION`：标准库实现所依据的 Unicode 版本
+// - `char::from_u32(码点)`：数字转字符，不是合法码点（比如 UTF-16 代理区）时返回 `None`
+// - `char::from_digit(数字, 进制)`：数字转数字字符；`char::decode_utf16(码元序列)`：解码 UTF-16
+// - `len_utf8()` / `len_utf16()`：这个字符编码成 UTF-8 / UTF-16 需要几个字节 / 码元
+
+fn char_constants_and_methods() {
+    println!("=== char 的关联常量与方法（Rust 1.52） ===");
+
+    println!(
+        "char::MAX = U+{:X}，替换字符 = {:?}，Unicode 版本 = {:?}",
+        char::MAX as u32,
+        char::REPLACEMENT_CHARACTER,
+        char::UNICODE_VERSION
+    );
+
+    // from_u32：数字 → 字符。0xD800~0xDFFF 是 UTF-16 的代理区，不是合法的字符
+    println!("from_u32(0x4E2D) = {:?}，from_u32(0xD800) = {:?}", char::from_u32(0x4E2D), char::from_u32(0xD800));
+
+    // from_digit：数字 → 数字字符，常用来手写进制转换
+    println!("from_digit(7, 10) = {:?}，from_digit(11, 16) = {:?}", char::from_digit(7, 10), char::from_digit(11, 16));
+
+    // 同一个字符，在不同编码里占的空间不一样
+    for ch in ['a', '中', '😀'] {
+        println!("{ch:?} 占 UTF-8 {} 字节、UTF-16 {} 个码元", ch.len_utf8(), ch.len_utf16());
+    }
+
+    // 典型场景：解码 UTF-16 数据（Windows API、JavaScript 字符串），遇到非法数据用替换字符代替，而不是整体失败
+    let units = [0x4F60, 0x597D, 0xD800, 0x0021]; // “你好”，一个落单的代理码元，“!”
+    let decoded: String = char::decode_utf16(units).map(|unit| unit.unwrap_or(char::REPLACEMENT_CHARACTER)).collect();
+    println!("解码 UTF-16: {decoded:?}");
+
+    // 最佳实践：
+    // 1. 处理外部来的数字 → 字符转换，用 `char::from_u32` 并处理 None，不要用 `as char`（它只接受 u8）
+    // 2. 计算文本占用空间，用 `len_utf8()`，不要假设一个字符就是一个字节
+    println!();
+}
+
+// ===========================================
 // 主函数
 // ===========================================
 
@@ -1090,6 +1490,11 @@ pub fn main() {
     practical_examples();
     compiler_attributes();
     numeric_and_conversion_enhancements();
+    numeric_enhancements_198();
+    integer_arithmetic_updates();
+    destructuring_assignment_and_unicode_identifiers();
+    labeled_block_break();
+    char_constants_and_methods();
 
     println!("基础语法演示完成！");
 }
@@ -1108,6 +1513,7 @@ mod tests {
         assert_eq!(x, 5);
 
         let mut y = 5;
+        assert_eq!(y, 5);
         y = 6;
         assert_eq!(y, 6);
     }
@@ -1327,4 +1733,139 @@ fn test_numeric_and_conversion_enhancements() {
     // const char::is_control（Rust 1.97）
     const NEWLINE_IS_CONTROL: bool = '\n'.is_control();
     assert!(NEWLINE_IS_CONTROL);
+}
+
+#[test]
+fn test_numeric_enhancements_198() {
+    use std::fmt::NumBuffer;
+    use std::num::{IntErrorKind, NonZeroU32};
+
+    // 浮点加法不满足结合律，这是 algebraic_* 存在的前提
+    assert_ne!((0.1_f64 + 0.2) + 0.3, 0.1_f64 + (0.2 + 0.3));
+
+    // 代数运算的结果不保证逐位一致，只能在容差内比较
+    let samples = [0.1_f64, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8];
+    let strict: f64 = samples.iter().sum();
+    let algebraic = samples.iter().fold(0.0_f64, |acc, &x| acc.algebraic_add(x));
+    assert!((strict - algebraic).abs() < 1e-12);
+    assert!((6.0_f64.algebraic_mul(7.0) - 42.0).abs() < 1e-12);
+    assert!((7.5_f64.algebraic_rem(2.0) - 1.5).abs() < 1e-12);
+    // const fn：可以在常量表达式里调用
+    const DOUBLED: f32 = 1.5_f32.algebraic_mul(2.0);
+    assert!((DOUBLED - 3.0).abs() < 1e-6);
+
+    // format_into：同一块缓冲区反复使用，结果与 to_string 一致
+    let mut buf = NumBuffer::<u64>::new();
+    assert_eq!(1_234_567_u64.format_into(&mut buf), "1234567");
+    assert_eq!(u64::MAX.format_into(&mut buf), u64::MAX.to_string());
+    let mut signed = NumBuffer::<i32>::new();
+    assert_eq!((-2026_i32).format_into(&mut signed), "-2026");
+    assert_eq!(i32::MIN.format_into(&mut signed), i32::MIN.to_string());
+
+    // NonZero::from_str_radix：解析成功与“解析为 0”两种结果
+    assert_eq!(NonZeroU32::from_str_radix("ff", 16).map(NonZeroU32::get), Ok(255));
+    assert_eq!(
+        NonZeroU32::from_str_radix("0", 10).unwrap_err().kind(),
+        &IntErrorKind::Zero
+    );
+}
+
+#[test]
+fn test_integer_arithmetic_updates() {
+    use std::panic::catch_unwind;
+
+    // isqrt 是精确的；经过浮点数的写法在 u64::MAX 上差了 1
+    assert_eq!(u64::MAX.isqrt(), 4_294_967_295);
+    assert_eq!((u64::MAX as f64).sqrt() as u64, 4_294_967_296);
+    assert_eq!([0_u32, 15, 16, 17].map(u32::isqrt), [0, 3, 4, 4]);
+    assert_eq!((-1_i32).checked_isqrt(), None);
+    assert!(catch_unwind(|| (-1_i32).isqrt()).is_err());
+
+    // 无符号减有符号：四种溢出策略
+    assert_eq!(5_u8.checked_sub_signed(3), Some(2));
+    assert_eq!(5_u8.checked_sub_signed(-3), Some(8));
+    assert_eq!(5_u8.checked_sub_signed(10), None);
+    assert_eq!(5_u8.saturating_sub_signed(10), 0);
+    assert_eq!(5_u8.wrapping_sub_signed(10), 251);
+    assert_eq!(5_u8.overflowing_sub_signed(10), (251, true));
+
+    // strict_*：没有溢出时与普通运算一致，溢出时 panic（与构建模式无关）
+    assert_eq!(1999_u32.strict_mul(3), 5997);
+    assert_eq!(10_u32.strict_add_signed(-4), 6);
+    assert!(catch_unwind(|| 250_u8.strict_add(10)).is_err());
+    assert!(catch_unwind(|| 0_u32.strict_sub(1)).is_err());
+}
+
+#[test]
+fn test_destructuring_assignment_and_unicode_identifiers() {
+    // 解构赋值：右边先整体求值，所以 (a, b) = (b, a + b) 与手写两条语句的结果不同
+    let (mut a, mut b) = (0_u64, 1_u64);
+    for _ in 0..10 {
+        (a, b) = (b, a + b);
+    }
+    assert_eq!((a, b), (55, 89));
+
+    let (mut x, mut y) = (1, 2);
+    (x, y) = (y, x);
+    assert_eq!((x, y), (2, 1));
+
+    let (first, last);
+    (first, .., last) = (10, 20, 30, 40);
+    assert_eq!((first, last), (10, 40));
+
+    // Unicode 标识符
+    let 房间面积 = 5.0_f64 * 4.0;
+    assert_eq!(房间面积, 20.0);
+}
+
+#[test]
+fn test_labeled_block_break_and_char_constants() {
+    // 带标签的块：规则按顺序检查，命中即停；没有命中时取块末尾的默认值
+    let classify = |input: &str| {
+        'classify: {
+            if input.is_empty() {
+                break 'classify "空";
+            }
+            if input.chars().all(|c| c.is_ascii_digit()) {
+                break 'classify "数字";
+            }
+            "其他"
+        }
+    };
+    assert_eq!([classify(""), classify("2026"), classify("a1")], ["空", "数字", "其他"]);
+
+    // 从嵌套循环里带值跳出
+    let grid = [[1, 2, 3], [4, 5, 6], [7, 8, 9]];
+    let find = |target: i32| {
+        'search: {
+            for (row, cells) in grid.iter().enumerate() {
+                for (col, &cell) in cells.iter().enumerate() {
+                    if cell == target {
+                        break 'search Some((row, col));
+                    }
+                }
+            }
+            None
+        }
+    };
+    assert_eq!(find(6), Some((1, 2)));
+    assert_eq!(find(10), None);
+
+    // char 的关联常量与方法
+    assert_eq!(char::MAX as u32, 0x10FFFF);
+    assert_eq!(char::REPLACEMENT_CHARACTER, '\u{FFFD}');
+    assert_eq!(char::from_u32(0x4E2D), Some('中'));
+    assert_eq!(char::from_u32(0xD800), None); // 代理区不是合法字符
+    assert_eq!(char::from_digit(11, 16), Some('b'));
+    assert_eq!(('a'.len_utf8(), '中'.len_utf8(), '😀'.len_utf8()), (1, 3, 4));
+    assert_eq!(('a'.len_utf16(), '😀'.len_utf16()), (1, 2));
+    let decoded: String = char::decode_utf16([0x4F60, 0x597D, 0xD800, 0x21])
+        .map(|unit| unit.unwrap_or(char::REPLACEMENT_CHARACTER))
+        .collect();
+    assert_eq!(decoded, "你好\u{FFFD}!");
+
+    // NonZero<T> 与 NonZeroU32 是同一个类型
+    let generic_form: std::num::NonZero<u32> = std::num::NonZero::new(7).unwrap();
+    let alias_form: std::num::NonZeroU32 = generic_form;
+    assert_eq!(alias_form.get(), 7);
 }

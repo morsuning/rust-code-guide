@@ -1,12 +1,6 @@
-#![allow(
-    dead_code,
-    unused_variables,
-    unused_imports,
-    unused_mut,
-    unused_assignments,
-    unused_macros,
-    deprecated
-)]
+// 教程里的类型、字段和方法经常只为演示语法而定义，不一定会被全部读取或调用，所以允许 dead_code；
+// 其他 lint（未使用的导入、变量、可变性等）必须保持干净，不要再给模块添加新的 allow。
+#![allow(dead_code)]
 
 // Rust 枚举
 // 深入讲解枚举定义、模式匹配、Option、Result 等核心概念
@@ -1285,25 +1279,30 @@ fn enum_example_program() {
 // 13. Rust 1.62+ 枚举增强特性（Enhanced Enum Features）
 // ===========================================
 
-// Rust 1.62 引入了重要的枚举增强特性，特别是 `#[default]` 属性
-// 这些改进使枚举在模式匹配和默认值处理方面更加强大和便捷
-// 这些特性大大提升了代码的可读性和维护性
+// Rust 1.62 让枚举也可以直接 `#[derive(Default)]`：在想作为默认值的那个变体上标注 `#[default]` 即可。
+// 在此之前，枚举没法派生 Default，必须手写
+// `impl Default for MyEnum { fn default() -> Self { MyEnum::Variant } }`。
+//
+// `#[default]` 的规则：
+// 1. 必须恰好标注一个变体——零个或多个都会编译失败
+// 2. 被标注的必须是单元变体（没有字段，如 `Info`；不能是 `Info(u8)`）
+// 3. 它只决定 `Default::default()` 返回哪个变体，
+//    与模式匹配、判别值、内存布局都没有任何关系
 
-// Rust 1.62+ 枚举增强的核心价值：
-// 1. 简化默认值处理：为枚举变体添加默认标记
-// 2. 提升代码可读性：使意图更加明确
-// 3. 减少样板代码：自动生成默认实现
-// 4. 增强类型安全：编译时保证默认值的有效性
+// Rust 1.62+ `#[default]` 的核心价值：
+// 1. 省去手写 `impl Default` 的样板代码
+// 2. 默认值直接写在变体上，意图一目了然；想改默认值，只需要挪动这个属性
+// 3. 有编译器检查：忘了标注，或者标注了不止一个，都会在编译期报错
 
 fn enhanced_enum_features() {
     println!("=== Rust 1.62+ 枚举增强特性 ===");
 
-    // 1. #[default] 属性（Rust 1.62 新特性）
-    // #[default] 属性允许为枚举的某个变体标记为默认值
-    // 这在使用 `..` 模式或 `Default` trait 时特别有用
+    // 1. #[default] 属性（Rust 1.62）
+    // #[default] 把枚举的某个单元变体标记为 `Default::default()` 的返回值，
+    // 配合 `#[derive(Default)]` 就不用手写 impl 了
 
     #[derive(Debug, PartialEq, Default, Copy, Clone)]
-    #[repr(u16)] // 确保底层类型一致，便于默认值处理
+    #[repr(u16)] // 指定判别值的底层类型是 u16，与 #[default] 无关，只是让 `HttpStatus as u16` 的含义更明确
     enum HttpStatus {
         #[default] // 标记为默认变体
         Ok = 200,
@@ -1314,7 +1313,6 @@ fn enhanced_enum_features() {
 
     // 使用 #[default] 的好处：
     // - 明确表达设计意图：哪个变体被认为是"默认"状态
-    // - 简化模式匹配：可以使用 `..` 通配符匹配默认情况
     // - 自动实现 Default trait：无需手动实现
 
     // 实现了 Default trait 的枚举可以直接使用 default()
@@ -1322,25 +1320,26 @@ fn enhanced_enum_features() {
     println!("默认 HTTP 状态：{:?}", default_status);
     assert_eq!(default_status, HttpStatus::Ok);
 
-    // 2. 模式匹配中的默认值处理
-    // #[default] 使模式匹配更加简洁和直观
+    // 2. #[default] 与模式匹配没有关系
+    // 匹配一个枚举时，`#[default]` 标注的变体和其他变体完全一样，没有任何特殊待遇；
+    // 下面 `_` 通配符匹配的是“剩下的所有变体”，和它有没有被标成默认值无关。
 
     fn handle_status(status: HttpStatus) -> &'static str {
         match status {
             HttpStatus::BadRequest => "请求格式错误",
             HttpStatus::NotFound => "资源不存在",
             HttpStatus::InternalServerError => "服务器内部错误",
-            _ => "请求成功", // 匹配剩余情况，包括 #[default] 标记的变体
+            _ => "请求成功", // 通配符：匹配剩下的所有变体（这里只剩 Ok）
         }
     }
 
-    // 使用 #[default] 可以更明确地表达意图
+    // 写出所有变体而不用 `_`，新增变体时编译器会提醒你补上这个分支，更安全
     fn handle_status_explicit(status: HttpStatus) -> &'static str {
         match status {
             HttpStatus::BadRequest => "请求格式错误",
             HttpStatus::NotFound => "资源不存在",
             HttpStatus::InternalServerError => "服务器内部错误",
-            HttpStatus::Ok => "请求成功", // 明确匹配默认变体
+            HttpStatus::Ok => "请求成功", // 明确列出每一个变体
         }
     }
 
@@ -1470,6 +1469,145 @@ fn enhanced_enum_features() {
 }
 
 // ===========================================
+// 14. #[non_exhaustive]：给公开的枚举和结构体留出扩展空间（Rust 1.40）
+// ===========================================
+
+// 库（crate）发布之后，给公开的枚举新增一个变体、给公开的结构体新增一个字段，
+// 按语义化版本（SemVer）的规则都属于**破坏性变更**：
+// 下游代码里“穷尽所有变体”的 `match`（没有 `_` 分支）会因为多出的变体而编译失败；
+// 用结构体字面量构造值的代码，也会因为多出的字段而编译失败。
+// 这迫使库作者要么不敢扩展类型，要么每次扩展都得发大版本。
+//
+// `#[non_exhaustive]` 就是解决办法：它向使用者**提前声明**“这个类型以后还会增加成员”。
+// 于是编译器会在**其他 crate** 里强制执行这些规则：
+// - 枚举：`match` 必须带 `_` 分支，不能只列出当前已有的变体（E0004）
+// - 结构体：不能用结构体字面量构造（E0639），也不能不带 `..` 地完整解构（E0638），只能走库提供的构造函数
+// - 枚举变体：同样不能直接构造，也不能不带 `..` 地匹配
+// 这样库作者以后新增变体 / 字段，就是兼容变更，发小版本即可。
+//
+// 重要：这个属性**只对其他 crate 生效**。在定义它的 crate 内部，类型仍然是“穷尽”的，
+// 所以下面自己定义的类型在本 crate 里体会不到约束。
+// 想直接体会，请看标准库自己的 `std::io::ErrorKind`：它就标了 `#[non_exhaustive]`。
+
+fn non_exhaustive_types() {
+    println!("=== #[non_exhaustive]：给公开的枚举和结构体留出扩展空间（Rust 1.40） ===");
+
+    // ---------- 使用者一侧：std::io::ErrorKind ----------
+    // 标准库以后可能给 ErrorKind 增加新的错误种类。因为它是 non_exhaustive 的，
+    // 下面的 match 必须有 `_` 分支；删掉这个分支，编译器会报：
+    //     error[E0004]: non-exhaustive patterns: `_` not covered
+    //     note: `ErrorKind` is marked as non-exhaustive, so a wildcard `_` is necessary to match exhaustively
+    // 好处是：标准库新增变体时，你的代码不会因为升级编译器而无法编译。
+    let error = std::fs::File::open("/这个路径不存在/文件.txt").unwrap_err();
+    let message = match error.kind() {
+        std::io::ErrorKind::NotFound => "文件不存在",
+        std::io::ErrorKind::PermissionDenied => "没有权限访问",
+        _ => "其他 I/O 错误",
+    };
+    println!("打开失败的原因: {message}");
+
+    // ---------- 作者一侧：给将来可能增加的错误种类留位置 ----------
+    #[derive(Debug, PartialEq)]
+    #[non_exhaustive]
+    enum PaymentError {
+        InsufficientFunds,
+        CardExpired,
+    }
+
+    // 在定义它的 crate 里，match 仍然可以穷尽，不需要 `_`。
+    // 如果这个枚举是 `pub` 并且在另一个 crate 里使用，下面的 match 就必须再加一个 `_ => ...` 分支。
+    fn describe(error: &PaymentError) -> &'static str {
+        match error {
+            PaymentError::InsufficientFunds => "余额不足",
+            PaymentError::CardExpired => "银行卡已过期",
+        }
+    }
+    for error in [PaymentError::InsufficientFunds, PaymentError::CardExpired] {
+        println!("{error:?} -> {}", describe(&error));
+    }
+
+    // 结构体同理。其他 crate 无法写 `ServerConfig { host, port }` 来构造它，所以作者必须提供构造函数；
+    // 以后新增字段时，只要构造函数的签名不变，所有下游代码都不用改。
+    #[derive(Debug)]
+    #[non_exhaustive]
+    struct ServerConfig {
+        host: String,
+        port: u16,
+    }
+    impl ServerConfig {
+        fn new(host: &str, port: u16) -> Self {
+            ServerConfig { host: host.to_string(), port }
+        }
+    }
+    let config = ServerConfig::new("localhost", 8080);
+    println!("{}:{}", config.host, config.port);
+
+    // 最佳实践：
+    // 1. 会随版本增长的公开错误枚举、配置结构体，一开始就标 `#[non_exhaustive]`，把扩展空间留出来
+    // 2. 含义固定、不会再变的类型（比如 `Ordering` 的三个取值）不要标，否则使用者被迫多写没有意义的 `_` 分支
+    // 3. 使用别人标了该属性的枚举时，`_` 分支要认真处理“未知情况”，不要用 `unreachable!()` 糊弄过去
+    println!();
+}
+
+// ===========================================
+// 15. 带字段的枚举也能指定判别值（Rust 1.66）
+// ===========================================
+
+// “判别值”（discriminant）是枚举内部用来区分变体的整数标签。
+// 没有字段的枚举很早就能手动指定：`enum Color { Red = 1, Green = 2 }`，还可以用 `as` 转成整数。
+// Rust 1.66 之前，只要有一个变体带字段，就不允许再给任何变体指定判别值。
+// 1.66 起，只要枚举声明了整数表示（`#[repr(u8)]`、`#[repr(i32)]` 等），带字段的变体也可以显式写判别值。
+//
+// 典型场景：二进制协议或 C 接口里的“带标签联合”（tagged union）。
+// 协议文档规定了“消息类型 1 = Ping，10 = 数据，20 = 关闭”，标签值直接写在变体上，一目了然；
+// 并且由 `#[repr(u8)]` 保证内存布局：标签占第一个字节，其后是变体的字段（布局规则见 Rust Reference）。
+//
+// 规则：
+// 1. 必须写 `#[repr(整数类型)]`，否则报错 E0732：
+//    `#[repr(inttype)]` must be specified for enums with explicit discriminants and non-unit variants
+// 2. 判别值不能重复；没写的变体，值是前一个变体的值加 1
+// 3. 带字段的枚举不能用 `as` 转成整数
+
+fn enum_explicit_discriminants() {
+    println!("=== 带字段的枚举也能指定判别值（Rust 1.66） ===");
+
+    #[repr(u8)]
+    #[derive(Debug)]
+    enum Message {
+        Ping = 1,
+        Data(u32) = 10,
+        Close { code: u16 } = 20,
+    }
+
+    // 日常使用和普通枚举完全一样：构造、match
+    let messages = [Message::Ping, Message::Data(7), Message::Close { code: 404 }];
+    for message in &messages {
+        match message {
+            Message::Ping => println!("{message:?}: 心跳"),
+            Message::Data(length) => println!("{message:?}: 数据，长度 {length}"),
+            Message::Close { code } => println!("{message:?}: 关闭，错误码 {code}"),
+        }
+    }
+
+    // 因为有 `#[repr(u8)]`，布局是被定义好的：标签占第 1 个字节。
+    // 这也是和 C 代码共享这种枚举时需要的保证。普通业务代码里不需要读标签，用 match 即可。
+    fn tag_of(message: &Message) -> u8 {
+        // SAFETY: Message 是 `#[repr(u8)]` 的枚举，其布局是“以 u8 标签开头的 repr(C) 结构体的联合”，
+        // 所以指向枚举的指针可以按 u8 读出标签。
+        unsafe { *(message as *const Message as *const u8) }
+    }
+    for message in &messages {
+        println!("{message:?} 的标签值 = {}", tag_of(message));
+    }
+    println!("Message 占 {} 字节（1 字节标签 + 对齐后的 u32 字段）", size_of::<Message>());
+
+    // 最佳实践：从网络字节流解码时，更推荐“先 `TryFrom<u8>` 到一个无字段的消息类型枚举，
+    // 再按类型解析负载”，这样完全是安全代码，也不依赖内存布局；
+    // 带字段又指定判别值的枚举，主要用在需要与 C 共享内存布局（FFI）或手写二进制数据结构的地方。
+    println!();
+}
+
+// ===========================================
 // 主函数
 // ===========================================
 
@@ -1490,6 +1628,8 @@ pub fn main() {
     enums_and_generics();
     enum_example_program();
     enhanced_enum_features();
+    non_exhaustive_types();
+    enum_explicit_discriminants();
 
     println!("枚举演示完成！");
 }
@@ -1500,8 +1640,6 @@ pub fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     // 测试 Option 处理
     #[test]
     fn test_option_handling() {
@@ -1782,5 +1920,48 @@ mod tests {
         let manager = NetworkManager::default();
         assert_eq!(manager.state, ConnectionState::Disconnected);
         assert_eq!(manager.retry_count, 0);
+    }
+
+    #[test]
+    fn test_non_exhaustive_types() {
+        // 标准库的 ErrorKind 是 non_exhaustive 的，match 必须带 `_`
+        let error = std::fs::File::open("/这个路径不存在/文件.txt").unwrap_err();
+        let message = match error.kind() {
+            std::io::ErrorKind::NotFound => "文件不存在",
+            _ => "其他 I/O 错误",
+        };
+        assert_eq!(message, "文件不存在");
+
+        // 同一个 crate 里，自己定义的 non_exhaustive 枚举仍然可以穷尽匹配
+        #[derive(Debug, PartialEq)]
+        #[non_exhaustive]
+        enum PaymentError {
+            InsufficientFunds,
+            CardExpired,
+        }
+        let describe = |error: &PaymentError| match error {
+            PaymentError::InsufficientFunds => "余额不足",
+            PaymentError::CardExpired => "银行卡已过期",
+        };
+        assert_eq!(describe(&PaymentError::InsufficientFunds), "余额不足");
+        assert_eq!(describe(&PaymentError::CardExpired), "银行卡已过期");
+    }
+
+    #[test]
+    fn test_enum_explicit_discriminants() {
+        #[repr(u8)]
+        enum Message {
+            Ping = 1,
+            Data(u32) = 10,
+            Close { code: u16 } = 20,
+        }
+        // SAFETY: Message 是 #[repr(u8)] 枚举，首字节就是标签。
+        let tag_of = |message: &Message| unsafe { *(message as *const Message as *const u8) };
+
+        assert_eq!(tag_of(&Message::Ping), 1);
+        assert_eq!(tag_of(&Message::Data(7)), 10);
+        assert_eq!(tag_of(&Message::Close { code: 404 }), 20);
+        // 布局是被定义好的：1 字节标签 + 对齐到 4 字节的 u32
+        assert_eq!(size_of::<Message>(), 8);
     }
 }

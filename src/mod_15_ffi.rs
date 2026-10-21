@@ -1,14 +1,8 @@
-#![allow(
-    dead_code,
-    unused_variables,
-    unused_imports,
-    unused_mut,
-    unused_assignments,
-    unused_macros,
-    deprecated
-)]
+// 教程里的类型、字段和方法经常只为演示语法而定义，不一定会被全部读取或调用，所以允许 dead_code；
+// 其他 lint（未使用的导入、变量、可变性等）必须保持干净，不要再给模块添加新的 allow。
+#![allow(dead_code)]
 
-use std::ffi::{CStr, CString, c_char};
+use std::ffi::{CStr, CString, VaList, c_char};
 
 // ===========================================
 // 1. Rust FFI (外部函数接口) 基础
@@ -774,12 +768,18 @@ fn advanced_ffi_features() {
         // printf 是 C 标准库中的可变参数函数
         // ... 表示可变数量的参数
         fn printf(format: *const c_char, ...) -> i32;
+        // fflush(NULL) 会冲刷 C 标准库所有输出流的缓冲区（参数是 FILE*，这里用不透明指针表示）
+        fn fflush(stream: *mut std::ffi::c_void) -> i32;
     }
 
     unsafe {
         let format_str = CString::new("这是一个整数: %d\n").unwrap();
         // 调用 printf，传递格式字符串和参数
         printf(format_str.as_ptr(), 42);
+        // C 标准库的 stdout 有自己的缓冲区，和 Rust 的 println! 不是同一个：
+        // 输出被重定向到文件或管道时，两边的输出顺序可能错位。
+        // 混用时在 C 调用之后冲刷一次，保证顺序（交互式终端里两边都是行缓冲，通常不会错位）。
+        fflush(std::ptr::null_mut());
     }
     // 可变参数函数的注意事项：
     // 1. 类型安全：编译器无法检查可变参数的类型
@@ -788,15 +788,27 @@ fn advanced_ffi_features() {
     // 4. 性能影响：可变参数调用可能有额外开销
 
     // 使用变长参数 (Using va_list)
-    // va_list 提供了对可变参数的编程访问
-    // 允许将可变参数传递给其他函数
-    // use std::va_list::VaList; // va_list 不是标准库的一部分
+    // va_list 提供了对可变参数的编程访问，并且允许把可变参数转交给其他函数：
+    // C 标准库里的 `printf(fmt, ...)` 都有一个对应的 `vprintf(fmt, va_list)`，
+    // 前者接收 `...`，后者接收 `va_list`，别的函数就能把自己收到的变参原样转发过来。
+    // 从 Rust 1.99 起，标准库提供了与平台 `va_list` 布局和 ABI 完全一致的 `std::ffi::VaList`，
+    // 既可以在 Rust 里定义变参函数（见第 19 章“进阶参考”里的 C 变参函数定义），也可以把它传给 C 的 `vprintf` 这类函数。
+    unsafe extern "C" {
+        // vprintf 接受 va_list 而不是可变参数
+        // 这使得可以包装和转发可变参数
+        fn vprintf(format: *const c_char, args: VaList<'_>) -> i32;
+    }
 
-    // unsafe extern "C" {
-    //     // vprintf 接受 va_list 而不是可变参数
-    //     // 这使得可以包装和转发可变参数
-    //     fn vprintf(format: *const c_char, args: VaList) -> i32;
-    // }
+    // 用 Rust 定义的变参函数：自己接收 `...`，再原样转交给 C 的 vprintf
+    unsafe extern "C" fn forward_printf(format: *const c_char, args: ...) -> i32 {
+        unsafe { vprintf(format, args) }
+    }
+
+    unsafe {
+        let forward_fmt = CString::new("转发给 vprintf: %d + %d = %d\n").unwrap();
+        forward_printf(forward_fmt.as_ptr(), 20, 22, 42);
+        fflush(std::ptr::null_mut());
+    }
     // va_list 的应用场景：
     // 1. 参数转发：将可变参数传递给其他函数
     // 2. 参数处理：遍历和处理可变参数
@@ -1124,8 +1136,10 @@ fn practical_examples() {
     // 在实际项目中，这些函数会在 C 库中实现
     unsafe fn mock_socket_create(_domain: i32, _type_: i32, _protocol: i32) -> *mut Socket {
         println!("模拟创建套接字");
-        // 返回一个非空指针作为模拟句柄
-        1 as *mut Socket
+        // 返回一个非空指针作为模拟句柄。
+        // 不要写 `1 as *mut Socket`：整数转指针会丢掉来源信息（provenance），
+        // 需要“只要非空、永远不会解引用”的占位指针时，用专门的 `ptr::dangling_mut` 表达意图。
+        std::ptr::dangling_mut::<Socket>()
     }
 
     unsafe fn mock_socket_connect(_socket: *mut Socket, addr: *const c_char, port: i32) -> i32 {
@@ -1250,10 +1264,35 @@ fn safe_wrappers() {
     }
 
     // 使用安全内存包装器
-    let mut safe_mem = SafeMemory::new(1024).expect("内存分配失败");
+    let safe_mem = SafeMemory::new(1024).expect("内存分配失败");
     println!("安全内存分配: 大小 {} 字节", safe_mem.len());
     // 当 safe_mem 离开作用域时，内存会自动释放
 
+    // 下面三种包装器（文件描述符、套接字、动态库）依赖 POSIX 接口，单独放在 unix_safe_wrappers 里
+    unix_safe_wrappers();
+
+    // 安全包装器的高级特性：
+    // 1. 资源池：管理多个相同类型的资源
+    // 2. 引用计数：支持资源的共享所有权
+    // 3. 缓存机制：缓存昂贵的资源创建操作
+    // 4. 超时处理：支持资源获取的超时控制
+    // 5. 监控和日志：记录资源使用情况
+
+    // 安全包装器的最佳实践：
+    // 1. 最小化 unsafe 代码：只在必要时使用 unsafe
+    // 2. 全面测试：测试所有边界条件和错误情况
+    // 3. 性能考虑：避免包装器引入过度的性能开销
+    // 4. 文档完善：详细说明使用限制和注意事项
+    // 5. 错误信息：提供清晰有用的错误信息
+
+    println!();
+}
+
+// 文件描述符、套接字、动态库这三种包装器依赖 POSIX 接口（open / socket / dlopen 等），
+// 这些接口在 Windows 上并不齐全（例如没有 dlopen；`libc` crate 在 Windows 上也缺少其中一部分，如 `sockaddr_in`、`send`），
+// 所以只在类 Unix 系统上编译。
+#[cfg(unix)]
+fn unix_safe_wrappers() {
     // 文件描述符的安全包装器 (Safe File Descriptor Wrapper)
     // 封装了文件操作的底层 C API
     // 确保文件描述符在不需要时被正确关闭
@@ -1263,6 +1302,15 @@ fn safe_wrappers() {
 
     impl SafeFile {
         // 打开文件
+        //
+        // 这里的 `libc::*` 来自 `libc` crate（已在 Cargo.toml 中声明），而不是手写 extern 声明。
+        // 手写系统调用绑定有两类典型陷阱，这个例子恰好都踩得到：
+        // 1. 变参：C 的 `open` 是 `int open(const char *, int, ...)`，只有带 O_CREAT 时才会读取
+        //    第三个参数 mode。如果在 Rust 里把它声明成固定三参数，在 Apple Silicon 等平台上
+        //    变参走栈、定参走寄存器，callee 会读到错误的 mode。从 Rust 1.98 起，
+        //    `invalid_runtime_symbol_definitions` lint 默认 deny，1.99 又把 POSIX 符号（如 open）
+        //    纳入检查，签名写错会直接编译失败。
+        // 2. 平台常量：O_CREAT 在 Linux 上是 0o100，在 macOS 上是 0x200，手写数值必然有一边是错的。
         fn open(path: &str) -> Result<Self, String> {
             let c_path = CString::new(path).map_err(|e| e.to_string())?;
             let fd = unsafe { libc::open(c_path.as_ptr(), libc::O_RDWR | libc::O_CREAT, 0o666) };
@@ -1318,16 +1366,18 @@ fn safe_wrappers() {
     }
 
     // 使用安全文件包装器
-    match SafeFile::open("/tmp/test.txt") {
+    let wrapper_path = demo_temp_file("safe_file.txt");
+    match SafeFile::open(wrapper_path.to_str().expect("临时目录路径应当是合法 UTF-8")) {
         Ok(file) => {
             let data = b"Hello, Safe World!";
             match file.write(data) {
                 Ok(written) => println!("写入 {} 字节", written),
                 Err(e) => println!("写入失败: {}", e),
             }
-        }
+        } // file 在这里离开作用域，Drop 自动关闭文件描述符
         Err(e) => println!("文件打开失败: {}", e),
     }
+    let _ = std::fs::remove_file(&wrapper_path);
 
     // 网络套接字的安全包装器 (Safe Socket Wrapper)
     // 封装了网络套接字的创建和管理
@@ -1349,23 +1399,27 @@ fn safe_wrappers() {
 
         // 连接到远程地址
         fn connect(&self, addr: &str, port: u16) -> Result<(), String> {
-            let c_addr = CString::new(addr).map_err(|e| e.to_string())?;
+            // 地址解析交给标准库的 Ipv4Addr 即可，没必要再为它走一次 FFI。
+            // （C 的 inet_addr 用 0xFFFFFFFF 表示失败，与合法地址 255.255.255.255 无法区分，
+            // 所以 libc crate 也没有收录它；Rust 的解析直接返回 Result，没有这个歧义。）
+            let ip: std::net::Ipv4Addr = addr.parse().map_err(|e: std::net::AddrParseError| e.to_string())?;
 
             // 设置套接字地址结构
-            let mut sockaddr = libc::sockaddr_in {
-                sin_family: libc::AF_INET as u16,
-                sin_port: port.to_be(), // 网络字节序
-                sin_addr: libc::in_addr {
-                    s_addr: unsafe { libc::inet_addr(c_addr.as_ptr()) },
-                },
-                sin_zero: [0; 8], // 填充字节
-            };
+            // 先整体清零、再逐字段赋值，而不是写结构体字面量：
+            // BSD/macOS 的 sockaddr_in 开头多一个 sin_len 字段，Linux 没有，
+            // 字面量必须列全所有字段，所以写不出跨平台的版本；清零后只写两边共有的字段即可。
+            // SAFETY: sockaddr_in 只由整数和整数数组构成，全零位模式是合法值。
+            let mut sockaddr: libc::sockaddr_in = unsafe { std::mem::zeroed() };
+            sockaddr.sin_family = libc::AF_INET as libc::sa_family_t;
+            sockaddr.sin_port = port.to_be(); // 网络字节序（大端）
+            // u32::from(ip) 得到的是按“a.b.c.d”高位在前排列的数值，to_be() 使其内存布局符合网络字节序
+            sockaddr.sin_addr = libc::in_addr { s_addr: u32::from(ip).to_be() };
 
             let result = unsafe {
                 libc::connect(
                     self.sockfd,
                     &sockaddr as *const libc::sockaddr_in as *const libc::sockaddr,
-                    std::mem::size_of::<libc::sockaddr_in>() as u32,
+                    std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
                 )
             };
 
@@ -1464,41 +1518,47 @@ fn safe_wrappers() {
         Ok(_lib) => println!("安全库加载成功"),
         Err(e) => println!("库加载失败: {}", e),
     }
+}
 
-    // 安全包装器的高级特性：
-    // 1. 资源池：管理多个相同类型的资源
-    // 2. 引用计数：支持资源的共享所有权
-    // 3. 缓存机制：缓存昂贵的资源创建操作
-    // 4. 超时处理：支持资源获取的超时控制
-    // 5. 监控和日志：记录资源使用情况
+#[cfg(not(unix))]
+fn unix_safe_wrappers() {
+    println!("当前不是类 Unix 系统，跳过文件描述符 / 套接字 / 动态库的包装器示例");
+}
 
-    // 安全包装器的最佳实践：
-    // 1. 最小化 unsafe 代码：只在必要时使用 unsafe
-    // 2. 全面测试：测试所有边界条件和错误情况
-    // 3. 性能考虑：避免包装器引入过度的性能开销
-    // 4. 文档完善：详细说明使用限制和注意事项
-    // 5. 错误信息：提供清晰有用的错误信息
-
-    println!();
+// 演示用的临时文件统一放在系统临时目录里，文件名带上进程号以避免冲突。
+// 这样运行教程（cargo run / cargo test）不会往仓库目录里留下垃圾文件；
+// 每个演示在用完之后都会删除自己创建的文件。
+fn demo_temp_file(name: &str) -> std::path::PathBuf {
+    std::env::temp_dir().join(format!("rust_code_guide_{}_{name}", std::process::id()))
 }
 
 // ===========================================
-// 10. Rust 1.77 std::os::fd 模块标准化
+// 10. std::os::fd 与 I/O 安全（Rust 1.63-1.66）
 // ===========================================
 
-// Rust 1.77 引入了 std::os::fd 模块的标准化，这标志着 Rust 在系统编程领域的重要进展
-// 这个模块提供了跨平台的文件描述符抽象，统一了不同操作系统的文件 I/O 接口
-// 标准化之前，开发者需要使用平台特定的 API 和第三方库
+// 文件描述符（fd）是类 Unix 系统里“指向某个已打开资源”的整数。
+// 传统的 `RawFd`（其实就是 i32）有个大问题：它只是个整数，
+// 编译器不知道它是否有效，也不知道该由谁负责关闭。
+//
+// Rust 1.63 引入了一组“I/O 安全”类型来解决这个问题：
+// - `OwnedFd`：拥有 fd，离开作用域自动关闭
+// - `BorrowedFd<'a>`：借用 fd，生命周期保证它在使用期间不会被关闭
+// - `AsFd`：把 `File`、`TcpStream` 等转换成 `BorrowedFd`
+// Rust 1.66 又把它们集中到 `std::os::fd` 模块里（此前在 `std::os::unix::io` 下）。
+//
+// 注意：这不是“跨平台”的 API。`std::os::fd` 只存在于类 Unix 平台；
+// Windows 上对应的是 `std::os::windows::io` 里的 `OwnedHandle` / `BorrowedHandle` /
+// `OwnedSocket` / `BorrowedSocket`——设计理念相同、写法相似，但类型不同。
 
 fn std_os_fd_standardization() {
-    println!("=== Rust 1.77 std::os::fd 模块标准化 ===");
+    println!("=== std::os::fd 与 I/O 安全 (Rust 1.63-1.66) ===");
 
-    // std::os::fd 模块标准化的背景和意义：
-    // 1. 跨平台一致性：统一的文件描述符 API，减少平台特定代码
-    // 2. 类型安全：使用 Rust 的类型系统确保文件描述符的正确使用
-    // 3. 资源管理：利用 Rust 的所有权系统自动管理文件描述符的生命周期
-    // 4. 错误处理：集成的错误处理机制，比传统的 C 风格更安全
-    // 5. 生态系统：为标准库和第三方库提供统一的基础设施
+    // I/O 安全（I/O Safety）的意义：
+    // 1. 类型安全：`OwnedFd` / `BorrowedFd` 区分“拥有”和“借用”，不会把任意整数当成有效的 fd
+    // 2. 资源管理：`OwnedFd` 离开作用域自动关闭，利用所有权系统杜绝泄漏和重复关闭
+    // 3. 生命周期：`BorrowedFd<'a>` 的生命周期保证 fd 在借用期间不会被关闭
+    // 4. 设计一致：Unix 与 Windows 各有一套对应的类型，写法相似，类型不同
+    // 5. 生态统一：标准库和第三方库的接口都在围绕这组类型对齐
 
     // 核心 trait 和类型：
     // - AsFd/AsHandle/AsSocket：将类型转换为文件描述符/句柄/套接字
@@ -1510,38 +1570,38 @@ fn std_os_fd_standardization() {
     #[cfg(unix)]
     {
         use std::fs::File;
-        use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd, RawFd};
-        use std::path::Path;
+        use std::os::fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd, RawFd};
 
         println!("=== Unix 平台文件描述符操作 ===");
 
         // 创建文件并获取文件描述符
-        let file = File::create("temp_test.txt").expect("文件创建失败");
+        let temp_path = demo_temp_file("temp_test.txt");
+        let file = File::create(&temp_path).expect("文件创建失败");
         println!("文件创建成功");
 
         // 使用 AsFd trait 获取 BorrowedFd
         let borrowed_fd: BorrowedFd = file.as_fd();
-        println!("获取 BorrowedFd 成功");
+        println!("获取 BorrowedFd 成功，原始描述符 = {}", borrowed_fd.as_raw_fd());
 
         // 使用 AsRawFd trait 获取原始文件描述符
         let raw_fd: RawFd = file.as_raw_fd();
         println!("原始文件描述符: {}", raw_fd);
 
-        // 正确的方式：使用 std::mem::forget 来避免 file 的 Drop
-        // 然后从原始文件描述符创建 OwnedFd
-        let raw_fd_copy = raw_fd;
-        std::mem::forget(file); // 防止 file 的 Drop 被调用
+        // 把 File 的所有权转成 OwnedFd：`File` 可以直接 `.into()` 成 `OwnedFd`（Rust 1.63 起），
+        // 整个过程不需要 unsafe。file 在这里被消耗，fd 的所有权转移给 owned_fd。
+        // （手写 `mem::forget(file)` 再 `OwnedFd::from_raw_fd(raw_fd)` 也能得到同样的结果，
+        // 但需要 unsafe，而且一旦忘了 forget，同一个 fd 就会被关闭两次。
+        // `FromRawFd::from_raw_fd` 留给“从 C 代码手里接过一个裸 fd”的场景。）
+        let owned_fd: OwnedFd = file.into();
+        println!("OwnedFd 创建成功");
 
-        unsafe {
-            let owned_fd = OwnedFd::from_raw_fd(raw_fd_copy);
-            println!("OwnedFd 创建成功");
+        // OwnedFd 可以安全地传递给其他函数
+        let another_raw_fd: RawFd = owned_fd.as_raw_fd();
+        println!("从 OwnedFd 获取的原始描述符: {}", another_raw_fd);
 
-            // OwnedFd 可以安全地传递给其他函数
-            let another_raw_fd: RawFd = owned_fd.as_raw_fd();
-            println!("从 OwnedFd 获取的原始描述符: {}", another_raw_fd);
-
-            // OwnedFd 离开作用域时会自动关闭文件描述符
-        }
+        // OwnedFd 离开作用域时会自动关闭文件描述符；这里显式 drop 之后再删除演示文件
+        drop(owned_fd);
+        let _ = std::fs::remove_file(&temp_path);
 
         // 文件描述符的实际应用场景
         practical_fd_usage_unix();
@@ -1551,29 +1611,28 @@ fn std_os_fd_standardization() {
     {
         use std::fs::File;
         use std::os::windows::io::{
-            AsHandle, AsRawHandle, BorrowedHandle, FromRawHandle, OwnedHandle, RawHandle,
+            AsHandle, AsRawHandle, BorrowedHandle, OwnedHandle, RawHandle,
         };
-        use std::path::Path;
 
         println!("=== Windows 平台文件句柄操作 ===");
 
-        let file = File::create("temp_test.txt").expect("文件创建失败");
+        let temp_path = demo_temp_file("temp_test.txt");
+        let file = File::create(&temp_path).expect("文件创建失败");
         println!("文件创建成功");
 
         let borrowed_handle: BorrowedHandle = file.as_handle();
-        println!("获取 BorrowedHandle 成功");
+        println!("获取 BorrowedHandle 成功，原始句柄 = {:?}", borrowed_handle.as_raw_handle());
 
         let raw_handle: RawHandle = file.as_raw_handle();
         println!("原始文件句柄: {:?}", raw_handle);
 
-        // 正确的方式：使用 std::mem::forget 来避免 file 的 Drop
-        let raw_handle_copy = raw_handle;
-        std::mem::forget(file); // 防止 file 的 Drop 被调用
+        // 和 Unix 一样，File 可以直接 `.into()` 成 OwnedHandle，不需要 unsafe。
+        let owned_handle: OwnedHandle = file.into();
+        println!("OwnedHandle 创建成功");
 
-        unsafe {
-            let owned_handle = OwnedHandle::from_raw_handle(raw_handle_copy);
-            println!("OwnedHandle 创建成功");
-        }
+        // Windows 上不能删除仍然打开着的文件，所以要先 drop 句柄再删除
+        drop(owned_handle);
+        let _ = std::fs::remove_file(&temp_path);
     }
 
     // 标准化文件描述符的优势和应用：
@@ -1590,8 +1649,7 @@ fn std_os_fd_standardization() {
 #[cfg(unix)]
 fn practical_fd_usage_unix() {
     use std::fs::File;
-    use std::io::{self, Read, Write};
-    use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd};
+    use std::os::fd::AsRawFd;
     use std::process::{Command, Stdio};
 
     println!("=== 实际文件描述符应用示例 ===");
@@ -1600,19 +1658,19 @@ fn practical_fd_usage_unix() {
     fn redirect_stdio_example() {
         println!("--- 标准输入输出重定向 ---");
 
-        // 创建临时文件作为新的标准输出
-        let output_file = File::create("stdout_redirect.txt").expect("输出文件创建失败");
+        // 创建临时文件，假设要把它作为新的标准输出
+        let output_path = demo_temp_file("stdout_redirect.txt");
+        let output_file = File::create(&output_path).expect("输出文件创建失败");
 
-        // 获取文件描述符并重定向标准输出
+        // 获取它的文件描述符
         let fd = output_file.as_raw_fd();
 
-        // 在实际应用中，可以使用 dup2 系统调用重定向
-        // 这里我们演示如何安全地操作文件描述符
-        println!("将标准输出重定向到文件描述符: {}", fd);
+        // 真正的重定向要用 dup2 系统调用把这个 fd 复制到标准输出的 fd（1）上。
+        // 这里只演示“拿到 fd”这一步，不实际重定向，以免把后面所有的输出都吞掉。
+        println!("新输出文件的文件描述符: {}（此处只演示获取，没有真正重定向）", fd);
 
-        // 演示如何正确使用文件描述符
-        // 注意：在实际应用中，需要使用 dup2 来复制文件描述符
-        // 这里我们只演示概念，不实际进行重定向以避免副作用
+        drop(output_file);
+        let _ = std::fs::remove_file(&output_path);
     }
 
     // 示例 2: 进程间通信使用文件描述符
@@ -1637,6 +1695,13 @@ fn practical_fd_usage_unix() {
             let stdout_fd = stdout.as_raw_fd();
             println!("子进程标准输出文件描述符: {}", stdout_fd);
         }
+
+        // 先关闭子进程的标准输入（drop 掉管道的写端），cat 读到 EOF 才会退出；
+        // 再 wait 回收子进程。只 spawn 不 wait 的话，子进程退出后会一直是僵尸进程，
+        // 直到父进程结束，这也是 Child 文档里明确提醒的陷阱。
+        drop(child.stdin.take());
+        let status = child.wait().expect("等待子进程失败");
+        println!("子进程退出状态: {}", status);
     }
 
     // 示例 3: 文件描述符传递
@@ -1644,7 +1709,8 @@ fn practical_fd_usage_unix() {
         println!("--- 文件描述符传递示例 ---");
 
         // 创建一个文件
-        let file = File::create("shared_file.txt").expect("文件创建失败");
+        let shared_path = demo_temp_file("shared_file.txt");
+        let file = File::create(&shared_path).expect("文件创建失败");
 
         // 正确的文件描述符传递方式演示
         // 注意：在实际应用中，应该使用 Unix 域套接字传递文件描述符
@@ -1655,6 +1721,9 @@ fn practical_fd_usage_unix() {
         // 演示如何创建 OwnedFd 来管理文件描述符
         // 注意：这只是为了演示，实际应用中需要更复杂的同步机制
         println!("在实际应用中，可以使用 OwnedFd 安全管理传递的文件描述符");
+
+        drop(file);
+        let _ = std::fs::remove_file(&shared_path);
     }
 
     redirect_stdio_example();
@@ -1672,10 +1741,11 @@ async fn async_fd_usage() {
     println!("=== 异步文件描述符使用 ===");
 
     // 在异步编程中，文件描述符的管理更加重要
-    // Rust 1.77+ 标准化的 fd API 为异步 I/O 提供了更好的基础
+    // I/O 安全的 fd 类型（OwnedFd / BorrowedFd）为异步 I/O 提供了更好的基础
 
     // 创建同步文件
-    let file = File::create("async_test.txt").expect("文件创建失败");
+    let async_path = demo_temp_file("async_test.txt");
+    let file = File::create(&async_path).expect("文件创建失败");
 
     // 获取文件描述符用于异步操作
     let fd = file.as_fd();
@@ -1683,6 +1753,9 @@ async fn async_fd_usage() {
 
     // 在实际应用中，可以使用 tokio::fs::File 进行真正的异步 I/O
     // 这里演示标准化的文件描述符如何与异步生态集成
+
+    drop(file);
+    let _ = std::fs::remove_file(&async_path);
 }
 
 // 文件描述符的网络编程应用
@@ -1709,76 +1782,7 @@ fn network_fd_usage() {
 }
 
 // ===========================================
-// 11. Rust 1.92-1.93 FFI 原始部件增强
-// ===========================================
-
-// 这些版本补齐了多组和底层缓冲区 / ABI 直接相关的能力：
-// - Rust 1.93: extern "system" 支持 C 风格变参
-// - Rust 1.93: Vec::into_raw_parts / String::into_raw_parts
-//
-// FFI 对新手最容易混淆的地方通常有两个：
-// 1. 调用约定到底是谁来决定的
-// 2. 容器拆成裸指针之后，内存所有权到底还归谁
-//
-// 下面这两个示例正好分别对应这两个问题。
-
-fn latest_ffi_updates() {
-    println!("=== Rust 1.92-1.93 FFI 原始部件增强 ===");
-
-    // Rust 1.93: `extern "system"` 支持 C 风格变参
-    //
-    // `extern "system"` 表示“采用当前平台系统 API 默认使用的调用约定”。
-    // 它和 `extern "C"` 很像，但并不总是完全相同。
-    //
-    // 这里我们没有真正去调用系统函数，
-    // 而是先通过函数指针类型说明：Rust 现在可以稳定表达
-    // “system ABI + 可变参数” 这种签名。
-    type SystemVariadicPrinter = unsafe extern "system" fn(*const c_char, ...) -> i32;
-    println!(
-        "extern \"system\" 变参函数指针大小: {}",
-        std::mem::size_of::<SystemVariadicPrinter>()
-    );
-
-    // Rust 1.93: `Vec::into_raw_parts`
-    //
-    // 它会把 Vec 拆成三部分：
-    // 1. 指针 `ptr`
-    // 2. 当前长度 `len`
-    // 3. 当前容量 `cap`
-    //
-    // 这在 FFI 中非常常见，因为 C / C++ API 往往就认识这些原始部件。
-    //
-    // 重要理解：
-    // 调用 `into_raw_parts` 之后，原来的 Vec 已经不再由 Rust 自动回收，
-    // 因为你已经把它的堆分配“拆走”了。
-    let numbers = vec![10_i32, 20, 30];
-    let (ptr, len, cap) = numbers.into_raw_parts();
-    // 这里立刻用 `from_raw_parts` 重建回来，是为了演示一个安全闭环。
-    // 实际项目里，这一步可能发生在外部库回调回来之后，或者在资源释放阶段。
-    let rebuilt = unsafe { Vec::from_raw_parts(ptr, len, cap) };
-    println!("Vec::into_raw_parts 往返结果: {rebuilt:?}");
-
-    // `String::into_raw_parts` 的思路完全一样。
-    // 因为 String 本质上就是一块 UTF-8 字节缓冲区，
-    // 所以它也可以拆成指针、长度和容量。
-    //
-    // 常见使用场景：
-    // 1. 把字符串缓冲区交给底层系统填写
-    // 2. 与要求裸缓冲区的库对接
-    // 3. 自己管理分配与释放边界
-    let message = String::from("ffi-buffer");
-    let (ptr, len, cap) = message.into_raw_parts();
-    let rebuilt = unsafe { String::from_raw_parts(ptr, len, cap) };
-    println!("String::into_raw_parts 往返结果: {rebuilt}");
-
-    // 对新手最关键的提醒：
-    // `from_raw_parts` 必须和原始分配方式严格匹配。
-    // 如果指针、长度、容量有任何不一致，就会触发未定义行为。
-    println!();
-}
-
-// ===========================================
-// 12. Rust 1.97 FFI 错误类型增强
+// 11. Rust 1.97 FFI 错误类型增强
 // ===========================================
 
 // Rust 1.97 让 `FromBytesUntilNulError` 实现了 Copy。
@@ -1830,6 +1834,328 @@ fn ffi_error_type_enhancement() {
 }
 
 // ===========================================
+// 12. Rust 1.98-1.99 路径与文件时间的补充
+// ===========================================
+
+// 和操作系统打交道时，路径和文件元数据是最常见的两类数据。这两个版本补了三个小 API：
+// - Rust 1.98: `Path::is_empty`——判断是不是空路径
+// - Rust 1.98: `PathBuf::into_string`——拿回 `String`，失败时把 `PathBuf` 原样还给你
+// - Rust 1.99: `fs::set_times` / `fs::set_times_nofollow`——按路径直接修改文件的访问/修改时间
+//
+// 为什么放在 FFI 这一章？因为路径是 FFI 边界上最容易出问题的数据：
+// 操作系统并不保证路径是合法的 UTF-8（Unix 上就是任意字节，Windows 上是任意 UTF-16），
+// 而 Rust 的 `String` / `&str` 却必须是合法 UTF-8。这条鸿沟就是 `OsStr` / `Path` 存在的原因。
+
+fn path_and_file_time_updates() {
+    println!("=== Rust 1.98-1.99 路径与文件时间的补充 ===");
+
+    use std::fs::{self, File, FileTimes};
+    use std::path::{Path, PathBuf};
+    use std::time::{Duration, SystemTime};
+
+    // ---------- Path::is_empty（Rust 1.98） ----------
+    //
+    // 空路径 `""` 和当前目录 `"."` 是两回事：前者什么都没写，把它交给系统调用通常只会得到“找不到”错误。
+    // 拼装命令行、读取配置文件里的可选路径时，经常需要先判空。
+    // 以前要写 `path.as_os_str().is_empty()`，现在 `Path` 自己就有 `is_empty`。
+    println!("空路径 is_empty = {}", Path::new("").is_empty());
+    println!("\"foo\" is_empty = {}", Path::new("foo").is_empty());
+    println!("\".\" is_empty = {}（当前目录不是空路径）", Path::new(".").is_empty());
+
+    // ---------- PathBuf::into_string（Rust 1.98） ----------
+    //
+    // 想把 `PathBuf` 变成 `String`，路径必须是合法的 UTF-8，所以这个操作可能失败。
+    // `into_string` 失败时返回 `Err(PathBuf)`，把所有权原样还给你，没有任何数据丢失，
+    // 你可以继续用这个 `PathBuf` 去做别的事，或者回退到有损转换。
+    // （它和早就有的 `OsString::into_string` 是同一个设计。）
+    let utf8_path = PathBuf::from("logs/今天.txt");
+    println!("合法 UTF-8 路径转 String: {:?}", utf8_path.into_string());
+
+    #[cfg(unix)]
+    {
+        use std::ffi::OsString;
+        use std::os::unix::ffi::OsStringExt;
+
+        // Unix 的路径是任意字节序列，下面这个路径里含有不合法的 UTF-8 字节 0xFF。
+        let weird = PathBuf::from(OsString::from_vec(vec![b'l', b'o', b'g', 0xFF]));
+        match weird.into_string() {
+            Ok(text) => println!("意外地得到了 String: {text}"),
+            Err(original) => {
+                // 失败了，但 PathBuf 还在，可以继续使用，例如转成有损的字符串用于显示。
+                println!("非 UTF-8 路径转换失败，原路径仍可用，有损显示为: {}", original.display());
+            }
+        }
+    }
+
+    // ---------- fs::set_times / fs::set_times_nofollow（Rust 1.99） ----------
+    //
+    // 修改文件的访问时间和修改时间（类似命令行的 `touch -t`）。
+    // 以前标准库只能先 `File::open` 再对打开的文件调用 `File::set_times`（1.75），
+    // 现在可以直接按路径修改，不必先打开文件；对不能打开的目标（比如某些目录、符号链接本身）也更方便。
+    // 参数是路径和一个 `FileTimes`，`FileTimes` 用链式调用设置想改的那几项，没设置的保持不变。
+    //
+    // - `set_times(path, times)`：路径是符号链接时，修改的是链接指向的目标文件
+    // - `set_times_nofollow(path, times)`：路径是符号链接时，修改的是链接本身
+    //   （并非所有平台和文件系统都支持，不支持时返回错误）
+    // 底层实现因平台而异：Unix 上是 utimensat，Apple 平台是 setattrlist，Windows 上是 SetFileTime。
+    let file_path = demo_temp_file("set_times.txt");
+    File::create(&file_path).expect("创建临时文件失败");
+
+    // 把修改时间设成 Unix 纪元之后第 1_000_000 秒（1970-01-12 左右），一个容易辨认的“过去”时间。
+    let fixed = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+    match fs::set_times(&file_path, FileTimes::new().set_modified(fixed)) {
+        Ok(()) => {
+            let modified = fs::metadata(&file_path).and_then(|m| m.modified()).expect("读取元数据失败");
+            println!("设置后读回的修改时间与设定值一致: {}", modified == fixed);
+        }
+        Err(e) => println!("当前文件系统不支持修改时间戳: {e}"),
+    }
+    let _ = fs::remove_file(&file_path);
+
+    // set_times_nofollow：改的是符号链接本身，而不是它指向的目标文件（仅 Unix 演示）
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::symlink;
+
+        let target = demo_temp_file("set_times_target.txt");
+        let link = demo_temp_file("set_times_link.txt");
+        let _ = fs::remove_file(&link);
+        File::create(&target).expect("创建目标文件失败");
+        symlink(&target, &link).expect("创建符号链接失败");
+
+        let link_time = SystemTime::UNIX_EPOCH + Duration::from_secs(2_000_000);
+        match fs::set_times_nofollow(&link, FileTimes::new().set_modified(link_time)) {
+            Ok(()) => {
+                let link_modified = fs::symlink_metadata(&link).and_then(|m| m.modified()).expect("读取链接元数据失败");
+                let target_modified = fs::metadata(&target).and_then(|m| m.modified()).expect("读取目标元数据失败");
+                println!(
+                    "链接本身的修改时间被改成了设定值: {}；目标文件的修改时间没有被改动: {}",
+                    link_modified == link_time,
+                    target_modified != link_time
+                );
+            }
+            Err(e) => println!("当前平台或文件系统不支持修改符号链接自身的时间戳: {e}"),
+        }
+        let _ = fs::remove_file(&link);
+        let _ = fs::remove_file(&target);
+    }
+
+    // 小结：
+    // 1. 空路径与 "." 不同，`Path::is_empty` 让判断更直接
+    // 2. `PathBuf::into_string` 失败时不丢数据，这是处理“可能不是 UTF-8”的数据的好习惯
+    // 3. `fs::set_times` 免去了为改时间戳而打开文件的步骤
+    println!();
+}
+
+// ===========================================
+// 13. C 字符串字面量：c"..."（Rust 1.77）
+// ===========================================
+
+// 把字符串传给 C 函数，需要以 `\0` 结尾的 C 字符串（`&CStr`）。
+// 过去有两种办法，都不够好：
+// - `CString::new("hello").unwrap()`：运行时要分配内存，还要检查内部有没有 `\0`
+// - `CStr::from_bytes_with_nul(b"hello\0").unwrap()`：要自己记得写结尾的 `\0`，写漏了只能在运行时才发现
+// 1.77 起可以直接写 C 字符串字面量 `c"hello"`，类型是 `&'static CStr`：
+// - 编译器保证结尾有 `\0`；内容里写了 `\0` 会编译失败（null characters in C string literals are not supported）
+// - 没有分配，没有运行时检查，指针指向程序的只读数据段，永远有效
+// - 支持转义（`\n`、`\xFF` 等，可以包含不合法的 UTF-8 字节），也有原始形式 `cr"..."`、`cr#"..."#`
+// - 内容里的 Unicode 字符会按 UTF-8 编码
+
+fn c_string_literals() {
+    println!("=== C 字符串字面量：c\"...\"（Rust 1.77） ===");
+
+    use std::ffi::CStr;
+
+    let greeting: &'static CStr = c"hello";
+    println!("字节(不含结尾 \\0): {:?}，含结尾 \\0: {:?}", greeting.to_bytes(), greeting.to_bytes_with_nul());
+
+    // 典型场景：把 Rust 里写死的字符串传给 C 函数——直接 `.as_ptr()`，不必先构造 CString。
+    // 这里让 C 标准库的 atoi 把 "42" 解析成整数。
+    // SAFETY: c"..." 保证以 \0 结尾且内部没有 \0，atoi 只读取到结尾的 \0。
+    let parsed = unsafe { libc::atoi(c"42".as_ptr()) };
+    println!("C 的 atoi 解析 \"42\" 得到 {parsed}");
+
+    // 只想知道长度、内容之类的，不需要借助 C，直接用 CStr 自己的方法（count_bytes 自 1.79 起稳定）
+    println!("count_bytes = {}，to_str = {:?}", c"你好".count_bytes(), c"你好".to_str());
+
+    // 转义和原始字面量；字节 \xFF 不是合法的 UTF-8，to_str() 会失败，但作为 C 字符串完全合法
+    println!("原始字面量: {:?}", cr"C:\path\to".to_str());
+    println!("非 UTF-8 的 C 字符串: {:?}", c"\xFF\xFE".to_str().is_err());
+
+    // 最佳实践：
+    // 1. 写死的字符串传给 C，用 c"..."，比 CString::new(..).unwrap() 更省、更安全
+    // 2. 运行时才知道内容的字符串（用户输入、文件内容），仍然要用 CString::new，并处理内部含 \0 的错误
+    println!();
+}
+
+// ===========================================
+// 14. 判断是否连接着终端：IsTerminal（Rust 1.70）
+// ===========================================
+
+// 命令行程序经常需要知道：“我的标准输出，是接在终端上，还是被重定向到了文件 / 管道？”
+// - 接在终端上：可以输出彩色文字、进度条、交互式提示
+// - 被重定向（`program > out.log`、`program | grep`）：应该输出纯文本，否则日志里全是看不懂的转义序列
+// 过去要依赖第三方 crate（`atty`、`is-terminal`）。1.70 起标准库提供了 `std::io::IsTerminal` trait：
+// 标准输入输出（Stdin / Stdout / Stderr 及其 Lock）、File、各种文件描述符 / 句柄类型都实现了它。
+// 使用前要先 `use std::io::IsTerminal;`，因为 `is_terminal()` 是这个 trait 的方法。
+
+fn terminal_detection() {
+    println!("=== 判断是否连接着终端：IsTerminal（Rust 1.70） ===");
+
+    use std::io::IsTerminal;
+
+    let stdout_is_terminal = std::io::stdout().is_terminal();
+    println!("标准输出连接着终端: {stdout_is_terminal}");
+    println!("标准错误连接着终端: {}", std::io::stderr().is_terminal());
+
+    // 典型场景：决定要不要给输出上色。除了检测终端，还应该遵守 NO_COLOR 这个社区约定
+    let use_color = stdout_is_terminal && std::env::var_os("NO_COLOR").is_none();
+    println!("{}", if use_color { "\x1b[32m支持颜色的输出\x1b[0m" } else { "纯文本输出" });
+
+    // 普通文件当然不是终端
+    if let Ok(exe) = std::env::current_exe().and_then(std::fs::File::open) {
+        println!("可执行文件本身是终端吗: {}", exe.is_terminal());
+    }
+
+    // 最佳实践：
+    // 1. 输出前先判断 `is_terminal()`，被重定向时关掉颜色、进度条和交互提示
+    // 2. 同时遵守 `NO_COLOR` 环境变量；需要强制开启颜色时，再提供命令行开关（如 `--color=always`）
+    // 3. 读取标准输入前判断 `stdin().is_terminal()`，可以区分“人在交互输入”和“从管道读取数据”
+    println!();
+}
+
+// ===========================================
+// 15. 文件名的前缀：Path::file_prefix（Rust 1.91）
+// ===========================================
+
+// `Path::file_stem()` 取“最后一个点之前”的部分：`archive.tar.gz` -> `archive.tar`
+// `Path::file_prefix()`（1.91）取“第一个点之前”的部分：`archive.tar.gz` -> `archive`
+// 遇到 `.tar.gz`、`.min.js`、`.d.ts` 这类多重扩展名时，想拿到真正的“主名字”，用 file_prefix 就对了。
+// 规则：
+// - 没有点：整个文件名（`README` -> `README`）
+// - 以点开头的隐藏文件，开头那个点不算分隔符：`.bashrc` -> `.bashrc`，`.config.json` -> `.config`
+// - 没有文件名（比如根目录 `/`）：`None`
+
+fn path_file_prefix() {
+    println!("=== 文件名的前缀：Path::file_prefix（Rust 1.91） ===");
+
+    use std::path::Path;
+
+    for name in ["archive.tar.gz", "bundle.min.js", "README", ".bashrc", ".config.json"] {
+        let path = Path::new(name);
+        println!("{name:>16}: file_stem = {:?}，file_prefix = {:?}", path.file_stem(), path.file_prefix());
+    }
+    println!("根目录没有文件名: {:?}", Path::new("/").file_prefix());
+
+    // 最佳实践：
+    // 1. 想得到“去掉所有扩展名”的主名字，用 file_prefix；只想去掉最后一个扩展名，用 file_stem
+    // 2. 两者返回的都是 Option<&OsStr>，转成字符串要处理“不是合法 UTF-8”的情况（to_str / to_string_lossy）
+    println!();
+}
+
+// ===========================================
+// 16. 原子地创建新文件：File::create_new（Rust 1.77）
+// ===========================================
+
+// “只在文件不存在时才创建”是实现锁文件、防止覆盖已有数据的基本需求。
+// 直觉的写法是先检查再创建：`if !path.exists() { File::create(path) }`，但它有竞态条件（TOCTOU，检查时间到使用时间之差）：
+// 检查和创建之间，别的进程可能已经抢先创建了同名文件，而 `File::create` 会把它清空覆盖。
+// `File::create_new(路径)`（1.77）把“检查”和“创建”合成一个原子操作：
+// 文件已存在时失败，返回 `ErrorKind::AlreadyExists`，绝不会覆盖已有内容。
+// 它等价于 `OpenOptions::new().write(true).create_new(true).open(路径)`，只是写起来短得多。
+
+fn create_new_file() {
+    println!("=== 原子地创建新文件：File::create_new（Rust 1.77） ===");
+
+    use std::fs::{self, File};
+    use std::io::{ErrorKind, Write};
+
+    let path = demo_temp_file("create_new.lock");
+    let _ = fs::remove_file(&path); // 清理上一次运行可能留下的文件
+
+    // 第一次：文件不存在，创建成功。谁创建成功，谁就拿到了这把“锁”
+    match File::create_new(&path) {
+        Ok(mut file) => {
+            writeln!(file, "进程 {} 持有这把锁", std::process::id()).expect("写入失败");
+            println!("第一次创建成功");
+        }
+        Err(error) => println!("意外失败: {error}"),
+    }
+
+    // 第二次：文件已经存在，创建失败，并且原有内容不会受到影响
+    match File::create_new(&path) {
+        Ok(_) => println!("意外地又创建成功了"),
+        Err(error) if error.kind() == ErrorKind::AlreadyExists => println!("第二次创建失败：文件已存在（{:?}）", error.kind()),
+        Err(error) => println!("其他错误: {error}"),
+    }
+    println!("锁文件内容仍在: {:?}", fs::read_to_string(&path).map(|text| text.trim().to_string()));
+    let _ = fs::remove_file(&path);
+
+    // 最佳实践：
+    // 1. 需要“没有才创建”时用 create_new，不要先 `exists()` 再 `create`
+    // 2. 锁文件用完要删除；程序崩溃会留下残留文件，所以通常还要配合超时或进程 ID 检查
+    println!();
+}
+
+// ===========================================
+// 17. 匿名管道：std::io::pipe（Rust 1.87）
+// ===========================================
+
+// 管道是一条单向的字节通道：从“写端”写入的数据，可以从“读端”按顺序读出。
+// 过去标准库没有直接创建匿名管道的办法，只能用 libc 的 `pipe`（unsafe）或第三方 crate（如 os_pipe）。
+// 1.87 稳定了 `std::io::pipe()`，返回一对端点 `(PipeReader, PipeWriter)`：
+// - 它们实现了 `Read` / `Write`，可以像文件一样读写；`try_clone` 可以复制出更多句柄
+// - 可以直接交给子进程：`Command::stdout(writer)`
+// 典型场景：把子进程的标准输出和标准错误合并到同一个读端，按真实的输出顺序读取
+// （分别读两个管道，会丢失两者之间的先后关系，还容易因为缓冲区写满而死锁）。
+//
+// 一个必须注意的细节：读端读到文件结束（EOF）的前提是**所有**写端都已经被关闭（drop）。
+// 交给 `Command` 的写端，会随临时的 `Command` 在语句结束时一起关闭；自己手里多余的写端也要及时 drop，
+// 否则读端会永远等不到 EOF，程序卡死。
+
+fn anonymous_pipe() {
+    println!("=== 匿名管道：std::io::pipe（Rust 1.87） ===");
+
+    use std::io::{Read, Write};
+
+    // ---------- 在同一个进程的两个线程之间传递字节 ----------
+    let (mut reader, mut writer) = std::io::pipe().expect("创建管道失败");
+    let producer = std::thread::spawn(move || {
+        writer.write_all("你好，管道".as_bytes()).expect("写入失败");
+        // writer 在线程结束时被销毁，读端因此能读到 EOF
+    });
+    let mut received = String::new();
+    reader.read_to_string(&mut received).expect("读取失败");
+    producer.join().expect("线程异常退出");
+    println!("线程之间通过管道收到: {received}");
+
+    // ---------- 合并子进程的标准输出和标准错误（仅 Unix） ----------
+    #[cfg(unix)]
+    {
+        use std::process::Command;
+
+        let (mut reader, writer) = std::io::pipe().expect("创建管道失败");
+        let writer_for_stderr = writer.try_clone().expect("复制写端失败");
+        // Command 是这条语句里的临时值，语句结束时它被销毁，它手里的写端副本随之关闭
+        let mut child = Command::new("sh")
+            .args(["-c", "echo 来自标准输出; echo 来自标准错误 >&2"])
+            .stdout(writer)
+            .stderr(writer_for_stderr)
+            .spawn()
+            .expect("启动子进程失败");
+        let mut output = String::new();
+        reader.read_to_string(&mut output).expect("读取失败");
+        child.wait().expect("等待子进程失败");
+        println!("合并后的输出（保持真实的先后顺序）:\n{output}");
+    }
+
+    // 最佳实践：
+    // 1. 想把子进程的两路输出合并成一路，用同一个管道的两个写端，不要分别读两个管道
+    // 2. 读之前确认所有多余的写端都已经 drop，否则会一直阻塞
+    println!();
+}
+
+// ===========================================
 // 主函数
 // ===========================================
 
@@ -1847,8 +2173,13 @@ pub fn main() {
     practical_examples();
     safe_wrappers();
     std_os_fd_standardization();
-    latest_ffi_updates();
     ffi_error_type_enhancement();
+    path_and_file_time_updates();
+    c_string_literals();
+    terminal_detection();
+    path_file_prefix();
+    create_new_file();
+    anonymous_pipe();
 
     println!("FFI 演示完成！");
 }
@@ -2001,16 +2332,37 @@ mod tests {
     }
 
     #[test]
-    fn test_latest_ffi_raw_parts_roundtrip() {
-        let values = vec![1_u8, 2, 3, 4];
-        let (ptr, len, cap) = values.into_raw_parts();
-        let rebuilt = unsafe { Vec::from_raw_parts(ptr, len, cap) };
-        assert_eq!(rebuilt, vec![1, 2, 3, 4]);
+    fn test_path_and_file_time_updates() {
+        use std::fs::{self, File, FileTimes};
+        use std::path::{Path, PathBuf};
+        use std::time::{Duration, SystemTime};
 
-        let text = String::from("ffi");
-        let (ptr, len, cap) = text.into_raw_parts();
-        let rebuilt = unsafe { String::from_raw_parts(ptr, len, cap) };
-        assert_eq!(rebuilt, "ffi");
+        // 空路径与 "." 不同
+        assert!(Path::new("").is_empty());
+        assert!(!Path::new("foo").is_empty());
+        assert!(!Path::new(".").is_empty());
+
+        // 合法 UTF-8 路径可以转成 String
+        assert_eq!(PathBuf::from("logs/今天.txt").into_string(), Ok("logs/今天.txt".to_string()));
+
+        // 非 UTF-8 路径转换失败时，所有权原样归还
+        #[cfg(unix)]
+        {
+            use std::ffi::OsString;
+            use std::os::unix::ffi::OsStringExt;
+            let weird = PathBuf::from(OsString::from_vec(vec![b'l', 0xFF]));
+            let back = weird.clone().into_string().unwrap_err();
+            assert_eq!(back, weird);
+        }
+
+        // set_times：按路径修改修改时间，再读回验证（取整秒，避免文件系统精度差异）
+        let file_path =
+            std::env::temp_dir().join(format!("rust_code_guide_test_set_times_{}.txt", std::process::id()));
+        File::create(&file_path).unwrap();
+        let fixed = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        fs::set_times(&file_path, FileTimes::new().set_modified(fixed)).unwrap();
+        assert_eq!(fs::metadata(&file_path).unwrap().modified().unwrap(), fixed);
+        fs::remove_file(&file_path).unwrap();
     }
 
     #[test]
@@ -2028,51 +2380,111 @@ mod tests {
         let errors = vec![error, error_copy];
         assert_eq!(errors.len(), 2);
     }
-}
 
-// 模拟的 C 函数声明
-mod libc {
-    use std::os::raw::{c_char, c_int, c_void};
-    pub type SizeT = usize; // 在大多数平台上，SizeT 相当于 usize
+    #[test]
+    fn test_c_string_literals() {
+        use std::ffi::CStr;
 
-    pub const AF_INET: i32 = 2;
-    pub const SOCK_STREAM: i32 = 1;
-    pub const O_RDWR: i32 = 2;
-    pub const O_CREAT: i32 = 64;
-    pub const RTLD_LAZY: i32 = 1;
-
-    unsafe extern "C" {
-        pub fn socket(domain: i32, type_: i32, protocol: i32) -> i32;
-        pub fn connect(sockfd: i32, addr: *const sockaddr, addrlen: u32) -> i32;
-        pub fn send(sockfd: i32, buf: *const c_void, len: usize, flags: i32) -> isize;
-        pub fn close(fd: i32) -> i32;
-        pub fn open(path: *const c_char, flags: i32, mode: u32) -> i32;
-        pub fn write(fd: i32, buf: *const c_void, count: usize) -> isize;
-        pub fn read(fd: i32, buf: *mut std::ffi::c_void, count: usize) -> isize;
-        pub fn dlopen(filename: *const c_char, flag: i32) -> *mut std::ffi::c_void;
-        pub fn dlclose(handle: *mut std::ffi::c_void) -> i32;
-        pub fn dlsym(handle: *mut std::ffi::c_void, symbol: *const c_char)
-        -> *mut std::ffi::c_void;
-        pub fn dlerror() -> *mut c_char;
-        pub fn inet_addr(cp: *const c_char) -> u32;
+        let greeting: &'static CStr = c"hello";
+        assert_eq!(greeting.to_bytes(), b"hello");
+        assert_eq!(greeting.to_bytes_with_nul(), b"hello\0");
+        assert_eq!(c"你好".count_bytes(), 6);
+        assert_eq!(c"你好".to_str(), Ok("你好"));
+        assert_eq!(unsafe { libc::atoi(c"42".as_ptr()) }, 42);
+        assert_eq!(cr"C:\path".to_bytes(), br"C:\path");
+        // \xFF 不是合法 UTF-8，作为 C 字符串仍然合法
+        assert!(c"\xFF\xFE".to_str().is_err());
+        assert_eq!(c"\xFF\xFE".to_bytes(), [0xFF, 0xFE]);
     }
 
-    #[repr(C)]
-    pub struct sockaddr {
-        pub sa_family: u16,
-        pub sa_data: [u8; 14],
+    #[test]
+    fn test_terminal_detection() {
+        use std::io::IsTerminal;
+
+        // 普通文件不是终端（标准输出是否是终端取决于运行环境，不做断言）
+        let exe = std::fs::File::open(std::env::current_exe().unwrap()).unwrap();
+        assert!(!exe.is_terminal());
+        let _ = std::io::stdout().is_terminal();
     }
 
-    #[repr(C)]
-    pub struct sockaddr_in {
-        pub sin_family: u16,
-        pub sin_port: u16,
-        pub sin_addr: in_addr,
-        pub sin_zero: [u8; 8],
+    #[test]
+    fn test_path_file_prefix() {
+        use std::path::Path;
+
+        let prefix = |name: &str| Path::new(name).file_prefix().map(|p| p.to_string_lossy().into_owned());
+        let stem = |name: &str| Path::new(name).file_stem().map(|p| p.to_string_lossy().into_owned());
+        assert_eq!(prefix("archive.tar.gz").as_deref(), Some("archive"));
+        assert_eq!(stem("archive.tar.gz").as_deref(), Some("archive.tar"));
+        assert_eq!(prefix("README").as_deref(), Some("README"));
+        assert_eq!(prefix(".bashrc").as_deref(), Some(".bashrc"));
+        assert_eq!(prefix(".config.json").as_deref(), Some(".config"));
+        assert_eq!(prefix("/"), None);
     }
 
-    #[repr(C)]
-    pub struct in_addr {
-        pub s_addr: u32,
+    #[test]
+    fn test_create_new_file() {
+        use std::fs::{self, File};
+        use std::io::ErrorKind;
+
+        let path = demo_temp_file("create_new_test.lock");
+        let _ = fs::remove_file(&path);
+        assert!(File::create_new(&path).is_ok());
+        let second = File::create_new(&path);
+        assert_eq!(second.unwrap_err().kind(), ErrorKind::AlreadyExists);
+        fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn test_anonymous_pipe() {
+        use std::io::{Read, Write};
+
+        // 线程之间：写端关闭后，读端读到全部数据并遇到 EOF
+        let (mut reader, mut writer) = std::io::pipe().unwrap();
+        let producer = std::thread::spawn(move || writer.write_all(b"hello pipe").unwrap());
+        let mut received = String::new();
+        reader.read_to_string(&mut received).unwrap();
+        producer.join().unwrap();
+        assert_eq!(received, "hello pipe");
+
+        // 子进程的 stdout 与 stderr 合并到同一个读端
+        #[cfg(unix)]
+        {
+            use std::process::Command;
+
+            let (mut reader, writer) = std::io::pipe().unwrap();
+            let writer_for_stderr = writer.try_clone().unwrap();
+            let mut child = Command::new("sh")
+                .args(["-c", "echo out; echo err >&2"])
+                .stdout(writer)
+                .stderr(writer_for_stderr)
+                .spawn()
+                .unwrap();
+            let mut output = String::new();
+            reader.read_to_string(&mut output).unwrap();
+            child.wait().unwrap();
+            assert!(output.contains("out") && output.contains("err"));
+        }
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_set_times_nofollow() {
+        use std::fs::{self, File, FileTimes};
+        use std::os::unix::fs::symlink;
+        use std::time::{Duration, SystemTime};
+
+        let target = demo_temp_file("set_times_target_test.txt");
+        let link = demo_temp_file("set_times_link_test.txt");
+        let _ = fs::remove_file(&link);
+        File::create(&target).unwrap();
+        symlink(&target, &link).unwrap();
+        let time = SystemTime::UNIX_EPOCH + Duration::from_secs(2_000_000);
+        // 并非所有文件系统都支持修改链接自身的时间戳：支持时，只有链接被改动
+        if fs::set_times_nofollow(&link, FileTimes::new().set_modified(time)).is_ok() {
+            assert_eq!(fs::symlink_metadata(&link).unwrap().modified().unwrap(), time);
+            assert_ne!(fs::metadata(&target).unwrap().modified().unwrap(), time);
+        }
+        let _ = fs::remove_file(&link);
+        let _ = fs::remove_file(&target);
     }
 }

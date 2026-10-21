@@ -2,7 +2,7 @@
 
 > 注：建议使用最新版本的Rust工具链查看和阅读本项目，本项目默认你使用了全新安装的工具链，并未修改任何编译配置等，因此部分预览和实验性等需要对编译器进行特殊设置的特性必要时已经被注释以保证全部代码都可以通过编译
 
-基于《The Rust Programming Language》书籍的 Rust 语言特性完整教程，并补充完善了截止 Rust 1.97 版本的所有新增语言特性，包含所有 Rust 版本特性的代码示例和详细注释。
+基于《The Rust Programming Language》书籍的 Rust 语言特性完整教程，并补充完善了截止 Rust 1.99 版本的新增语言特性，主要特性均配有代码示例、详细注释和测试（“版本特性追踪”一节列出各版本的真实亮点：语言和标准库层面的条目在教程里都有对应的演示，Cargo 与工具链层面的条目只作索引，必要时在代码注释里说明用法）。
 
 建议有一定编程经验的读者阅读本指南，本指南不适合编程初学者（即Rust为打算学习的第一门编程语言）。
 
@@ -29,6 +29,7 @@ rust-code-guide/
 │   ├── mod_16_smart_pointers.rs # 智能指针
 │   ├── mod_17_async_await.rs   # 异步编程
 │   ├── mod_18_oop_features.rs  # 面向对象特性
+│   ├── mod_19_advanced_reference.rs # 进阶参考（底层、ABI、工具链）
 ├── Cargo.toml
 └── README.md
 ```
@@ -42,6 +43,11 @@ rust-code-guide/
 - [函数](src/mod_01_basics.rs)
 - [注释](src/mod_01_basics.rs)
 - [控制流](src/mod_01_basics.rs)
+- [数值增强：代数浮点与整数缓冲格式化](src/mod_01_basics.rs)
+- [整数运算补充：isqrt、无符号减有符号、严格运算](src/mod_01_basics.rs)
+- [解构赋值与 Unicode 标识符](src/mod_01_basics.rs)
+- [带标签的代码块：break '标签 值](src/mod_01_basics.rs)
+- [char 的关联常量与方法](src/mod_01_basics.rs)
 
 ### 核心概念
 
@@ -53,25 +59,43 @@ rust-code-guide/
 
 - [结构体](src/mod_03_structs.rs)
 - [枚举](src/mod_04_enums.rs)
+- [#[non_exhaustive]：为公开类型预留扩展空间](src/mod_04_enums.rs)
+- [带字段枚举的显式判别值](src/mod_04_enums.rs)
 - [模式匹配](src/mod_05_pattern_matching.rs)
+- [范围模式补充：半开区间、开放区间与嵌套或模式](src/mod_05_pattern_matching.rs)
+- [if let 链（let chains）](src/mod_05_pattern_matching.rs)
 
 ### 错误处理
 
 - [Option 类型](src/mod_06_error_handling.rs)
 - [Result 类型](src/mod_06_error_handling.rs)
 - [panic! 和错误传播](src/mod_06_error_handling.rs)
+- [#[must_use]：不要悄悄忽略返回值](src/mod_06_error_handling.rs)
+- [#[track_caller]：让 panic 指向调用者](src/mod_06_error_handling.rs)
+- [调用栈回溯：RUST_BACKTRACE 与 Backtrace](src/mod_06_error_handling.rs)
+- [Option / Result 的 inspect](src/mod_06_error_handling.rs)
+- [main 返回自定义退出码：ExitCode](src/mod_06_error_handling.rs)
 
 ### 泛型系统
 
 - [泛型](src/mod_07_generics.rs)
+- [type_name_of_val：查看推断出的类型](src/mod_07_generics.rs)
 - [特征](src/mod_08_traits.rs)
 - [特征对象](src/mod_08_traits.rs)
+- [trait 对象向上转型](src/mod_08_traits.rs)
+- [#[diagnostic] 自定义编译器报错](src/mod_08_traits.rs)
+- [返回位置 impl Trait 的捕获规则：use<..>](src/mod_08_traits.rs)
 
 ### 集合类型
 
 - [Vector](src/mod_09_collections.rs)
 - [String](src/mod_09_collections.rs)
 - [HashMap](src/mod_09_collections.rs)
+- [字符串、切片与容器 API 补充](src/mod_09_collections.rs)
+- [split_once 与 rsplit_once](src/mod_09_collections.rs)
+- [get_disjoint_mut：同时可变借用多个元素](src/mod_09_collections.rs)
+- [partition_point：有序切片的分界点](src/mod_09_collections.rs)
+- [black_box：防止优化器抹掉测量代码](src/mod_09_collections.rs)
 
 ### 函数式编程
 
@@ -84,18 +108,26 @@ rust-code-guide/
 - [通道](src/mod_12_concurrency.rs)
 - [共享状态](src/mod_12_concurrency.rs)
 - [RwLock 降级与原子更新 API](src/mod_12_concurrency.rs)
+- [原子 from_mut 与线程局部 update](src/mod_12_concurrency.rs)
 
 ### 宏系统
 
 - [声明式宏](src/mod_13_macros.rs)
 - [过程宏](src/mod_13_macros.rs)
+- [条件编译补充：cfg(true/false)、target_abi、unexpected_cfgs](src/mod_13_macros.rs)
 
 ### 高级特性
 
 - [不安全 Rust](src/mod_14_advanced.rs)
 - [生命周期](src/mod_14_advanced.rs)
 - [外部函数接口](src/mod_15_ffi.rs)
-- [底层能力补充](src/mod_14_advanced.rs)
+- [LazyCell / LazyLock 的访问 API](src/mod_14_advanced.rs)
+- [Rust 2024 Edition：与 2021 的主要区别](src/mod_14_advanced.rs)
+- [use 导入路径关键字并重命名](src/mod_14_advanced.rs)
+- [C 字符串字面量 c"..."](src/mod_15_ffi.rs)
+- [IsTerminal 与 Path::file_prefix](src/mod_15_ffi.rs)
+- [File::create_new：原子地创建新文件](src/mod_15_ffi.rs)
+- [匿名管道 std::io::pipe](src/mod_15_ffi.rs)
 
 ### 智能指针
 
@@ -103,7 +135,7 @@ rust-code-guide/
 - [Rc 和 Arc 引用计数](src/mod_16_smart_pointers.rs)
 - [RefCell 和内部可变性](src/mod_16_smart_pointers.rs)
 - [Weak 指针和循环引用](src/mod_16_smart_pointers.rs)
-- [零初始化智能指针分配](src/mod_16_smart_pointers.rs)
+- [Rc / Arc 的 unwrap_or_clone](src/mod_16_smart_pointers.rs)
 
 ### 异步编程
 
@@ -112,18 +144,44 @@ rust-code-guide/
 - [异步运行时和执行器](src/mod_17_async_await.rs)
 - [异步 I/O 操作](src/mod_17_async_await.rs)
 - [Stream 和异步迭代](src/mod_17_async_await.rs)
+- [异步闭包与 AsyncFn 系列 trait](src/mod_17_async_await.rs)
+- [手动驱动 Future：pin!、Waker::noop 与自定义 Waker](src/mod_17_async_await.rs)
+- [IntoFuture：让任意类型都能被 .await](src/mod_17_async_await.rs)
+- [异步递归](src/mod_17_async_await.rs)
 
 ### 面向对象编程
 
 - [封装和可见性控制](src/mod_18_oop_features.rs)
 - [继承的替代方案](src/mod_18_oop_features.rs)
 - [多态和 Trait 对象](src/mod_18_oop_features.rs)
-- [对象安全和生命周期](src/mod_18_oop_features.rs)
+- [dyn 兼容性（对象安全）和生命周期](src/mod_18_oop_features.rs)
 - [设计模式实现](src/mod_18_oop_features.rs)
+
+### 进阶参考（底层、ABI、工具链）
+
+> 低频、偏底层的特性集中在这一章：多数需要 `unsafe` 或只在特定平台有意义，建议学完前面的章节后按需查阅。
+
+- [严格来源 API 与按字节偏移](src/mod_19_advanced_reference.rs)
+- [AtomicPtr 的指针运算与位运算](src/mod_19_advanced_reference.rs)
+- [offset_of!：字段偏移](src/mod_19_advanced_reference.rs)
+- [#[repr(transparent)]：透明包装器](src/mod_19_advanced_reference.rs)
+- [从裸指针查询布局，以及几处底层小改进](src/mod_19_advanced_reference.rs)
+- [Box、Vec 与裸指针往返、ManuallyDrop 与 UnsafeCell](src/mod_19_advanced_reference.rs)
+- [未初始化与零初始化内存：MaybeUninit、new_zeroed](src/mod_19_advanced_reference.rs)
+- [裸指针与布局的小工具：union 字段指针、as_ref_unchecked、Layout::repeat](src/mod_19_advanced_reference.rs)
+- [C 变参函数定义与运行时符号 lint](src/mod_19_advanced_reference.rs)
+- [extern 的 ABI 规范：missing_abi、C-unwind、变参 ABI、raw-dylib](src/mod_19_advanced_reference.rs)
+- [内联汇编](src/mod_19_advanced_reference.rs)
+- [裸函数 naked functions](src/mod_19_advanced_reference.rs)
+- [内联汇编进阶：asm goto 与 asm! 内的 cfg](src/mod_19_advanced_reference.rs)
+- [安全函数上的 #[target_feature]](src/mod_19_advanced_reference.rs)
+- [悬垂指针 lint 与 unsafe 前置条件断言](src/mod_19_advanced_reference.rs)
+- [自定义全局分配器](src/mod_19_advanced_reference.rs)
+- [工具链与构建配置速查](src/mod_19_advanced_reference.rs)
 
 ## 版本特性追踪
 
-> 以下内容均依据官方发布说明（blog.rust-lang.org）核实整理，只收录真实稳定特性。
+> 以下内容均依据官方发布说明（blog.rust-lang.org 与 rust-lang/rust 的 RELEASES.md）核实整理，并用标准库源码中的 `#[stable(since = ...)]` 属性交叉验证（发布说明偶有遗漏），只收录真实稳定特性。
 
 ### Rust 1.0 (2015-05-15)
 
@@ -135,7 +193,8 @@ rust-code-guide/
 ### Rust 1.26 (2018-05-10)
 
 - `impl Trait` 语法
-- 基础模式匹配改进
+- 闭区间语法 `..=`、固定长度数组的切片模式
+- `main` 可以返回 `Result<(), E>`
 
 ### Rust 1.28 (2018-08-02)
 
@@ -155,11 +214,13 @@ rust-code-guide/
 
 ### Rust 1.46 (2020-08-27)
 
-- `const fn` 能力增强
+- `const fn` 中可使用 `if` / `match` / `loop`
+- `#[track_caller]` 属性
 
 ### Rust 1.47 (2020-10-08)
 
-- `#[track_caller]` 属性
+- 标准库 trait 对任意长度数组实现（此前只到长度 32）
+- `RUST_BACKTRACE` 输出更精简
 
 ### Rust 1.51 (2021-03-25)
 
@@ -167,7 +228,8 @@ rust-code-guide/
 
 ### Rust 1.52 (2021-05-06)
 
-- `str::split_ascii_whitespace`
+- `str::split_once` / `rsplit_once`
+- `slice::partition_point`、`char::MAX` 等字符常量与方法
 
 ### Rust 1.53 (2021-06-17)
 
@@ -177,8 +239,8 @@ rust-code-guide/
 
 ### Rust 1.54 (2021-07-29)
 
-- 内置属性（如 `#[cfg]`）的值支持宏
-- `#[target_feature]` 允许用于部分平台的安全函数
+- 内置属性的值可以调用宏（如 `#![doc = include_str!("README.md")]`）
+- WebAssembly 目标上 `#[target_feature]` 可用于安全函数
 - `wasm` 成为 `target_family`
 
 ### Rust 1.55 (2021-09-09)
@@ -212,7 +274,7 @@ rust-code-guide/
 
 - 基于源码的代码覆盖率（`-C instrument-coverage`）
 - Cargo feature 新语法（`dep:` 前缀、弱依赖特性）
-- `Instant` 单调性保证（饱和到 0 而非 panic）
+- `Instant::duration_since` / `elapsed` / `sub` 下溢时饱和到 0 而非 panic（同时移除了对非单调时钟的变通）
 
 ### Rust 1.61 (2022-05-19)
 
@@ -274,7 +336,7 @@ rust-code-guide/
 ### Rust 1.71 (2023-07-13)
 
 - C-unwind ABI
-- `#[debug_visualizer]` 调试器可视化属性
+- `#[debugger_visualizer]` 调试器可视化属性
 - Windows raw-dylib 链接
 
 ### Rust 1.72 (2023-08-24)
@@ -394,7 +456,7 @@ rust-code-guide/
 
 - Linux 默认使用 LLD 链接器
 - Cargo 原生工作区发布（`cargo publish --workspace`）
-- 有符号整数饱和减法系列
+- 无符号整数减有符号整数的 `checked_sub_signed` / `saturating_sub_signed` 等系列
 
 ### Rust 1.91 (2025-10-30)
 
@@ -457,6 +519,30 @@ rust-code-guide/
 - `Default for RepeatN`、`Copy for FromBytesUntilNulError`
 - `char::is_control` 可在 const 中使用
 
+### Rust 1.98 (2026-08-20)
+
+- `f32` / `f64` 的代数运算 `algebraic_add` / `sub` / `mul` / `div` / `rem`（允许编译器重排以换取性能，结果非确定但不会产生 UB）
+- 整数 `format_into` 与 `core::fmt::NumBuffer`（无堆分配的整数格式化）
+- `str::substr_range` / `[T]::subslice_range`、`strip_circumfix`
+- `String::from_utf16le` / `from_utf16be`（含 `_lossy`）、`NonZero::from_str_radix`
+- `bool::ok_or` / `ok_or_else`、`Option` / `Result::map_or_default`
+- `AtomicXxx::from_mut` / `from_mut_slice` / `get_mut_slice`、`Box::as_ptr` / `as_mut_ptr`
+- `std::range::legacy` 稳定；文档保证 `ManuallyDrop<Box<T>>` 手动 drop 后再移动不是 UB
+- 新 lint：`invalid_runtime_symbol_definitions`（deny）、`suspicious_runtime_symbol_definitions`、`c_void_returns`
+- 1.98.1（2026-09-03）：修复生成 vtable 时的误编译
+
+### Rust 1.99 (2026-10-01)
+
+- 可以用 Rust 定义 C 变参函数（`unsafe extern "C" fn f(mut args: ...)`，`VaList` / `next_arg`），并支持 naked 变参函数
+- 从裸指针查询布局：`mem::size_of_val_raw` / `align_of_val_raw`、`Layout::for_value_raw`
+- `Box::into_non_null` / `from_non_null`、`Vec::into_parts` / `from_parts`、`IntoIterator for Box<[T; N]>`
+- `VecDeque::retain_back`、`String::from_utf8_lossy_owned`、`FusedIterator for StepBy`、`LocalKey<Cell<T>>::update`
+- `fs::set_times` / `set_times_nofollow`
+- 属性宏可作用于外联模块（`#[my_macro] mod foo;`）；x86 上 `asm!` 可经 xmm 寄存器传递 128 位整数
+- 旧整数模块（如 `std::i32::MAX`）全面弃用，请改用 `i32::MAX`
+- Cargo：新增 `debug` profile；edition 2024 的工作区成员可覆盖继承依赖的 `default-features`
+- 1.99.1（2026-10-15）：修复 x86_64 上 FFI `bool` 返回值误编译、UEFI/嵌入式目标缺失 `wcslen`、macOS 上 rust-lld 的 libLLVM rpath
+
 ## 如何使用
 
 本项目中的每个模块都是独立的 Rust 代码示例，主要用于学习和参考。
@@ -483,6 +569,7 @@ rust-code-guide/
 - `src/mod_16_smart_pointers.rs` - 智能指针
 - `src/mod_17_async_await.rs` - 异步编程
 - `src/mod_18_oop_features.rs` - 面向对象特性
+- `src/mod_19_advanced_reference.rs` - 进阶参考（底层、ABI、工具链）
 
 ### 运行测试
 
@@ -518,11 +605,12 @@ cargo doc --open
 12. **智能指针** - 学习 `mod_16_smart_pointers.rs`
 13. **异步编程** - 学习 `mod_17_async_await.rs`
 14. **面向对象编程** - 掌握 `mod_18_oop_features.rs`
+15. **进阶参考** - 按需查阅 `mod_19_advanced_reference.rs`（底层、ABI、工具链，第一遍通读即可，不必逐节啃）
 
 ## 项目特点
 
-- **全面覆盖** - 包含 Rust 所有版本的核心特性
-- **代码示例** - 每个特性都有具体的代码演示
+- **全面覆盖** - 覆盖 Rust 各版本的核心特性
+- **代码示例** - 主要特性都有具体的代码演示
 - **详细注释** - 中文注释说明每个概念的使用方法和注意事项
 - **版本追踪** - 标注了每个特性引入的 Rust 版本
 - **测试覆盖** - 每个模块都包含单元测试

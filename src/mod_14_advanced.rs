@@ -1,16 +1,10 @@
-#![allow(
-    dead_code,
-    unused_variables,
-    unused_imports,
-    unused_mut,
-    unused_assignments,
-    unused_macros,
-    deprecated
-)]
-use std::arch::asm;
+// 教程里的类型、字段和方法经常只为演示语法而定义，不一定会被全部读取或调用，所以允许 dead_code；
+// 其他 lint（未使用的导入、变量、可变性等）必须保持干净，不要再给模块添加新的 allow。
+#![allow(dead_code)]
 
 // Rust 高级特性（Advanced Rust Features）
-// 包含 unsafe Rust、内联汇编、高级生命周期、高级 trait 等深度特性的详细讲解
+// 包含 unsafe Rust、高级生命周期、高级 trait 等深度特性的详细讲解
+// （内联汇编、内存布局等更偏底层、更低频的内容，集中在第 19 章“进阶参考”里）
 // 这些特性展示了 Rust 在系统编程、高性能计算和底层开发中的强大能力
 
 // Rust 高级特性的核心价值：
@@ -297,10 +291,13 @@ fn mutable_static_variables() {
     // Ordering::Release：释放操作，防止重排
 
     // 静态变量的替代方案：
-    // 1. 使用 Arc<Mutex<T>>：线程安全的可变状态
-    // 2. 使用 OnceCell：延迟初始化的静态变量
-    // 3. 使用 lazy_static：宏简化延迟初始化
-    // 4. 使用函数参数：避免全局状态
+    // 1. 全局可变状态：直接写 `static STATE: Mutex<T> = Mutex::new(..)`（`Mutex::new` 自 1.63 起是 const fn），
+    //    不需要 unsafe，也不需要 Arc——`static` 本身就是全局唯一、生命周期 'static 的共享位置
+    //    （`Arc<Mutex<T>>` 适合“在多个线程之间共享所有权”，而不是做全局变量）
+    // 2. 延迟初始化的全局值：`std::sync::OnceLock`（1.70）和 `std::sync::LazyLock`（1.80）
+    //    （注意不是 `OnceCell`：`static` 要求类型是 Sync，而 `OnceCell` 不是 Sync，只能用在单线程里）
+    // 3. 旧代码里常见的 `lazy_static!` 宏，基本都可以用标准库的 `LazyLock` 取代，新代码不必再引入它
+    // 4. 使用函数参数：能把状态作为参数传进去，就别用全局状态
 
     // 静态变量的实际应用：
     // 1. 配置管理：全局配置信息
@@ -416,293 +413,7 @@ fn union_types() {
 }
 
 // ===========================================
-// 5. 内联汇编（Inline Assembly）- Rust 1.59
-// ===========================================
-
-// 内联汇编是 Rust 1.59 版本开始稳定的重要特性
-// 它允许在 Rust 代码中直接嵌入汇编语言指令，实现对硬件的直接控制
-// 这是系统编程、性能优化和底层开发的重要工具
-
-// 内联汇编的核心价值：
-// 1. 硬件控制：直接控制 CPU 指令和寄存器
-// 2. 性能优化：生成最优的机器代码，零成本抽象
-// 3. 系统调用：实现系统调用和底层操作
-// 4. 算法优化：使用 CPU 特定的指令集和 SIMD
-// 5. 原子操作：实现低级别的原子操作和无锁编程
-
-// 内联汇编的风险和注意事项：
-// 1. 平台依赖：代码可能只在特定平台上工作
-// 2. 调试困难：汇编代码难以调试和维护
-// 3. 编译器优化限制：可能阻止某些优化
-// 4. 安全性：直接操作硬件可能导致安全问题
-// 5. 可移植性：降低代码的可移植性
-
-#[cfg(all(target_arch = "x86_64", target_os = "linux"))]
-fn inline_assembly() {
-    println!("=== 内联汇编 (Rust 1.59+) ===");
-
-    // Rust 1.59 内联汇编的基本语法
-    // asm!("汇编模板", 操作数1, 操作数2, ...);
-    // 汇编模板：包含汇编指令和占位符
-    // 操作数：指定输入、输出和标签
-
-    // 基础示例 1：常量赋值
-    // 展示最基本的内联汇编语法和操作数使用
-    let result: u64;
-    unsafe {
-        asm!(
-            "mov {}, 42", // 将立即数 42 移动到输出寄存器
-            out(reg) result, // 输出操作数：使用通用寄存器
-            options(nomem, nostack, preserves_flags) // 选项：不访问内存、不修改栈、不修改标志位
-        );
-    }
-    println!("内联汇编常量赋值: {}", result);
-
-    // 基础示例 2：算术运算
-    // 展示如何在汇编中进行基本计算
-    let x = 10;
-    let y = 20;
-    let sum: i32;
-
-    unsafe {
-        asm!(
-            "add {sum}, {x}, {y}", // 加法：sum = x + y
-            x = in(reg) x,      // 输入操作数：x 放在通用寄存器中
-            y = in(reg) y,      // 输入操作数：y 放在通用寄存器中
-            sum = out(reg) sum, // 输出操作数：sum 放在通用寄存器中
-            options(nomem, nostack, preserves_flags) // 优化选项
-        );
-    }
-    println!("内联汇编加法: {} + {} = {}", x, y, sum);
-
-    // 基础示例 3：乘法运算
-    // 展示更复杂的算术运算
-    let a = 5;
-    let b = 3;
-    let product: i32;
-
-    unsafe {
-        asm!(
-            "imul {result}, {a}, {b}", // 有符号乘法：result = a * b
-            a = in(reg) a,           // 输入：a 放在寄存器中
-            b = in(reg) b,           // 输入：b 放在寄存器中
-            result = out(reg) product, // 输出：product 放在寄存器中
-            options(nomem, nostack, preserves_flags) // 优化选项
-        );
-    }
-    println!("内联汇编乘法: {} * {} = {}", a, b, product);
-
-    // Rust 1.59 内联汇编的操作数类型详解
-    // in(reg)：输入到通用寄存器
-    // out(reg)：从通用寄存器输出
-    // inout(reg)：输入输出通用寄存器
-    // in(reg) late_out(reg)：先输入后输出
-    // const：编译时常量
-    // sym：符号/标签
-
-    // 演示 inout 操作数的使用
-    let mut value = 10;
-    unsafe {
-        asm!(
-            "add {value}, 5", // 将 5 加到 value 上
-            value = inout(reg) value, // 同时作为输入和输出
-            options(pure, nomem, nostack)
-        );
-    }
-    println!("inout 操作数结果: {}", value);
-
-    // 内联汇编的选项详解
-    // pure：函数无副作用，允许编译器优化重复调用
-    // nomem：不访问内存，允许编译器进行内存相关优化
-    // readonly：只读内存访问
-    // preserves_flags：不修改标志位，允许更好的指令调度
-    // noreturn：不返回，如 jmp 指令
-    // nostack：不修改栈
-
-    // CPU 特性检测示例
-    // 演示如何使用内联汇编检测 CPU 特性
-    let has_sse2: bool;
-    unsafe {
-        let mut eax: u32;
-        asm!(
-            "mov eax, 1", // CPUID 功能号 1
-            "cpuid",
-            "test edx, 1 << 26", // 检查 SSE2 位
-            "setnz {has_sse2}", // 如果 SSE2 位被设置，has_sse2 = 1
-            has_sse2 = out(reg_byte) has_sse2,
-            eax = out(reg) eax,
-            in("ecx") 0u32,
-            options(nomem, nostack, preserves_flags)
-        );
-        // has_sse2 = has_sse2 != 0;
-    }
-    println!("CPU 支持 SSE2: {}", has_sse2);
-
-    // 系统调用示例
-    // 演示如何使用内联汇编进行系统调用
-    let pid: u64;
-    unsafe {
-        asm!(
-            "syscall",
-            in("rax") 39u64, // getpid 系统调用号
-            inout("rdi") 0u64 => _, // 参数寄存器
-            out("rax") pid, // 结果在 rax 中
-            options(nostack, preserves_flags)
-        );
-    }
-    println!("当前进程 ID: {}", pid);
-
-    // 原子操作示例
-    // 演示如何使用内联汇编实现原子操作
-    let mut atomic_value: u32 = 42;
-    unsafe {
-        let old_value: u32;
-        asm!(
-            "lock xchg [{value}], {new_value}", // 原子交换
-            value = in(reg) &mut atomic_value,
-            new_value = in(reg) 100u32,
-            out("eax") old_value, // 旧值在 eax 中
-            options(nostack, preserves_flags)
-        );
-        println!("原子交换操作: 旧值 {}, 新值 {}", old_value, atomic_value);
-    }
-
-    // SIMD 指令示例（如果可用）
-    // 演示如何使用内联汇编进行 SIMD 优化
-    if has_sse2 {
-        unsafe {
-            let mut a = [1.0f32, 2.0f32, 3.0f32, 4.0f32];
-            let mut b = [5.0f32, 6.0f32, 7.0f32, 8.0f32];
-            let mut result = [0.0f32; 4];
-
-            asm!(
-                "movups xmm0, [{a}]",     // 加载第一个向量
-                "movups xmm1, [{b}]",     // 加载第二个向量
-                "addps xmm0, xmm1",        // 向量加法
-                "movups [{result}], xmm0", // 存储结果
-                a = in(reg) a.as_ptr(),
-                b = in(reg) b.as_ptr(),
-                result = in(reg) result.as_mut_ptr(),
-                options(nostack, preserves_flags)
-            );
-
-            println!("SIMD 向量加法: {:?}", result);
-        }
-    }
-
-    // 内存屏障示例
-    // 演示如何使用内联汇编实现内存屏障
-    let shared_var = 42;
-    unsafe {
-        // 确保之前的内存操作完成
-        asm!("sfence", options(nostack, preserves_flags, nomem));
-        // 内存屏障后的操作
-        let value = shared_var;
-        println!("内存屏障后读取: {}", value);
-    }
-
-    // Rust 1.59 内联汇编的实际应用场景
-    // 场景 1：性能关键的内联函数
-    #[inline(always)]
-    unsafe fn fast_abs(x: i32) -> i32 {
-        let result: i32;
-        asm!(
-            "cdq",           // 符号扩展 eax 到 edx:eax
-            "xor eax, edx",  // 如果 x 为负数，edx=0xFFFFFFFF，否则 edx=0
-            "sub eax, edx",  // 如果 x 为负数，eax = x - (-1) = -x，否则 eax = x - 0 = x
-            in("eax") x,
-            out("eax") result,
-            options(pure, nomem, nostack, preserves_flags)
-        );
-        result
-    }
-
-    let abs_result = unsafe { fast_abs(-100) };
-    println!("快速绝对值: {}", abs_result);
-
-    // 场景 2：位操作优化
-    #[inline(always)]
-    unsafe fn bit_reverse(x: u32) -> u32 {
-        let result: u32;
-        asm!(
-            // 使用 BMI2 指令集（如果可用）
-            "mov {result}, {x}",
-            "bswap {result}", // 字节交换
-            inlateout(reg) x => result,
-            options(pure, nomem, nostack, preserves_flags)
-        );
-        result
-    }
-
-    let reversed = unsafe { bit_reverse(0x12345678) };
-    println!("位反转结果: 0x{:08X}", reversed);
-
-    // 场景 3：编译时常量计算
-    const fn const_asm_multiply(a: i32, b: i32) -> i32 {
-        // 在编译时进行乘法计算
-        // 注意：const fn 中的内联汇编有更多限制
-        let result: i32;
-        unsafe {
-            asm!(
-                "imul {result}, {a}, {b}",
-                a = const a,
-                b = const b,
-                result = out(reg) result,
-                options(pure, nomem, nostack, preserves_flags)
-            );
-        }
-        result
-    }
-
-    const CONST_PRODUCT: i32 = const_asm_multiply(6, 7);
-    println!("编译时常量乘法: {}", CONST_PRODUCT);
-
-    // 内联汇编的最佳实践和注意事项
-    // 1. 安全性：始终提供安全的 Rust 接口封装
-    // 2. 平台兼容性：使用条件编译处理不同平台
-    // 3. 性能测试：验证汇编代码确实带来性能提升
-    // 4. 文档化：详细说明汇编代码的功能和约束
-    // 5. 错误处理：处理可能的错误情况
-    // 6. 备用方案：提供非汇编的实现作为后备
-
-    // 内联汇编的未来发展
-    // 1. 更多架构支持：支持 ARM、RISC-V 等更多架构
-    // 2. 更丰富的操作数类型：支持更多寄存器类型
-    // 3. 更好的集成：与 Rust 类型系统的深度集成
-    // 4. 编译器优化：更好的编译器优化支持
-    // 5. 调试支持：改进调试体验
-
-    println!();
-}
-
-// 其他平台的内联汇编处理
-#[cfg(not(all(target_arch = "x86_64", target_os = "linux")))]
-fn inline_assembly() {
-    println!("=== 内联汇编 (Rust 1.59+) ===");
-    println!("内联汇编在当前平台上可能受限或不支持");
-    println!("内联汇编需要 Rust 1.59+ 版本和特定平台支持");
-    println!("当前架构: {}", std::env::consts::ARCH);
-    println!("当前系统: {}", std::env::consts::OS);
-
-    // 显示支持内联汇编的平台
-    println!("\n支持内联汇编的平台包括：");
-    println!("- x86/x86_64 (Linux, Windows, macOS)");
-    println!("- ARM (部分支持)");
-    println!("- AArch64 (部分支持)");
-    println!("- RISC-V (实验性支持)");
-
-    println!("\n内联汇编的主要应用场景：");
-    println!("1. 系统编程：操作系统内核、驱动程序");
-    println!("2. 性能优化：关键路径的汇编优化");
-    println!("3. 嵌入式系统：直接硬件控制");
-    println!("4. 密码学：特定算法的汇编实现");
-    println!("5. 虚拟机：JIT 编译器的代码生成");
-
-    println!();
-}
-
-// ===========================================
-// 6. 高级生命周期注解（Advanced Lifetime Annotations）
+// 5. 高级生命周期注解（Advanced Lifetime Annotations）
 // ===========================================
 
 // 生命周期是 Rust 类型系统的重要组成部分
@@ -835,7 +546,7 @@ fn advanced_lifetime_annotations() {
 }
 
 // ===========================================
-// 7. 高级 trait 特性（Advanced Trait Features）
+// 6. 高级 trait 特性（Advanced Trait Features）
 // ===========================================
 
 // 高级 trait 特性是 Rust 类型系统中最强大的部分之一
@@ -1029,7 +740,7 @@ fn advanced_trait_features() {
 }
 
 // ===========================================
-// 8. 高级类型特性（Advanced Type Features）
+// 7. 高级类型特性（Advanced Type Features）
 // ===========================================
 
 // 高级类型特性展示了 Rust 类型系统的强大和灵活性
@@ -1199,7 +910,7 @@ fn advanced_type_features() {
 }
 
 // ===========================================
-// 9. 高级函数和闭包（Advanced Functions and Closures）
+// 8. 高级函数和闭包（Advanced Functions and Closures）
 // ===========================================
 
 // 高级函数和闭包是 Rust 函数式编程特性的核心
@@ -1340,7 +1051,7 @@ fn advanced_functions_and_closures() {
 }
 
 // ===========================================
-// 10. 高级错误处理（Advanced Error Handling）
+// 9. 高级错误处理（Advanced Error Handling）
 // ===========================================
 
 // 高级错误处理是 Rust 错误管理体系的深入部分
@@ -1483,16 +1194,17 @@ fn advanced_error_handling() {
     // 4. 错误降级：在错误情况下提供降级服务
 
     // 错误处理的工具和库：
-    // 1. thiserror：简化自定义错误类型的创建
-    // 2. anyhow：提供简化的错误处理和上下文添加
-    // 3. eyre：提供彩色错误报告和改进的错误链
-    // 4. error-chain：传统的错误链处理库
+    // 1. thiserror：用 derive 简化自定义错误类型的创建（库代码首选）
+    // 2. anyhow：提供简化的错误处理和上下文添加（应用代码首选）
+    // 3. eyre（配合 color-eyre）：可定制的错误报告，支持彩色输出
+    // 4. snafu：另一种基于 derive 的错误库，擅长为每一层错误附加上下文
+    // （早期的 error-chain、failure 已被 thiserror + anyhow 这套组合取代，新项目不建议再使用）
 
     println!();
 }
 
 // ===========================================
-// 11. const fn 改进 (Rust 1.46)
+// 10. const fn 改进 (Rust 1.46)
 // ===========================================
 
 // const fn 是 Rust 中可以在编译时计算的函数
@@ -1518,10 +1230,9 @@ fn const_fn_improvements() {
     const SUM: i32 = add(10, 20); // 在编译时计算
     println!("编译时计算: 10 + 20 = {}", SUM);
 
-    // Rust 1.46 新增：更多基本操作支持
-    // 1.46 版本开始，const fn 支持更多基本操作和类型
+    // 浮点运算：在 const fn 里做浮点计算要到 Rust 1.82 才稳定，在那之前这个函数编译不过。
+    // （Rust 1.46 带来的是下面要演示的 if / match / loop 控制流，而不是浮点运算。）
     const fn calculate_circle_area(radius: f64) -> f64 {
-        // 现在可以在 const fn 中使用浮点运算
         std::f64::consts::PI * radius * radius
     }
 
@@ -1580,8 +1291,11 @@ fn const_fn_improvements() {
     println!("数组求和: {}", ARRAY_SUM);
 
     // 闭包和函数指针的限制
-    // const fn 不能包含闭包或函数指针，但可以调用其他 const fn
-    // 移除这个函数，因为它在 const fn 中不能工作
+    // 从 Rust 1.61 起，函数指针可以在 const fn 里被创建、转换和传递；
+    // 但**调用**函数指针（以及调用闭包）仍然不被允许——
+    // 编译器无法在编译期确定它指向的是不是一个 const 函数。
+    // 下面这个函数会报错 "function pointer calls are not allowed in constant functions"，
+    // 所以以注释形式保留：
     // const fn apply_operation(x: i32, y: i32, op: fn(i32, i32) -> i32) -> i32 {
     //     op(x, y) // 编译错误：不能在 const fn 中调用函数指针
     // }
@@ -1649,12 +1363,14 @@ fn const_fn_improvements() {
     println!("0b10101010 中 1 的个数: {}", ONES);
 
     // const fn 的限制和注意事项
-    // 1. 不能进行堆分配
-    // 2. 不能使用 trait 方法（除了内置 trait）
-    // 3. 不能使用闭包
-    // 4. 不能进行 I/O 操作
-    // 5. 不能使用 panic! 宏（在某些情况下）
-    // 6. 不能使用递归（在 1.46 版本中有限支持）
+    // 1. 不能进行堆分配（`Box::new`、`vec!` 等在编译期都不可用）
+    // 2. 不能调用 trait 方法（对基本类型的运算符，如整数加法，由编译器内置支持，不在此限）；
+    //    允许 const fn 调用 trait 方法的 `const trait` 目前仍是不稳定特性
+    // 3. 不能调用闭包和函数指针
+    // 4. 不能进行 I/O 等有副作用的操作
+    // 5. `panic!` / `assert!` 可以使用（Rust 1.57 起）：
+    //    在编译期求值时触发，就会变成编译错误，这正是“编译期校验”的常用手法
+    // 6. 递归是允许的，只受编译器对求值步数的 lint 约束（Rust 1.72 起不再有硬性上限）
 
     // const fn 的最佳实践
     // 1. 纯函数：const fn 应该是纯函数，没有副作用
@@ -1663,28 +1379,29 @@ fn const_fn_improvements() {
     // 4. 测试覆盖：为 const fn 编写测试，确保编译时和运行时行为一致
     // 5. 文档化：清楚说明 const fn 的约束和使用条件
 
-    // const fn 的发展历程
-    // 1.31：基础 const fn 支持
-    // 1.39：更多控制流支持
-    // 1.46：大量新特性，包括循环、条件等
-    // 1.47：支持更多标准库函数
-    // 1.50：支持数组迭代
-    // 1.56：支持更多字符串操作
-    // 1.57：支持更多 trait 方法
-    // 1.61：支持 const 泛型参数
+    // const fn 的发展历程（已对照官方发布说明核实）
+    // 1.31：const fn 稳定，但只支持很小的子集（基本算术、调用其他 const fn）
+    // 1.33：允许 let 绑定、赋值、不可反驳的模式解构，以及调用 unsafe const fn
+    // 1.46：允许 if / match / loop（含 while）
+    // 1.56：允许读取 union 字段
+    // 1.57：允许 panic! / assert!
+    // 1.58：允许解引用 `*const T`
+    // 1.61：允许泛型约束、`impl Trait`、创建和传递函数指针
+    // 1.82：允许浮点运算
+    // 1.83：允许 `&mut` / `*mut` / `&Cell` 等（见后面的第 17 节）
+    // （const 泛型参数是另一条线：Rust 1.51 稳定，见下一节。）
 
-    // const fn 的未来发展方向
-    // 1. 更多的标准库支持
-    // 2. 更强大的编译时编程能力
-    // 3. 更好的错误处理
-    // 4. 与 const 泛型的深度集成
-    // 5. 编译时反射和元编程
+    // 目前仍在 nightly 上推进、尚未稳定的 const 方向（以 nightly 为准，stable 上不可用）：
+    // 1. `const_trait_impl`：让 trait 方法也能在 const fn 里调用（标准库内部已在使用）
+    // 2. `const_heap`：允许在编译期做堆分配
+    // 3. `generic_const_exprs`：允许对泛型参数做运算后再当常量用，如 `[T; N * 2]`
+    // 4. 标准库中越来越多的函数被逐版本标记为 const（每个版本的发布说明里都有清单）
 
     println!();
 }
 
 // ===========================================
-// 12. const 泛型参数 (Rust 1.51)
+// 11. const 泛型参数 (Rust 1.51)
 // ===========================================
 
 // const 泛型参数是 Rust 1.51 版本引入的革命性特性
@@ -1734,6 +1451,18 @@ fn const_generic_parameters() {
     println!("64 字节缓冲区长度: {}", buffer_64.len());
     println!("128 字节缓冲区长度: {}", buffer_128.len());
 
+    // 标准库里的数组 trait：任意长度都能用（Rust 1.47）
+    // Rust 1.47 之前，标准库只为长度不超过 32 的数组实现 Debug、Clone、PartialEq 等 trait，
+    // 上面 64 字节的缓冲区连 `{:?}` 打印、`==` 比较都做不到——这是 const 泛型出现之前的历史局限。
+    // 1.47 起这些 trait 改用 const 泛型来实现，对**任意长度**的数组都成立：
+    println!(
+        "64 字节缓冲区的 Debug 文本长度 = {}，128 字节缓冲区克隆后相等: {}",
+        format!("{buffer_64:?}").len(),
+        buffer_128 == buffer_128.clone()
+    );
+    // 例外：`Default` 仍然只对长度不超过 32 的数组实现（为了保持兼容）。
+    // 所以 `let a: [u8; 33] = Default::default();` 无法编译，需要写成 `[0; 33]` 这样的数组表达式。
+
     // const 泛型与数值运算
     // 可以在 const 泛型参数上进行编译时数值运算
     struct Matrix<T, const ROWS: usize, const COLS: usize> {
@@ -1780,13 +1509,9 @@ fn const_generic_parameters() {
 
     // const 泛型约束：对常量参数的限制
     // 可以使用 where 子句对 const 泛型参数添加约束
-    // 注意：这是不稳定的特性，需要 nightly 编译器和以下配置：
-    // 在 Cargo.toml 中添加：
-    // ```toml
-    // [unstable]
-    // build-std-features = ["generic_const_exprs"]
-    // build-std = true
-    // ```
+    // 注意：这是不稳定的特性（generic_const_exprs），stable 上无法使用。
+    // 在 nightly 工具链上，需要在 crate 根部写 `#![feature(generic_const_exprs)]` 才能启用。
+    // （Cargo 的 `[unstable] build-std` 是“从源码重新编译标准库”的选项，和语言特性开关无关。）
     /*
     fn power_of_two_buffer<const N: usize>() -> [u8; N]
     where
@@ -1807,13 +1532,16 @@ fn const_generic_parameters() {
     println!("256 字节缓冲区长度: {}", buffer_256.len());
 
     // const 泛型与位操作：编译时的位宽度抽象
+    // 注意方法名不能叫 `max_value`：整数类型自带同名的固有方法（已被弃用，建议改用 `MAX` 常量），
+    // 而固有方法的优先级高于 trait 方法，`u8::max_value()` 会悄悄调用标准库那一个，
+    // 根本不会走到我们自己的 trait 实现，编译器也只会给出一条容易被忽略的弃用警告。
     trait BitWidth<const WIDTH: u32> {
-        fn max_value() -> Self;
+        fn width_max() -> Self;
         fn mask() -> Self;
     }
 
     impl BitWidth<8> for u8 {
-        fn max_value() -> Self {
+        fn width_max() -> Self {
             u8::MAX
         }
         fn mask() -> Self {
@@ -1822,7 +1550,7 @@ fn const_generic_parameters() {
     }
 
     impl BitWidth<16> for u16 {
-        fn max_value() -> Self {
+        fn width_max() -> Self {
             u16::MAX
         }
         fn mask() -> Self {
@@ -1831,7 +1559,7 @@ fn const_generic_parameters() {
     }
 
     impl BitWidth<32> for u32 {
-        fn max_value() -> Self {
+        fn width_max() -> Self {
             u32::MAX
         }
         fn mask() -> Self {
@@ -1839,9 +1567,9 @@ fn const_generic_parameters() {
         }
     }
 
-    println!("8位最大值: {}", u8::max_value());
-    println!("16位最大值: {}", u16::max_value());
-    println!("32位最大值: {}", u32::max_value());
+    println!("8位最大值: {}", <u8 as BitWidth<8>>::width_max());
+    println!("16位最大值: {}", <u16 as BitWidth<16>>::width_max());
+    println!("32位最大值: {}", <u32 as BitWidth<32>>::width_max());
 
     // const 泛型的实际应用场景
     // 场景 1：固定大小的数据结构
@@ -1884,7 +1612,7 @@ fn const_generic_parameters() {
     println!("固定大小缓冲区: {}/{}", buffer.len(), buffer.capacity());
 
     // 场景 2：编译时的位域抽象
-    // 注意：这是不稳定的特性，需要 nightly 编译器和配置
+    // 注意：下面带 `[(); ...]:` 约束的写法依赖不稳定的 generic_const_exprs，需要 nightly
     struct BitField<const WIDTH: u32> {
         value: u32,
     }
@@ -2010,78 +1738,71 @@ fn const_generic_parameters() {
 }
 
 // ===========================================
-// 13. Rust 2021 Edition 新特性（Rust 2021 Edition Features）
+// 12. Rust 2021 Edition 新特性（Rust 2021 Edition Features）
 // ===========================================
 
-// Rust 2021 Edition 是 Rust 语言的第三个主要版本，于 2021 年 10 月随 Rust 1.56 发布
-// 它引入了许多重要的语言改进和新特性，使 Rust 更加现代化和易用
-// 这些改进包括更简洁的语法、更好的错误处理、增强的并发支持等
-
-// Rust 2021 Edition 的核心改进：
-// 1. 默认 Edition 变更：新项目默认使用 Rust 2021
-// 2. 闭包改进：更直观的闭包捕获和推断
-// 3. 格式化宏：更强大的格式化字符串功能
-// 4. Panic 语法：更一致的 panic 宏语法
-// 5. 智能提示：改进的编译器错误和提示
-// 6. 预导入项调整：优化的标准库预导入内容
+// Edition（版本纪元）是 Rust 用来引入“不向后兼容、但可以自动迁移”的语言改动的机制：
+// 每隔几年发布一个新 edition，各个 crate 在 Cargo.toml 里用 `edition = "2021"` 选择自己使用哪一个，
+// 不同 edition 的 crate 可以互相依赖、混合编译，彼此不受影响。
+// Rust 2021 是第三个 edition（之前是 2015 和 2018），随 Rust 1.56 在 2021 年 10 月发布。
+//
+// 要分清两件事：edition 只负责“必须靠不兼容改动才能实现的变化”；
+// 绝大多数新特性（格式化字符串捕获、let-else、GAT……）与 edition 无关，所有 edition 都能用。
+//
+// Rust 2021 的主要变化（出自官方 Edition Guide）：
+// 1. 闭包按字段分别捕获（disjoint capture）
+// 2. 预导入项新增了 `TryFrom`、`TryInto`、`FromIterator`
+// 3. 数组的 `IntoIterator`：`array.into_iter()` 与 `for x in array` 按值迭代
+// 4. `panic!` / `assert!` 的单参数形式也一律是格式化字符串
+// 5. 宏模式 `$p:pat` 可以匹配顶层的或模式（`A | B`）
+// 6. 为将来的前缀字面量（如 `f"..."`、`k#ident`）保留语法
+// 7. Cargo 默认使用 feature 解析器 v2
+// 8. 部分 lint 升级为错误：裸 trait 对象（`Box<Trait>` 必须写成 `Box<dyn Trait>`）、
+//    已废弃的 `...` 范围模式
+// 本项目使用的是 2024 edition，它延续并包含了上面这些变化。
 
 fn rust_2021_edition_features() {
     println!("=== Rust 2021 Edition 新特性 ===");
 
-    // 1. 闭包捕获改进（Closure Capture Improvements）
-    // Rust 2021 Edition 改进了闭包对变量的捕获规则，使推断更加智能
-    // 这减少了显式 move 关键字的需要，使代码更简洁
-
-    struct Container {
-        value: i32,
+    // ---------- 1. 闭包按字段分别捕获 ----------
+    // 2018 edition：闭包只要用到结构体的任何一个字段，就会把整个结构体捕获进去。
+    // 2021 起：闭包只捕获它真正用到的那几个字段。
+    // 区别体现在借用冲突上：下面的闭包只可变借用了 `cfg.retries`，
+    // 所以闭包存活期间仍然可以读取 `cfg.name`；
+    // 在 2018 edition 里，闭包会把整个 `cfg` 可变借用起来，读取 `cfg.name` 就会编译失败。
+    struct Config {
+        name: String,
+        retries: u32,
     }
 
-    impl Container {
-        fn get_value(&self) -> i32 {
-            self.value
-        }
+    let mut cfg = Config {
+        name: "svc".to_string(),
+        retries: 3,
+    };
+    let mut bump = || cfg.retries += 1; // 只可变借用 cfg.retries
+    println!("闭包存活期间读取另一个字段: {}", cfg.name);
+    bump();
+    println!("调用闭包之后 retries = {}", cfg.retries);
 
-        fn set_value(&mut self, new_value: i32) {
-            self.value = new_value;
-        }
-    }
+    // `move` 闭包同理：只把用到的字段移进闭包，其余字段仍留在原结构体里。
+    let owner = Config {
+        name: "owner".to_string(),
+        retries: 0,
+    };
+    let take_name = move || owner.name; // 只移走 owner.name
+    println!("没有被移走的字段仍可使用: retries = {}", owner.retries);
+    println!("闭包取走的字段: {}", take_name());
+    // 注意：捕获粒度变细，也会改变变量被 drop 的时机。
+    // 依赖 drop 顺序的代码在升级 edition 时要重点检查，`cargo fix --edition` 会提示这类风险。
 
-    let mut container = Container { value: 42 };
-
-    // Rust 2021 Edition 中的闭包捕获更加智能
-    let get_closure = || container.get_value(); // 不可变引用
-    println!("闭包捕获改进：获取值 {}", get_closure());
-
-    // 分开处理可变和不可变引用
-    {
-        let mut mut_closure = || container.set_value(100); // 可变引用
-        mut_closure();
-    }
-
-    let get_closure2 = || container.get_value(); // 重新创建不可变引用
-    println!("修改后的值：{}", get_closure2());
-
-    // 闭包捕获的实际影响：
-    // - 减少显式 move 关键字的需求
-    // - 更精确地捕获语义（只捕获需要的部分）
-    // - 更好的错误消息和建议
-    // - 与异步代码更好的兼容性
-
-    // 2. 预导入项调整（Prelude Changes）
-    // Rust 2021 Edition 调整了标准库的预导入项，移除了一些过时的导入
-    // 主要移除：TryInto、TryFrom、FromStr（现在需要显式导入）
-
-    // 以前版本：这些类型自动可用
-    // Rust 2021 Edition：需要显式导入
-    use std::convert::{TryFrom, TryInto};
-    use std::str::FromStr;
-
-    // TryInto 示例
+    // ---------- 2. 预导入项新增 TryFrom / TryInto / FromIterator ----------
+    // 这三个 trait 从 2021 起自动在作用域内，不再需要 `use std::convert::{TryFrom, TryInto}`。
+    // （很多人的印象正好相反：2021 是“新增”而不是“移除”。）
+    // 注意 `FromStr` 不在任何 edition 的预导入项里，使用 `from_str` 仍要手动 use。
     let big_number: i64 = 1000;
-    let small_number: i32 = big_number.try_into().unwrap_or(0);
+    let small_number: i32 = big_number.try_into().unwrap_or(0); // 没有 use TryInto
     println!("TryInto 转换：{} -> {}", big_number, small_number);
 
-    // TryFrom 示例
     #[derive(Debug)]
     struct Point {
         x: i32,
@@ -2089,6 +1810,7 @@ fn rust_2021_edition_features() {
     }
 
     impl TryFrom<(i32, i32)> for Point {
+        // 没有 use TryFrom
         type Error = &'static str;
 
         fn try_from(value: (i32, i32)) -> Result<Self, Self::Error> {
@@ -2103,10 +1825,15 @@ fn rust_2021_edition_features() {
         }
     }
 
-    let point = Point::try_from((10, 20));
-    println!("TryFrom 转换：{:?}", point);
+    println!("TryFrom 转换：{:?}", Point::try_from((10, 20)));
+    println!("TryFrom 失败：{:?}", Point::try_from((-1, 5)));
 
-    // FromStr 示例
+    let squares = Vec::from_iter((1..=4).map(|n| n * n)); // FromIterator 也在预导入项里
+    println!("FromIterator：{:?}", squares);
+
+    // FromStr 需要手动引入
+    use std::str::FromStr;
+
     #[derive(Debug, PartialEq)]
     enum Color {
         Red,
@@ -2130,135 +1857,75 @@ fn rust_2021_edition_features() {
     let color: Color = "red".parse().unwrap_or(Color::Red);
     println!("FromStr 解析：{:?}", color);
 
-    // 预导入项调整的意义：
-    // - 减少标准库的隐式依赖
-    // - 使导入关系更加明确
-    // - 避免命名冲突
-    // - 提高编译速度
+    // 升级 edition 时的副作用：如果你自己的 trait 里也有名为 `try_into` / `try_from` / `from_iter`
+    // 的方法，预导入新增之后调用可能出现歧义（lint `rust_2021_prelude_collisions`），
+    // `cargo fix --edition` 会自动把它们改写成完全限定语法。
 
-    // 3. 格式化宏改进（Format Macro Improvements）
-    // Rust 2021 Edition 改进了格式化宏的语法和错误处理
-    // 这些改进在 Rust 1.58 中进一步完善为格式化字符串捕获
+    // ---------- 3. 数组按值迭代 ----------
+    // 数组在 Rust 1.53 实现了按值的 `IntoIterator`，但为了不破坏旧代码，
+    // 2018 edition 里 `array.into_iter()` 仍然得到元素的引用；
+    // 2021 edition 起，`array.into_iter()` 和 `for x in array` 都按值迭代。
+    let words = ["alpha".to_string(), "beta".to_string()];
+    let owned: Vec<String> = words.into_iter().collect(); // 拿到 String 的所有权，而不是 &String
+    println!("按值迭代数组: {owned:?}");
 
-    let name = "Alice";
-    let age = 30;
+    // ---------- 4. panic! / assert! 的格式化一致 ----------
+    // 2018 edition：`panic!("{}")` 里的 `{}` 被当作普通字符串原样输出，`panic!(123)` 可以抛出任意类型的负载。
+    // 2021 起：`panic!` 的第一个参数永远是格式化字符串，和 `println!` / `format!` 保持一致：
+    //     panic!("{}");     // 编译错误：格式串里有 {} 但没有提供参数
+    //     panic!("{{}}");   // 想输出字面的 {} 需要转义
+    //     panic!(123);      // 编译错误：第一个参数必须是字符串字面量
+    // 需要抛出任意类型的负载时，改用 `std::panic::panic_any(123)`。
 
-    // 改进的格式化语法（为后续的格式化字符串捕获做准备）
-    println!("格式化宏改进：姓名={}, 年龄={}", name, age);
+    // ---------- 5. 宏模式 $p:pat 支持顶层或模式 ----------
+    // 2018 edition 里 `$p:pat` 不能匹配 `'a' | 'e'` 这样的顶层或模式（需要用 `pat_param`），2021 起可以。
+    macro_rules! is_vowel {
+        ($c:expr, $p:pat) => {
+            matches!($c, $p)
+        };
+    }
 
-    // 更复杂的格式化示例
-    println!("二进制：{:b}", age);
-    println!("八进制：{:o}", age);
-    println!("十六进制：{:x}", age);
-    println!("指针地址：{:p}", &name);
+    println!("'e' 是元音吗: {}", is_vowel!('e', 'a' | 'e' | 'i' | 'o' | 'u'));
+    println!("'z' 是元音吗: {}", is_vowel!('z', 'a' | 'e' | 'i' | 'o' | 'u'));
 
-    // 3.1. 格式化字符串捕获（Rust 1.58 新特性）
-    // Rust 1.58 引入了格式化字符串捕获功能，允许在格式化宏中直接使用变量名
-    // 这大大简化了格式化代码，减少了参数重复和错误
-
+    // ---------- 与 edition 无关的补充：格式化字符串捕获（Rust 1.58） ----------
+    // 这是 Rust 1.58 的特性，所有 edition 都能用，不属于 2021 edition 的内容，
+    // 放在这里是因为它和 `println!` 一起最常被拿来对照。
+    // 它允许在格式化宏的字符串里直接使用同名变量：
     let user = "Bob";
     let score = 95;
     let level = 3;
 
     // 传统的格式化方式
     println!("传统方式：用户={}, 分数={}, 等级={}", user, score, level);
-
-    // Rust 1.58+ 的格式化字符串捕获
+    // 格式化字符串捕获
     println!("捕获方式：用户={user}, 分数={score}, 等级={level}");
 
-    // 格式化字符串捕获的优势：
-    // - 更简洁：不需要重复变量名
-    // - 更安全：减少参数顺序错误
-    // - 更易读：代码更加直观
-    // - 更维护：修改变量名时只需要改一处
-
-    // 复杂的格式化捕获示例
-    let debug_info = true;
-    let timestamp = "2023-12-01 10:30:00";
-    let memory_usage = 1024 * 1024 * 512; // 512MB
-
-    if debug_info {
-        println!("[{timestamp}] 调试信息：内存使用={memory_usage} bytes ({memory_usage:#x} hex)",);
-    }
-
-    // 混合使用捕获和传统参数
-    let operation = "calculate";
-    let input = 42;
-    let result = input * 2;
-    println!("{operation}({input}) = {result} (二进制: {result:#b})");
-
-    // 格式化捕获的边界情况
+    // 捕获只能用于“单个标识符”，复杂表达式需要先算出来或使用命名参数
     let complex_expr = 10 + 20;
-    println!("复杂表达式需要括号：{}", complex_expr); // 捕获不能用于复杂表达式
-    println!("复杂表达式需要括号：{sum}", sum = 10 + 20); // 但可以使用命名参数
+    println!("复杂表达式先算出来：{complex_expr}");
+    println!("或者使用命名参数：{sum}", sum = 10 + 20);
+
+    // 可以和格式说明符组合
+    let memory_usage = 1024 * 1024 * 512; // 512MB
+    println!("内存使用={memory_usage} bytes ({memory_usage:#x} hex, {memory_usage:#b} bin)");
 
     // 格式化捕获的最佳实践：
-    // 1. 优先使用捕获语法，代码更简洁
-    // 2. 对于复杂表达式，使用命名参数
-    // 3. 在调试和日志中使用捕获语法提高可读性
-    // 4. 注意变量作用域，确保捕获的变量在作用域内
+    // 1. 优先使用捕获语法，更简洁，也避免参数顺序写错
+    // 2. 复杂表达式先用 let 绑定出来，或者使用命名参数
+    // 3. 日志和调试输出里尤其适合用它提升可读性
 
-    // 4. Panic 宏语法一致性
-    // Rust 2021 Edition 统一了 panic! 宏的语法
-    // 现在 panic! 宏在所有上下文中都有一致的行为
-
-    // 在不同上下文中的 panic! 语法
-    let result: Result<i32, &str> = Err("发生错误");
-
-    // 使用 panic! 进行错误处理（演示用，实际应避免）
-    let _value = result.unwrap_or_else(|e| {
-        println!("错误：{}", e); // 改为打印而不是 panic
-        -1 // 返回默认值
-    });
-
-    // 5. 智能提示和错误信息改进
-    // Rust 2021 Edition 显著改进了编译器的错误信息和提示
-    // 这些改进使开发者更容易理解和修复错误
-
-    // 示例：常见的类型错误现在有更好的提示
-    let numbers = vec![1, 2, 3];
-    // let sum: &str = numbers.iter().sum(); // 编译错误：类型不匹配
-    // Rust 2021 Edition 会提供更清晰的错误信息和修复建议
-
-    let sum: i32 = numbers.iter().sum();
-    println!("改进的错误提示：{}", sum);
-
-    // 6. 并发特性增强
-    // Rust 2021 Edition 包含了对并发编程的改进
-    // 这些改进与后续版本中的并发增强相呼应
-
-    use std::sync::Arc;
-    use std::thread;
-
-    let data = Arc::new(vec![1, 2, 3, 4, 5]);
-    let data_clone = Arc::clone(&data);
-
-    thread::spawn(move || {
-        let sum: i32 = data_clone.iter().sum();
-        println!("并发计算：{}", sum);
-    })
-    .join()
-    .unwrap();
-
-    // Rust 2021 Edition 的实际影响：
-    // - 提升开发体验：更简洁的语法和更好的错误信息
-    // - 增强类型安全：更精确的类型推断和检查
-    // - 改进并发支持：更好的闭包和线程交互
-    // - 现代化语言特性：使 Rust 更加现代化和易用
-    // - 向后兼容：保持与之前版本的兼容性
-
-    // 迁移到 Rust 2021 Edition 的建议：
-    // 1. 使用 cargo fix --edition 自动修复大多数兼容性问题
-    // 2. 检查并更新显式导入（特别是 TryInto、TryFrom、FromStr）
-    // 3. 测试闭包捕获行为的变化
-    // 4. 利用新的错误信息和提示优化代码
-    // 5. 逐步采用新特性，而不是一次性重写
+    // 迁移到新 edition 的建议：
+    // 1. 先运行 `cargo fix --edition`，让 Cargo 自动改写不兼容的写法
+    // 2. 然后把 Cargo.toml 里的 `edition` 改成新版本，重新编译、跑测试
+    // 3. 重点检查闭包捕获粒度变化带来的 drop 顺序变化，以及预导入新增造成的方法歧义
+    // 4. 逐步采用新特性，而不是一次性重写
 
     println!();
 }
 
 // ===========================================
-// 14. Rust 1.70+ OnceLock 和 OnceCell（OnceLock and OnceCell）
+// 13. Rust 1.70+ OnceLock 和 OnceCell（OnceLock and OnceCell）
 // ===========================================
 
 // OnceLock 和 OnceCell 是 Rust 1.70 引入的重要类型
@@ -2516,19 +2183,16 @@ fn once_lock_and_once_cell() {
 }
 
 // ===========================================
-// 15. 最新的const函数和泛型增强（Latest Const Functions and Generic Enhancements）
+// 14. 最新的const函数和泛型增强（Latest Const Functions and Generic Enhancements）
 // ===========================================
 
 // 随着Rust语言的不断发展，const函数和泛型系统在最新版本中获得了显著的增强
 // 这些改进极大地扩展了编译时计算的能力，提高了代码的性能和类型安全性
-// 本节涵盖了Rust 1.86到1.90版本中最重要的const函数和泛型增强功能
-//
-// 版本特性概览 (Version Feature Overview):
-// - Rust 1.86: const函数中的字符串操作 (String operations in const contexts)
-// - Rust 1.87: 匿名管道 (Anonymous pipes), 安全架构原语 (Safe architecture intrinsics)
-// - Rust 1.88: Let chains (if let &&), 裸函数 (Naked functions)
-// - Rust 1.89: const泛型参数显式推断 (Explicitly inferred const arguments)
-// - Rust 1.90: LLD链接器默认启用 (LLD default), Workspace publish
+// 本节汇总 const 函数与 const 泛型的进阶用法。涉及的关键版本节点（已对照官方发布说明核实）：
+// - const 函数：1.46 控制流、1.57 panic!/assert!、1.61 泛型约束、1.82 浮点运算、1.83 `&mut`
+//   （前面几节已展开），1.86 起 `str::split_at` 等字符串方法可在 const 中使用
+// - const 泛型：1.51 稳定、1.59 参数默认值、1.89 允许用 `_` 让编译器推断 const 参数
+// - 仍未稳定：const trait、对泛型参数做运算的常量表达式（generic_const_exprs）
 
 // 最新const函数改进的核心价值：
 // 1. 更强大的编译时计算：支持更复杂的逻辑和操作
@@ -2544,22 +2208,18 @@ fn latest_const_and_generic_enhancements() {
     // 最新的Rust版本扩展了const函数的能力，支持更复杂的编译时计算
 
     // const函数中的字符串操作
-    // [Rust 1.86] 支持在const上下文中使用更多字符串操作方法
-    const fn string_operations() -> &'static str {
-        // 在编译时进行字符串处理
+    // [Rust 1.86] `str::split_at`、`split_at_checked`、`is_char_boundary` 等方法可以在 const 上下文中使用。
+    // 在此之前，const 里对字符串基本只能做 `len()`、`as_bytes()` 这类只读查询；
+    // 用下标切片 `&s[..n]` 到今天依然不能在 const 中使用（它走的是 `Index` trait）。
+    // 注意：`split_at` 要求切分位置落在字符边界上，否则会 panic——
+    // 在 const 求值时 panic，就意味着编译失败，这正是“编译期校验”想要的效果。
+    const fn split_greeting() -> (&'static str, &'static str) {
         const INPUT: &str = "Hello, World!";
-        const LEN: usize = INPUT.len();
-
-        // 编译时字符串切片（简化版本）
-        if LEN > 5 {
-            "Hello" // 直接返回字符串字面量
-        } else {
-            INPUT
-        }
+        INPUT.split_at(5)
     }
 
-    const SLICE: &str = string_operations();
-    println!("编译时字符串切片：{}", SLICE);
+    const GREETING_PARTS: (&str, &str) = split_greeting();
+    println!("编译时字符串切分：{:?}", GREETING_PARTS);
 
     // const函数中的数组操作
     const fn array_operations() -> [i32; 5] {
@@ -2597,6 +2257,11 @@ fn latest_const_and_generic_enhancements() {
     // [Rust 1.89] 支持显式推断const参数 (Explicitly Inferred Const Arguments)
     // const泛型允许在类型级别使用编译时常量，提供更强大的抽象能力
 
+    // [Rust 1.89] 显式推断 const 泛型实参：用 `_` 让编译器从上下文推断数组长度。
+    // 以前必须把长度写死（或另外声明一个常量）；现在 `[0; _]` 的长度由左侧的类型标注 `[u8; 4]` 推断出来。
+    let inferred: [u8; 4] = [0; _];
+    println!("`[0; _]` 推断出的数组长度：{}", inferred.len());
+
     // 动态数组大小验证
     const fn validate_array_size<const N: usize>() -> bool {
         N > 0 && N <= 1000
@@ -2618,7 +2283,8 @@ fn latest_const_and_generic_enhancements() {
     println!("验证后的数组：{:?}", valid_array.data);
 
     // const泛型与trait约束
-    // 注意：这是不稳定的特性，需要 nightly 编译器和配置
+    // 带 const 泛型参数的 trait 本身是稳定的；
+    // 不稳定的只是下面被注释掉的 `{ ROWS * COLS }` ——对泛型参数做运算再当常量用，需要 nightly
     trait ConstMath<const N: usize> {
         const SIZE: usize = N;
         fn compute(&self) -> usize;
@@ -2652,10 +2318,11 @@ fn latest_const_and_generic_enhancements() {
     let matrix = Matrix2x3 { data: [[0; 3]; 2] };
     println!("矩阵大小：{}", matrix.compute());
 
-    // 3. const trait实现（Const Trait Implementations）
-    // 最新的Rust版本支持更多的trait在const上下文中使用
+    // 3. 通过 trait 的关联常量参与编译期计算
+    // 注意：真正的 `const trait`（让 trait 方法能在 const fn 里被调用）目前仍是不稳定特性（const_trait_impl）。
+    // stable 上能做的是下面这种：trait 带一个关联常量，const fn 通过泛型参数读取它。
 
-    // 自定义const trait
+    // 带关联常量的普通 trait
     trait ConstToString {
         const DESCRIPTION: &'static str;
         fn const_to_string(&self) -> String;
@@ -2837,6 +2504,15 @@ fn latest_const_and_generic_enhancements() {
     println!("位计数：{}", BIT_COUNT);
     println!("位反转：{:032b}", REVERSED);
 
+    // Rust 1.95: ControlFlow::is_break / is_continue 可在 const 中使用
+    //
+    // ControlFlow 是标准库内部常用的“提前返回”枚举，
+    // 现在它的两个判断方法可以在常量求值里使用。
+    use std::ops::ControlFlow;
+    const IS_BREAK: bool = ControlFlow::<u32, u32>::Break(3).is_break();
+    const IS_CONTINUE: bool = ControlFlow::<u32, u32>::Continue(1).is_continue();
+    println!("const 求值: Break.is_break = {IS_BREAK}, Continue.is_continue = {IS_CONTINUE}");
+
     // 最新const函数和泛型的最佳实践：
     // 1. 合理使用：只在真正需要编译时计算时使用const函数
     // 2. 性能考虑：复杂的const函数可能增加编译时间
@@ -2857,7 +2533,7 @@ fn latest_const_and_generic_enhancements() {
 }
 
 // ===========================================
-// 16. 高级示例程序（Advanced Example Programs）
+// 15. 高级示例程序（Advanced Example Programs）
 // ===========================================
 
 // 高级示例程序展示了 Rust 高级特性的实际应用
@@ -3133,18 +2809,29 @@ fn advanced_example_program() {
 }
 
 // ===========================================
-// 17. #[cfg(accessible)] 配置谓词（nightly-only）
+// 16. cfg(accessible) 配置谓词（RFC 2523，尚未实现）
 // ===========================================
 
-// 注意：截止 Rust 1.97，`#[cfg(accessible)]` **仍然是不稳定特性**，
-// 只能在 nightly 工具链上通过 feature 开关使用，stable 上不可用。
+// 注意：截至 Rust 1.99，`cfg(accessible)` 没有稳定，而且 RFC 提出的写法编译器根本还没有实现：
+// - RFC 2523 设想的写法是 `#[cfg(accessible(::path::to::thing))]`，
+//   可以和 `not` / `all` / `any` 组合——这个谓词写法目前不被支持
+// - 标准库里只有一个内置属性宏 `#[cfg_accessible(path)]`（追踪 issue #64797），
+//   源码里明确标注为 "not fully implemented"，需要 nightly 并开启 `#![feature(cfg_accessible)]`，
+//   而且只有“路径可访问就保留这一项”的单向语义，写不出 `not(...)`
+// 所以：stable 上不可用，nightly 上也只是不完整的雏形。
 //
-// 它允许基于路径的可访问性进行条件编译，为大型项目和库提供更精细的控制。
-// 这里只介绍概念和语法，帮助读者了解 Rust 正在演进的条件编译能力；
-// 下面的示例代码全部以注释形式保留，需要 nightly 才能运行。
+// 它想解决的问题是：根据“某个路径是否存在/可访问”来做条件编译，
+// 而不是只能按平台、Cargo feature、编译器版本来判断。
+// 这里只介绍设想中的用法，帮助读者了解 Rust 条件编译的演进方向；
+// 下面标注“设想语法”的代码全部以注释形式保留，当前任何工具链都无法编译它们。
+//
+// 今天在 stable 上要达到类似目的，常见做法是：
+// 1. Cargo feature：由使用者显式打开
+// 2. build.rs 探测：用 `autocfg` 之类的 crate 试编译一小段代码，
+//    成功就输出 `cargo::rustc-cfg=某个名字`，源码里再用 `#[cfg(某个名字)]` 判断
 
 fn cfg_accessible_predicate() {
-    println!("=== #[cfg(accessible)] 配置谓词 (nightly-only) ===");
+    println!("=== cfg(accessible) 配置谓词（RFC 2523，尚未实现） ===");
 
     // #[cfg(accessible)] 的背景和意义：
     // 1. 精细控制：基于路径的可访问性进行条件编译
@@ -3157,28 +2844,7 @@ fn cfg_accessible_predicate() {
     // path 可以是：模块路径、类型路径、函数路径、trait 路径
 
     // 示例 1: 检测标准库类型是否可访问
-    // 注意：#[cfg(accessible)] 是不稳定的特性，需要 nightly 编译器和以下配置：
-    // 在 Cargo.toml 中添加：
-    // ```toml
-    // [package]
-    // name = "rust-code-guide"
-    // version = "1.0.0"
-    // edition = "2021"
-    //
-    // [dependencies]
-    //
-    // [profile.dev]
-    // panic = "abort"
-    //
-    // [unstable]
-    // build-std-features = ["compiler-builtins-mem"]
-    // build-std = true
-    // ```
-    // 并在 rust-toolchain.toml 中指定 nightly：
-    // ```toml
-    // [toolchain]
-    // channel = "nightly"
-    // ```
+    // 设想语法（RFC 2523）：编译器尚未实现，所以以注释形式保留
     /*
     #[cfg(accessible(std::collections::HashMap))]
     {
@@ -3197,7 +2863,7 @@ fn cfg_accessible_predicate() {
     */
 
     // 示例 2: 检测外部 crate 的可用性
-    // 注意：#[cfg(accessible)] 是不稳定的特性，暂时注释掉
+    // 设想语法（RFC 2523）：编译器尚未实现，所以以注释形式保留
     /*
     #[cfg(accessible(serde::Serialize))]
     {
@@ -3218,7 +2884,7 @@ fn cfg_accessible_predicate() {
     }
 
     // 只有当特定 trait 可用时才实现
-    // 注意：#[cfg(accessible)] 是不稳定的特性，暂时注释掉
+    // 设想语法（RFC 2523）：编译器尚未实现，所以以注释形式保留
     /*
     #[cfg(accessible(std::io::Read))]
     impl DataProcessor for String {
@@ -3247,7 +2913,7 @@ fn cfg_accessible_predicate() {
     println!("处理结果: {}", data.process());
 
     // 示例 4: 模块级别的条件包含
-    // 注意：#[cfg(accessible)] 是不稳定的特性，暂时注释掉
+    // 设想语法（RFC 2523）：编译器尚未实现，所以以注释形式保留
     /*
     #[cfg(accessible(tokio::runtime::Runtime))]
     mod async_features {
@@ -3279,7 +2945,7 @@ fn cfg_accessible_predicate() {
     async_features::async_operation();
 
     // 示例 5: 基于多个条件的复杂配置
-    // 注意：#[cfg(accessible)] 是不稳定的特性，暂时注释掉
+    // 设想语法（RFC 2523）：编译器尚未实现，所以以注释形式保留
     /*
     #[cfg(all(
         accessible(std::fs::File),
@@ -3313,7 +2979,7 @@ fn cfg_accessible_predicate() {
     }
 
     // 示例 6: 条件性导入
-    // 注意：#[cfg(accessible)] 是不稳定的特性，暂时注释掉
+    // 设想语法（RFC 2523）：编译器尚未实现，所以以注释形式保留
     /*
     #[cfg(accessible(num_bigint::BigInt))]
     {
@@ -3345,7 +3011,7 @@ fn cfg_accessible_predicate() {
         }
     }
 
-    // 注意：#[cfg(accessible)] 是不稳定的特性，暂时注释掉
+    // 设想语法（RFC 2523）：编译器尚未实现，所以以注释形式保留
     /*
     #[cfg(accessible(internal_module::InternalType))]
     {
@@ -3360,13 +3026,13 @@ fn cfg_accessible_predicate() {
         println!("内部模块类型可访问（默认实现）");
     }
 
-    // practical_cfg_accessible_examples(); // 注释掉，因为使用了不稳定的特性
+    // practical_cfg_accessible_examples(); // 注释掉：它使用的是尚未实现的设想语法
 
-    println!("#[cfg(accessible)] 配置谓词演示完成");
+    println!("cfg(accessible) 配置谓词演示完成");
     println!();
 }
 
-// 注意：#[cfg(accessible)] 是不稳定的特性，暂时注释掉整个函数
+// 设想语法（RFC 2523）：编译器尚未实现，整个函数以注释形式保留
 /*
 fn practical_cfg_accessible_examples() {
     println!("=== #[cfg(accessible)] 实际应用示例 ===");
@@ -3598,465 +3264,7 @@ fn practical_cfg_accessible_examples() {
 */
 
 // ===========================================
-// 18. #[repr(transparent)] 透明包装器
-// ===========================================
-
-// `#[repr(transparent)]` 早已稳定（struct 1.28 起，单变量枚举 1.54 起），
-// 它让结构体在内存布局上与其内部的唯一字段完全相同，
-// 为 FFI 和类型安全的封装提供了更好的支持。
-// 本节介绍它的用途与限制。
-
-fn repr_transparent_structs() {
-    println!("=== #[repr(transparent)] 透明包装器 ===");
-
-    // #[repr(transparent)] 的背景和意义：
-    // 1. FFI 互操作性：在 C 语言接口中透明传递 Rust 类型
-    // 2. 类型安全封装：为原始类型提供强类型包装器
-    // 3. 零成本抽象：包装器不会增加任何运行时开销
-    // 4. 内存布局保证：确保包装后的类型与原始类型具有完全相同的内存表示
-    // 5. 智能指针支持：为自定义智能指针提供正确的内存布局
-
-    // 基本语法：#[repr(transparent)] struct Wrapper(T);
-    // 要求：结构体必须只有一个非零大小的字段
-
-    // 示例 1: 基本的透明包装器
-    #[repr(transparent)]
-    struct UserId(i32);
-
-    impl UserId {
-        fn new(id: i32) -> Self {
-            UserId(id)
-        }
-
-        fn value(&self) -> i32 {
-            self.0
-        }
-    }
-
-    // 验证内存布局相同
-    let user_id = UserId::new(42);
-    println!("用户 ID: {}", user_id.value());
-    println!("UserId 大小: {} 字节", std::mem::size_of::<UserId>());
-    println!("i32 大小: {} 字节", std::mem::size_of::<i32>());
-
-    // 示例 2: FFI 互操作性的透明结构体
-    #[repr(C)]
-    struct CPoint {
-        x: f64,
-        y: f64,
-    }
-
-    #[repr(transparent)]
-    struct SafePoint(CPoint);
-
-    impl SafePoint {
-        fn new(x: f64, y: f64) -> Self {
-            SafePoint(CPoint { x, y })
-        }
-
-        fn distance_from_origin(&self) -> f64 {
-            (self.0.x * self.0.x + self.0.y * self.0.y).sqrt()
-        }
-    }
-
-    let point = SafePoint::new(3.0, 4.0);
-    println!("点距离原点的距离: {}", point.distance_from_origin());
-    println!("SafePoint 大小: {} 字节", std::mem::size_of::<SafePoint>());
-    println!("CPoint 大小: {} 字节", std::mem::size_of::<CPoint>());
-
-    // 示例 3: 带有 ZST 字段的透明结构体
-    #[repr(transparent)]
-    struct DebugWrapper<T> {
-        value: T,
-        #[allow(
-            dead_code,
-            unused_variables,
-            unused_imports,
-            unused_mut,
-            unused_assignments
-        )]
-        debug_marker: (), // 零大小类型，不影响透明性
-    }
-
-    impl<T> DebugWrapper<T> {
-        fn new(value: T) -> Self {
-            DebugWrapper {
-                value,
-                debug_marker: (),
-            }
-        }
-
-        fn inner(&self) -> &T {
-            &self.value
-        }
-    }
-
-    let debug_int = DebugWrapper::new(100);
-    println!("包装的整数值: {}", debug_int.inner());
-    println!(
-        "DebugWrapper<i32> 大小: {} 字节",
-        std::mem::size_of::<DebugWrapper<i32>>()
-    );
-
-    // 示例 4: 通用指针类型的透明包装
-    #[repr(transparent)]
-    struct NonNullPtr<T> {
-        ptr: *const T,
-    }
-
-    impl<T> NonNullPtr<T> {
-        fn new(ptr: *const T) -> Option<Self> {
-            if ptr.is_null() {
-                None
-            } else {
-                Some(NonNullPtr { ptr })
-            }
-        }
-
-        fn as_ptr(&self) -> *const T {
-            self.ptr
-        }
-    }
-
-    let value = 42;
-    let non_null_ptr = NonNullPtr::new(&value as *const i32).unwrap();
-    println!("非空指针: {:?}", non_null_ptr.as_ptr());
-
-    // 示例 5: 枚举类型的透明包装
-    #[repr(u16)]
-    enum StatusCode {
-        Ok = 200,
-        NotFound = 404,
-        InternalError = 500,
-    }
-
-    #[repr(transparent)]
-    struct SafeStatusCode(StatusCode);
-
-    impl SafeStatusCode {
-        fn is_success(&self) -> bool {
-            matches!(self.0, StatusCode::Ok)
-        }
-
-        fn as_u16(&self) -> u16 {
-            match self.0 {
-                StatusCode::Ok => 200,
-                StatusCode::NotFound => 404,
-                StatusCode::InternalError => 500,
-            }
-        }
-    }
-
-    let status = SafeStatusCode(StatusCode::Ok);
-    println!(
-        "状态码: {}, 是否成功: {}",
-        status.as_u16(),
-        status.is_success()
-    );
-
-    // 示例 6: 复杂嵌套的透明结构体
-    #[repr(transparent)]
-    struct Matrix3x3([[f32; 3]; 3]);
-
-    impl Matrix3x3 {
-        fn identity() -> Self {
-            Matrix3x3([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
-        }
-
-        fn determinant(&self) -> f32 {
-            let m = &self.0;
-            m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
-                - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
-                + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0])
-        }
-    }
-
-    let identity_matrix = Matrix3x3::identity();
-    println!("单位矩阵行列式: {}", identity_matrix.determinant());
-    println!("Matrix3x3 大小: {} 字节", std::mem::size_of::<Matrix3x3>());
-    println!(
-        "[[f32; 3]; 3] 大小: {} 字节",
-        std::mem::size_of::<[[f32; 3]; 3]>()
-    );
-
-    practical_transparent_examples();
-
-    println!("#[repr(transparent)] 结构体支持演示完成");
-    println!();
-}
-
-fn practical_transparent_examples() {
-    println!("=== #[repr(transparent)] 实际应用示例 ===");
-
-    // 场景 1: C 库绑定的类型安全包装
-    mod c_bindings {
-        // 模拟 C 语言的类型定义
-        #[repr(C)]
-        struct CFileHandle {
-            fd: i32,
-            flags: u32,
-        }
-
-        // 透明包装器提供类型安全
-        #[repr(transparent)]
-        pub struct SafeFileHandle(CFileHandle);
-
-        impl SafeFileHandle {
-            pub fn from_raw(fd: i32) -> Self {
-                SafeFileHandle(CFileHandle {
-                    fd,
-                    flags: 0, // 默认标志
-                })
-            }
-
-            pub fn raw_fd(&self) -> i32 {
-                self.0.fd
-            }
-
-            pub fn is_valid(&self) -> bool {
-                self.0.fd >= 0
-            }
-        }
-
-        // 可以安全地传递给 C 函数
-        #[repr(C)]
-        pub struct CFileStats {
-            size: u64,
-            modified: u64,
-        }
-
-        unsafe extern "C" {
-            fn get_file_stats(handle: CFileHandle) -> CFileStats;
-        }
-
-        pub fn get_safe_file_stats(handle: &SafeFileHandle) -> Result<CFileStats, String> {
-            if !handle.is_valid() {
-                return Err("无效的文件句柄".to_string());
-            }
-
-            // 模拟文件统计信息，因为我们没有真正的 C 函数
-            Ok(CFileStats {
-                size: 1024,
-                modified: 1234567890,
-            })
-        }
-    }
-
-    let file_handle = c_bindings::SafeFileHandle::from_raw(1); // stdout
-    println!("文件句柄是否有效: {}", file_handle.is_valid());
-
-    // 场景 2: 网络协议的类型包装
-    mod network_protocol {
-        #[repr(C, packed)]
-        struct IpAddress {
-            bytes: [u8; 4],
-        }
-
-        #[repr(transparent)]
-        pub struct SafeIpAddress(IpAddress);
-
-        impl SafeIpAddress {
-            pub fn new(a: u8, b: u8, c: u8, d: u8) -> Self {
-                SafeIpAddress(IpAddress {
-                    bytes: [a, b, c, d],
-                })
-            }
-
-            pub fn is_loopback(&self) -> bool {
-                self.0.bytes[0] == 127
-            }
-
-            pub fn as_array(&self) -> [u8; 4] {
-                self.0.bytes
-            }
-        }
-
-        #[repr(transparent)]
-        pub struct PortNumber(u16);
-
-        impl PortNumber {
-            pub fn new(port: u16) -> Option<Self> {
-                if port == 0 {
-                    None
-                } else {
-                    Some(PortNumber(port))
-                }
-            }
-
-            pub fn value(&self) -> u16 {
-                self.0
-            }
-        }
-
-        #[repr(C)]
-        struct SocketAddress {
-            ip: IpAddress,
-            port: u16,
-        }
-
-        #[repr(transparent)]
-        pub struct SafeSocketAddress(SocketAddress);
-
-        impl SafeSocketAddress {
-            pub fn new(ip: SafeIpAddress, port: PortNumber) -> Self {
-                SafeSocketAddress(SocketAddress {
-                    ip: ip.0,
-                    port: port.0,
-                })
-            }
-
-            pub fn is_loopback(&self) -> bool {
-                // 直接检查 IP 地址的第一个字节
-                self.0.ip.bytes[0] == 127
-            }
-        }
-    }
-
-    use network_protocol::{PortNumber, SafeIpAddress, SafeSocketAddress};
-    let ip = SafeIpAddress::new(127, 0, 0, 1);
-    let port = PortNumber::new(8080).unwrap();
-    let socket_addr = SafeSocketAddress::new(ip, port);
-    println!("Socket 地址是否回环: {}", socket_addr.is_loopback());
-
-    // 场景 3: 加密算法的密钥包装
-    mod crypto {
-        #[repr(transparent)]
-        pub struct AesKey([u8; 32]);
-
-        impl AesKey {
-            pub fn from_bytes(bytes: [u8; 32]) -> Self {
-                AesKey(bytes)
-            }
-
-            pub fn as_bytes(&self) -> &[u8; 32] {
-                &self.0
-            }
-
-            pub fn is_zero(&self) -> bool {
-                self.0.iter().all(|&b| b == 0)
-            }
-        }
-
-        // #[repr(transparent)]  // transparent struct 只能有一个非零大小的字段
-        pub struct RsaPublicKey {
-            modulus: [u8; 256],
-            exponent: [u8; 3],
-        }
-
-        impl RsaPublicKey {
-            pub fn new(modulus: [u8; 256], exponent: [u8; 3]) -> Self {
-                RsaPublicKey { modulus, exponent }
-            }
-
-            pub fn modulus(&self) -> &[u8; 256] {
-                &self.modulus
-            }
-        }
-    }
-
-    let aes_key = crypto::AesKey::from_bytes([0u8; 32]);
-    println!("AES 密钥是否为零密钥: {}", aes_key.is_zero());
-
-    // 场景 4: 硬件寄存器的类型安全访问
-    mod hardware {
-        #[repr(C)]
-        struct DeviceRegisters {
-            control: u32,
-            status: u32,
-            data: u32,
-        }
-
-        #[repr(transparent)]
-        pub struct SafeDeviceRegisters(*mut DeviceRegisters);
-
-        impl SafeDeviceRegisters {
-            pub unsafe fn from_ptr(ptr: *mut DeviceRegisters) -> Self {
-                SafeDeviceRegisters(ptr)
-            }
-
-            pub fn read_control(&self) -> u32 {
-                unsafe { (*self.0).control }
-            }
-
-            pub fn write_control(&mut self, value: u32) {
-                unsafe {
-                    (*self.0).control = value;
-                }
-            }
-
-            pub fn is_ready(&self) -> bool {
-                unsafe { (*self.0).status & 0x01 != 0 }
-            }
-        }
-    }
-
-    // 场景 5: 数据库连接句柄的透明包装
-    mod database {
-        #[repr(C)]
-        struct DBConnection {
-            connection_ptr: *mut std::ffi::c_void,
-            connection_id: u32,
-        }
-
-        #[repr(transparent)]
-        pub struct SafeDBConnection(DBConnection);
-
-        impl SafeDBConnection {
-            pub fn connection_id(&self) -> u32 {
-                self.0.connection_id
-            }
-
-            pub fn is_connected(&self) -> bool {
-                !self.0.connection_ptr.is_null()
-            }
-        }
-    }
-
-    // 场景 6: 音频处理的样本格式包装
-    mod audio {
-        #[repr(transparent)]
-        struct AudioSample(i16);
-
-        impl AudioSample {
-            pub fn new(sample: i16) -> Self {
-                AudioSample(sample)
-            }
-
-            pub fn normalize(&self) -> f32 {
-                self.0 as f32 / i16::MAX as f32
-            }
-
-            pub fn apply_gain(&mut self, gain_db: f32) {
-                let multiplier = 10.0f32.powf(gain_db / 20.0);
-                let normalized = self.normalize() * multiplier;
-                self.0 = (normalized * i16::MAX as f32) as i16;
-            }
-        }
-
-        #[repr(transparent)]
-        struct StereoFrame([AudioSample; 2]);
-
-        impl StereoFrame {
-            pub fn new(left: i16, right: i16) -> Self {
-                StereoFrame([AudioSample::new(left), AudioSample::new(right)])
-            }
-
-            pub fn apply_pan(&mut self, pan: f32) {
-                // pan: -1.0 (全左) 到 1.0 (全右)
-                let left_gain = (1.0 - pan) / 2.0;
-                let right_gain = (1.0 + pan) / 2.0;
-
-                self.0[0].apply_gain(20.0 * left_gain.log10());
-                self.0[1].apply_gain(20.0 * right_gain.log10());
-            }
-        }
-    }
-
-    println!("实际应用示例演示完成");
-}
-
-// ===========================================
-// 19. Rust 1.83: Const 上下文中的可变引用 (Const Context Mutable References)
+// 17. Rust 1.83: Const 上下文中的可变引用 (Const Context Mutable References)
 // ===========================================
 
 // Rust 1.83 稳定了在 const 上下文（const fn / const 块）中支持 `&mut`、`*mut`、
@@ -4098,52 +3306,15 @@ pub fn const_mut_refs() {
 }
 
 // ===========================================
-// 20. Rust 1.92-1.95 底层能力补充
+// 18. LazyCell / LazyLock 的访问 API（Rust 1.94）
 // ===========================================
 
-// 本节补充 1.92 到 1.95 期间与底层开发、延迟初始化和性能提示相关的特性：
-// - Rust 1.92: 在安全代码里对 union 字段创建原始指针
-// - Rust 1.93: asm! 内允许 #[cfg] / #[cfg_attr]
-// - Rust 1.94: LazyCell / LazyLock 的 get、get_mut、force_mut
-// - Rust 1.95: std::hint::cold_path
-//
-// 这些内容都比较“底层”，第一次接触时可能会觉得分散。
-// 但它们其实围绕的是一个共同主题：
-// Rust 在持续补齐系统编程里常见、但以前表达起来不够顺手的细节能力。
-//
-// 阅读这一节时，建议重点观察：
-// 1. 哪些地方仍然需要 unsafe
-// 2. 哪些地方语言和标准库已经帮你把原先麻烦的操作变得更自然
-// 3. 这些 API 分别对应哪类真实工程问题
+// `LazyCell`（单线程）和 `LazyLock`（线程安全）都表示“懒初始化”：第一次访问时才运行初始化闭包。
+// 1.94 新增的 `get` / `get_mut` / `force_mut`，让你可以在不触发初始化的前提下观察状态，
+// 或者强制初始化之后直接拿到可变引用。
 
-fn recent_low_level_improvements() {
-    println!("=== Rust 1.92-1.95 底层能力补充 ===");
-
-    // Rust 1.92: 在安全代码里对 union 字段创建原始指针
-    //
-    // 这里定义一个典型的 C 风格包头：
-    // - `raw` 表示把整块内存看成一个 32 位整数
-    // - `bytes` 表示把同一块内存按字节观察
-    //
-    // union 常见于协议解析、FFI、驱动和寄存器映射。
-    #[repr(C)]
-    union PacketHeader {
-        raw: u32,
-        bytes: [u8; 4],
-    }
-
-    // `&raw const header.bytes` 的含义是：
-    // “我只是想取得这个字段的原始地址，并不在这里直接读取它”。
-    //
-    // 注意区分两件事：
-    // 1. 取地址
-    // 2. 解引用读取内容
-    //
-    // 真正解引用仍然是 unsafe，因为程序员必须自己保证读取这个 union 字段是合法的。
-    let header = PacketHeader { raw: 0x12345678 };
-    let bytes_ptr = &raw const header.bytes;
-    let bytes = unsafe { *bytes_ptr };
-    println!("union 原始字节视图: {bytes:02X?}");
+fn lazy_access_apis() {
+    println!("=== LazyCell / LazyLock 的访问 API（Rust 1.94） ===");
 
     // Rust 1.94: LazyCell / LazyLock 的访问 API 更完整了
     //
@@ -4171,166 +3342,201 @@ fn recent_low_level_improvements() {
     LazyLock::force_mut(&mut banner).push_str("-1.94");
     println!("LazyLock 初始化后内容: {}", LazyLock::force(&banner));
 
-    // Rust 1.95: `std::hint::cold_path`
-    //
-    // “cold path” 表示极少进入的路径，例如：
-    // - 罕见错误
-    // - 保底 fallback
-    // - 理论上不应该发生，但仍要处理的异常情况
-    //
-    // 调用这个函数不会改变程序行为，
-    // 它更像是告诉编译器：“这条分支很冷门，可以按低频路径优化。”
-    let config_parse_result: Result<u16, _> = "not-a-port".parse();
-    if config_parse_result.is_err() {
-        std::hint::cold_path();
-        println!("cold_path: 进入低频错误分支");
-    }
-
-    // Rust 1.93: `asm!` 内部可以使用 `#[cfg]`
-    //
-    // 这意味着你现在可以在同一个 asm! 调用里，根据 target_feature 决定是否插入某条指令。
-    // 以前做这件事往往要把整段汇编拆成多个版本。
-    //
-    // 对新手来说，重点理解：
-    // - `#[cfg]` 是编译期选择，不是运行期 if
-    // - 最终进入程序的汇编指令，只包含条件成立时保留下来的那些行
-    #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
-    unsafe {
-        asm!(
-            "nop",
-            #[cfg(target_feature = "sse2")]
-            "nop",
-            options(nomem, nostack, preserves_flags),
-        );
-        println!("asm! 内部的 #[cfg] 指令分支已执行");
-    }
-
     // 小结：
-    // 1. union 原始指针让“只取地址”这种底层操作表达得更清晰
-    // 2. LazyCell / LazyLock 的新 API 让懒初始化更可观察、可变
-    // 3. cold_path 用来标注低频分支
-    // 4. asm! 内部 #[cfg] 让平台差异更容易维护
+    // 1. `get` 只观察，不触发初始化；`force_mut` 会先初始化再给出可变引用
+    // 2. 单线程用 LazyCell，需要跨线程共享用 LazyLock
     println!();
 }
 
 // ===========================================
-// 21. Rust 1.95-1.97 底层能力补充（二）
+// 19. Rust 2024 Edition：与 2021 的主要区别（Rust 1.85）
 // ===========================================
 
-// 第 20 节讲完 1.92-1.95 的第一批底层增强，本节继续补齐 1.95-1.97 的剩余内容：
-// - Rust 1.95: `MaybeUninit<[T; N]>` 与 `[MaybeUninit<T>; N]` 互相转换
-// - Rust 1.95: `Cell<[T; N]>` 的 AsRef 转换
-// - Rust 1.95: 裸指针的 `as_ref_unchecked` / `as_mut_unchecked`
-// - Rust 1.95: `Layout` 的 `repeat` / `repeat_packed` / `extend_packed`
-// - Rust 1.95: `ControlFlow::is_break` / `is_continue` 可在 const 中使用
-// - Rust 1.97: `RepeatN` 实现 `Default`
+// Rust 2024 是目前最大的一个 edition，随 Rust 1.85 稳定（2025-02-20 发布）。
+// 本项目的 Cargo.toml 里写的就是 `edition = "2024"`，所以这一节的演示都是直接运行的。
+// 迁移已有项目：先运行 `cargo fix --edition` 让工具自动改写，再把 Cargo.toml 里的 edition 改成 "2024"。
 //
-// 共同主题是“初始化与内存布局”：
-// 系统编程里最常打交道的就是“先准备一块内存，再决定怎么填”。
-// 这些 API 把这类操作变得更安全、更少样板代码。
+// 官方 Edition Guide 把变化按语言、标准库、Cargo 等分组。这里按“最常遇到”的顺序梳理：
+//
+// 语言
+// 1. `impl Trait` 返回类型会自动捕获作用域内所有的泛型参数和生命周期；
+//    想少捕获，用 `use<..>`（见第 8 章 traits）
+// 2. `if let` 的临时值在进入 `else` 之前就销毁
+// 3. 块末尾表达式里的临时值，先于块内的局部变量销毁
+// 4. if let 链：`if let .. && let ..`（见第 5 章模式匹配）
+// 5. `extern` 块必须写成 `unsafe extern`；`no_mangle`、`export_name`、`link_section` 必须写成 `#[unsafe(..)]`
+// 6. `unsafe fn` 的函数体里，不安全的操作也必须显式写 `unsafe {}`（`unsafe_op_in_unsafe_fn` 默认 warn）
+// 7. 禁止对 `static mut` 取引用（`static_mut_refs` 默认 deny），请改用 `&raw const` / `&raw mut`
+// 8. 从 `!`（never 类型）回退的类型是 `!`，而不是 `()`
+// 9. `gen` 成为保留字（给将来的生成器块预留）；已有的叫 `gen` 的标识符要写成 `r#gen`
+// 10. 宏的 `expr` 片段说明符现在也匹配 `const { .. }` 和 `_`；想保持旧行为用 `expr_2021`
+// 11. 模式里，在“默认绑定模式”下不能再写 `mut`、`ref`、`&`（match ergonomics 的保留规则）
+//
+// 标准库
+// 12. `Future` 和 `IntoFuture` 进入 prelude
+// 13. `Box<[T]>` 的 `.into_iter()` 变成按值迭代
+// 14. `std::env::set_var` / `remove_var` 变成 unsafe 函数：多线程程序里修改环境变量并不安全
+//
+// Cargo
+// 15. 依赖解析器默认使用 v3，会考虑各依赖声明的 `rust-version`
+//
+// 同样重要的是：edition 只负责“必须靠不兼容改动才能实现的变化”，
+// 新的库函数、新的语法（let-else、async 闭包……）和 edition 无关，所有 edition 都能用。
 
-fn recent_low_level_improvements_part2() {
-    println!("=== Rust 1.95-1.97 底层能力补充（二） ===");
+use std::cell::RefCell;
+use std::sync::RwLock;
 
-    use std::cell::Cell;
-    use std::mem::MaybeUninit;
+// 2：`if let` 的临时值作用域
+// 读锁是 `value.read().unwrap()` 产生的临时值。
+// - 2021：它一直活到整个 `if let ... else ...` 结束，else 里再申请写锁就会死锁
+// - 2024：进入 else 之前它已经被销毁，下面的写法才能正常工作
+fn init_if_empty(value: &RwLock<Option<bool>>) -> bool {
+    if let Some(existing) = *value.read().unwrap() {
+        existing
+    } else {
+        let mut guard = value.write().unwrap();
+        *guard = Some(true);
+        true
+    }
+}
 
-    // Rust 1.95: MaybeUninit 数组转换
-    //
-    // MaybeUninit<T> 表示“可能未初始化的 T”。
-    // 当你手头是 `[MaybeUninit<T>; N]`（逐个准备元素）时，
-    // 现在可以直接转换成 `MaybeUninit<[T; N]>`（一整块待初始化内存），
-    // 反之亦然，无需自己手工转指针。
-    //
-    // 典型场景：FFI 缓冲区、SIMD 打包、用数组拼装结构体。
-    let mut slots: [MaybeUninit<u32>; 3] = [MaybeUninit::uninit(); 3];
-    slots[0].write(10);
-    slots[1].write(20);
-    slots[2].write(30);
-    // 元素都已就绪，转成“整块未初始化内存”的形式。
-    let whole: MaybeUninit<[u32; 3]> = slots.into();
-    // 反向转换也支持：从整块内存重新拆回逐个元素。
-    let slots_again: [MaybeUninit<u32>; 3] = whole.into();
-    let sum: u32 = unsafe { slots_again.into_iter().map(|s| s.assume_init()).sum() };
-    println!("MaybeUninit 数组转换后的元素之和: {sum}");
+// 3：块末尾表达式的临时值作用域
+// `cell.borrow()` 产生一个临时的 `Ref`，它借用了局部变量 `cell`。
+// - 2021：这个临时值比 `cell` 活得更久，编译器报 E0597（`cell` 活得不够长）
+// - 2024：临时值先于局部变量销毁，直接编译通过
+fn tail_expression_len() -> usize {
+    let cell = RefCell::new("2024 edition");
+    cell.borrow().len()
+}
 
-    // Rust 1.95: Cell<[T; N]> 的 AsRef
-    //
-    // 之前 `Cell<[T; N]>` 只能整体读写，现在可以把它当成
-    // `[Cell<T>; N]` 或 `[Cell<T>]` 的引用看待。
-    // 这有什么用？写锁步（lock-step）算法时，
-    // 可以“逐元素原地修改”，而不必每次取 Cell 的可变引用。
-    let cells = Cell::new([1u32, 2, 3]);
-    // 两个 AsRef 实现同时存在，需要显式标注类型来消歧。
-    let as_array: &[Cell<u32>; 3] = <Cell<[u32; 3]> as AsRef<[Cell<u32>; 3]>>::as_ref(&cells);
-    let as_slice: &[Cell<u32>] = <Cell<[u32; 3]> as AsRef<[Cell<u32>]>>::as_ref(&cells);
-    // 逐元素原地加 1（Cell 的 get/set 不需要 &mut self）。
-    as_array[0].set(as_array[0].get() + 1);
-    as_slice[1].set(as_slice[1].get() + 1);
-    println!("Cell 数组原地修改后: {:?}", cells.get());
+// 1：返回的迭代器借用了参数 `numbers`。
+// 2021 里必须额外写成 `impl Iterator<Item = i32> + '_`，否则报错说隐藏类型捕获了没有写出来的生命周期；
+// 2024 里自动捕获，不必再写。
+fn evens(numbers: &[i32]) -> impl Iterator<Item = i32> {
+    numbers.iter().copied().filter(|n| n % 2 == 0)
+}
 
-    // Rust 1.95: 裸指针的 as_ref_unchecked / as_mut_unchecked
-    //
-    // 以前要把裸指针转成引用，必须写 `unsafe { &*ptr }`。
-    // 新方法把意图写得更清楚：`as_ref_unchecked` 表示“我保证指针此时有效”。
-    // 注意：它仍然是 unsafe 的——调用者有责任保证对齐、有效和非别名约束。
-    let value = 42u32;
-    let raw_const = &value as *const u32;
-    // 把“只读裸指针”转成共享引用。
-    let shared: &u32 = unsafe { raw_const.as_ref_unchecked() };
-    println!("as_ref_unchecked 得到: {shared}");
+// 9：`gen` 是保留字，当变量名要写成原始标识符 `r#gen`；
+// 当生命周期名要写成原始生命周期 `'r#gen`（Rust 1.83 起可以这样写）。
+// 原始生命周期的设计初衷，就是让旧代码迁移到引入新关键字的 edition 时，
+// 仍然可以保留原来的名字（迁移工具会自动改写）。
+fn pick_first<'r#gen>(first: &'r#gen str, _second: &str) -> &'r#gen str {
+    first
+}
 
-    let mut mutable = 7u32;
-    let raw_mut = &mut mutable as *mut u32;
-    // 把“可变裸指针”转成可变引用。
-    let exclusive: &mut u32 = unsafe { raw_mut.as_mut_unchecked() };
-    *exclusive += 1;
-    println!("as_mut_unchecked 修改后: {mutable}");
+fn rust_2024_edition_features() {
+    println!("=== Rust 2024 Edition：与 2021 的主要区别（Rust 1.85） ===");
 
-    // Rust 1.95: Layout 的 repeat 系列
-    //
-    // Layout 描述“一块内存怎么对齐、多大”。手动分配数组内存时，
-    // 需要按元素大小重复布局：
-    // - `repeat(n)`：n 个元素，返回 (新布局, 步长)。步长用于手动算偏移
-    // - `repeat_packed(n)`：n 个元素，但要求对齐必须是元素对齐的幂
-    // - `extend_packed(layout)`：在本布局后面接上另一段布局
-    //
-    // 它们都返回 Result，因为计算可能溢出（元素数量太大时）。
-    let elem = std::alloc::Layout::new::<u32>();
-    let (array_layout, stride) = elem.repeat(4).unwrap();
-    println!("Layout::repeat(4): stride={stride}, size={}", array_layout.size());
-    let packed = elem.repeat_packed(4).unwrap();
-    println!("Layout::repeat_packed(4): size={}", packed.size());
-    let extended = elem.extend_packed(elem).unwrap();
-    println!("Layout::extend_packed: size={}", extended.size());
-    // dangling_ptr 返回“该布局对应的合法悬垂指针”，
-    // 常用于“还没有数据可指向”时的占位指针。
-    let _dangling = elem.dangling_ptr();
-    println!("Layout::dangling_ptr 可用作占位指针");
+    // ---------- if let 的临时值先于 else 销毁 ----------
+    let config = RwLock::new(None);
+    println!("第一次调用（空，走 else 分支，写入默认值）: {}", init_if_empty(&config));
+    println!("第二次调用（已有值，走 if 分支）: {}", init_if_empty(&config));
 
-    // Rust 1.95: ControlFlow::is_break / is_continue 可在 const 中使用
-    //
-    // ControlFlow 是标准库内部常用的“提前返回”枚举，
-    // 现在它的两个判断方法可以在常量求值里使用。
-    use std::ops::ControlFlow;
-    const IS_BREAK: bool = ControlFlow::<u32, u32>::Break(3).is_break();
-    const IS_CONTINUE: bool = ControlFlow::<u32, u32>::Continue(1).is_continue();
-    println!("const 求值: Break.is_break = {IS_BREAK}, Continue.is_continue = {IS_CONTINUE}");
+    // ---------- 块末尾表达式的临时值先于局部变量销毁 ----------
+    println!("块末尾表达式里的 Ref 先于 cell 销毁，长度 = {}", tail_expression_len());
 
-    // Rust 1.97: RepeatN 实现 Default
-    //
-    // RepeatN 是 `repeat_n(x, n)` 产生的迭代器，表示“重复 n 次”。
-    // 现在它可以 Default 构造（空重复迭代器），
-    // 方便在泛型代码里用 Default::default() 占位。
-    let empty: std::iter::RepeatN<u8> = Default::default();
-    let count = empty.count();
-    println!("Default 的 RepeatN 元素数量: {count}");
+    // ---------- impl Trait 自动捕获 ----------
+    let data = [1, 2, 3, 4, 5, 6];
+    println!("evens 返回的迭代器借用了 data，不需要 + '_: {:?}", evens(&data).collect::<Vec<_>>());
+
+    // ---------- gen 保留字与原始标识符 / 原始生命周期 ----------
+    let r#gen = 7;
+    println!("原始标识符 r#gen = {}，原始生命周期: {}", r#gen, pick_first("第一个", "第二个"));
+
+    // ---------- Box<[T]> 的 into_iter 按值迭代 ----------
+    // 1.80 起 Box<[T]> 实现了 IntoIterator（所有 edition）；
+    // 但在 2024 之前，方法调用 `.into_iter()` 仍然会自动解引用成 `&[T]`，得到的是引用。
+    // 2024 起，`.into_iter()` 才真正调用 Box<[T]> 自己的实现，按值迭代。
+    let boxed: Box<[String]> = vec!["甲".to_string(), "乙".to_string()].into_boxed_slice();
+    let owned: Vec<String> = boxed.into_iter().collect(); // 元素类型是 String，不是 &String
+    println!("按值迭代得到的所有权: {owned:?}");
+
+    // ---------- Future 进入 prelude ----------
+    // 不再需要 `use std::future::Future;` 就可以直接写 `Future` 约束
+    async fn answer() -> u8 {
+        42
+    }
+    fn run<F: Future<Output = u8>>(future: F) -> u8 {
+        futures::executor::block_on(future)
+    }
+    println!("不用 use 就能写 Future 约束: {}", run(answer()));
+
+    // ---------- 只能用注释说明的变化 ----------
+    // 5. 不安全的 extern 块 / 属性：本项目里的 FFI 声明都是这种写法，例如
+    //        unsafe extern "C" { fn strlen(s: *const c_char) -> usize; }
+    //        #[unsafe(no_mangle)] pub extern "C" fn exported() {}
+    // 6. 不安全的操作要显式写 unsafe 块，哪怕已经在 unsafe fn 里：
+    //        unsafe fn read(ptr: *const u8) -> u8 { unsafe { *ptr } }
+    // 7. static mut：
+    //        static mut COUNTER: u32 = 0;
+    //        let r = unsafe { &COUNTER };          // 2024 里是编译错误（static_mut_refs）
+    //        let p = unsafe { &raw const COUNTER }; // 正确：直接取裸指针，不制造引用
+    // 8. never 类型回退：以前一个类型推断不出来的位置遇到 `!` 时，会回退成 `()`；2024 起回退成 `!`。
+    //    依赖旧行为的代码需要写明类型。1.92 起，检测这类风险的两个 lint
+    //    `never_type_fallback_flowing_into_unsafe` 和 `dependency_on_unit_never_type_fallback`
+    //    在所有 edition 里都默认 deny，所以在升级 edition 之前就会收到提示。
+    // 14. env::set_var：
+    //        unsafe { std::env::set_var("KEY", "value") }  // 2024 里必须写 unsafe
+    //     原因是在 Unix 上，其他线程可能同时在读取环境变量（包括 C 库里的代码），修改它会造成数据竞争。
+    //     最佳做法：在程序启动、还没有创建任何线程之前设置好，或者干脆通过参数把配置传下去，而不是改全局环境。
+
+    // 最佳实践：
+    // 1. 新项目直接用最新的 edition；旧项目按 `cargo fix --edition` 迁移，一次迁移一个 edition
+    // 2. 迁移后先看编译警告，再跑测试，重点留意 drop 顺序和锁的持有时间——这两类变化是静默发生的
+    println!();
+}
+
+// ===========================================
+// 20. use 导入路径关键字并重命名（Rust 1.95）
+// ===========================================
+
+// `crate`、`super`、`self` 是路径里的“关键字段”，分别代表当前 crate 的根、上一级模块、当前模块。
+// 以前只能写 `use crate as name;`，另外两个不能这样用。
+// 1.95 起三者统一了：都可以用 `as` 导入并改名；反过来，不改名的 `use $crate::{self};` 这类写法被禁止了。
+//     use crate as app;      // 当前 crate 的根；也可以写 use crate::{self as app};
+//     use super as parent;   // 上一级模块；链式的 `super::super` 同样可以：use super::super as grand;
+//     use self as current;   // 当前模块自己
+//
+// 典型场景：
+// - 测试模块里，用 `use super as subject;`（被测模块）代替 `use super::*;`，调用时写 `subject::parse(..)`，
+//   一眼能看出哪些调用是被测代码，不会因为通配导入让名字来源变模糊
+// - 层级很深的模块里，用 `use crate as app;` 代替满屏的 `crate::`
+// - 宏生成的代码里，用 `use $crate as name;` 给宏所在的 crate 取个固定的名字
+
+mod path_keyword_renaming_demo {
+    pub fn base_value() -> u32 {
+        10
+    }
+
+    pub mod nested {
+        use crate as app;
+        use self as current;
+        use super as parent;
+
+        pub fn offset() -> u32 {
+            5
+        }
+
+        // 三个来源一目了然：app 是整个 crate，parent 是上一级模块，current 是本模块
+        pub fn total() -> u32 {
+            parent::base_value() + current::offset() + app::mod_14_advanced::path_keyword_marker()
+        }
+    }
+}
+
+// 放在 crate 根下的 mod_14_advanced 模块里，供上面的 `app::mod_14_advanced::...` 引用
+fn path_keyword_marker() -> u32 {
+    100
+}
+
+fn use_path_keyword_renaming() {
+    println!("=== use 导入路径关键字并重命名（Rust 1.95） ===");
+
+    println!("parent + current + app 三个来源的结果相加 = {}", path_keyword_renaming_demo::nested::total());
 
     // 小结：
-    // 1. MaybeUninit 数组转换解决了“逐个准备元素”和“整块内存”之间的搬运问题
-    // 2. Cell 数组的 AsRef 让内部可变性可以精确到元素
-    // 3. 裸指针转引用的 unchecked 方法把不安全操作的意图写得更清楚
-    // 4. Layout 计算溢出有 Result 兜底，不会悄悄返回错误布局
+    // 1. 想给 crate / super / self 取别名，直接 `use .. as 别名;`
+    // 2. 别名让代码里的路径来源更清楚，尤其适合测试模块和深层嵌套的模块
     println!();
 }
 
@@ -4346,7 +3552,6 @@ pub fn main() {
     unsafe_functions();
     mutable_static_variables();
     union_types();
-    inline_assembly();
     advanced_lifetime_annotations();
     advanced_trait_features();
     advanced_type_features();
@@ -4357,11 +3562,11 @@ pub fn main() {
     rust_2021_edition_features();
     once_lock_and_once_cell();
     cfg_accessible_predicate();
-    repr_transparent_structs();
     latest_const_and_generic_enhancements();
     const_mut_refs();
-    recent_low_level_improvements();
-    recent_low_level_improvements_part2();
+    lazy_access_apis();
+    rust_2024_edition_features();
+    use_path_keyword_renaming();
     advanced_example_program();
 
     println!("高级特性演示完成！");
@@ -4933,127 +4138,57 @@ mod tests {
     }
 
     #[test]
-    fn test_rust_2021_edition_closure_capture() {
-        struct Container {
-            value: i32,
+    fn test_rust_2021_edition_features() {
+        // 闭包按字段分别捕获：可变借用 retries 的同时，仍可读取 name
+        struct Config {
+            name: String,
+            retries: u32,
         }
+        let mut cfg = Config {
+            name: "svc".to_string(),
+            retries: 3,
+        };
+        let mut bump = || cfg.retries += 1;
+        assert_eq!(cfg.name, "svc");
+        bump();
+        assert_eq!(cfg.retries, 4);
 
-        impl Container {
-            fn get_value(&self) -> i32 {
-                self.value
-            }
+        // move 闭包只移走用到的字段
+        let owner = Config {
+            name: "owner".to_string(),
+            retries: 0,
+        };
+        let take_name = move || owner.name;
+        assert_eq!(owner.retries, 0);
+        assert_eq!(take_name(), "owner");
 
-            fn set_value(&mut self, new_value: i32) {
-                self.value = new_value;
-            }
-        }
+        // 预导入项：不写 use 也能使用 TryInto / TryFrom / FromIterator
+        let small: i32 = 1000_i64.try_into().unwrap();
+        assert_eq!(small, 1000);
+        assert!(u8::try_from(300_i32).is_err());
+        assert_eq!(Vec::from_iter(1..=3), vec![1, 2, 3]);
 
-        let mut container = Container { value: 42 };
-
-        // 测试闭包捕获改进 - 分别测试不可变和可变访问
-        {
-            let get_closure = || container.get_value();
-            assert_eq!(get_closure(), 42);
-        }
-
-        {
-            let mut mut_closure = || container.set_value(100);
-            mut_closure();
-        }
-
-        {
-            let get_closure2 = || container.get_value();
-            assert_eq!(get_closure2(), 100);
-        }
-    }
-
-    #[test]
-    fn test_rust_2021_edition_prelude_changes() {
-        use std::convert::{TryFrom, TryInto};
+        // FromStr 不在预导入项里，需要手动 use
         use std::str::FromStr;
+        assert_eq!(i32::from_str("42"), Ok(42));
 
-        // 测试 TryInto
-        let big_number: i64 = 1000;
-        let small_number: i32 = big_number.try_into().unwrap_or(0);
-        assert_eq!(small_number, 1000);
+        // 数组按值迭代
+        let words = ["a".to_string(), "b".to_string()];
+        let owned: Vec<String> = words.into_iter().collect();
+        assert_eq!(owned, ["a", "b"]);
 
-        // 测试 TryFrom
-        #[derive(Debug, PartialEq)]
-        struct Point {
-            x: i32,
-            y: i32,
+        // $p:pat 可以匹配顶层或模式
+        macro_rules! is_vowel {
+            ($c:expr, $p:pat) => {
+                matches!($c, $p)
+            };
         }
+        assert!(is_vowel!('e', 'a' | 'e' | 'i' | 'o' | 'u'));
+        assert!(!is_vowel!('z', 'a' | 'e' | 'i' | 'o' | 'u'));
 
-        impl TryFrom<(i32, i32)> for Point {
-            type Error = &'static str;
-
-            fn try_from(value: (i32, i32)) -> Result<Self, Self::Error> {
-                if value.0 >= 0 && value.1 >= 0 {
-                    Ok(Point {
-                        x: value.0,
-                        y: value.1,
-                    })
-                } else {
-                    Err("坐标不能为负数")
-                }
-            }
-        }
-
-        let point = Point::try_from((10, 20)).unwrap();
-        assert_eq!(point, Point { x: 10, y: 20 });
-
-        // 测试 FromStr
-        #[derive(Debug, PartialEq)]
-        enum Color {
-            Red,
-            Green,
-            Blue,
-        }
-
-        impl FromStr for Color {
-            type Err = &'static str;
-
-            fn from_str(s: &str) -> Result<Self, Self::Err> {
-                match s.to_lowercase().as_str() {
-                    "red" => Ok(Color::Red),
-                    "green" => Ok(Color::Green),
-                    "blue" => Ok(Color::Blue),
-                    _ => Err("无效的颜色"),
-                }
-            }
-        }
-
-        let color: Color = "red".parse().unwrap();
-        assert_eq!(color, Color::Red);
-    }
-
-    #[test]
-    fn test_rust_2021_edition_format_macros() {
+        // 格式化字符串捕获（Rust 1.58，与 edition 无关）
         let name = "Alice";
-        let age = 30;
-
-        // 测试格式化宏改进
-        let formatted = format!("姓名={}, 年龄={}", name, age);
-        assert_eq!(formatted, "姓名=Alice, 年龄=30");
-
-        // 测试不同格式化选项
-        assert_eq!(format!("{:b}", age), "11110");
-        assert_eq!(format!("{:o}", age), "36");
-        assert_eq!(format!("{:x}", age), "1e");
-    }
-
-    #[test]
-    fn test_rust_2021_edition_concurrency() {
-        use std::sync::Arc;
-        use std::thread;
-
-        let data = Arc::new(vec![1, 2, 3, 4, 5]);
-        let data_clone = Arc::clone(&data);
-
-        let handle = thread::spawn(move || data_clone.iter().sum::<i32>());
-
-        let sum = handle.join().unwrap();
-        assert_eq!(sum, 15);
+        assert_eq!(format!("姓名={name}"), "姓名=Alice");
     }
 
     #[test]
@@ -5149,7 +4284,7 @@ mod tests {
 
         // 再次访问应该返回缓存的错误结果
         let cached_result =
-            RESULT_CACHE.get_or_init(|| Err(io::Error::new(io::ErrorKind::Other, "不应该执行")));
+            RESULT_CACHE.get_or_init(|| Err(io::Error::other("不应该执行")));
 
         assert!(cached_result.is_ok());
         assert_eq!(cached_result.as_ref().unwrap(), "成功的结果");
@@ -5187,18 +4322,44 @@ mod tests {
     }
 
     #[test]
-    fn test_recent_low_level_improvements() {
-        #[repr(C)]
-        union Bytes {
-            raw: u32,
-            bytes: [u8; 4],
-        }
+    fn test_rust_2024_edition_features() {
+        // if let 的临时值先于 else 销毁：2021 里这里会死锁
+        let config = RwLock::new(None);
+        assert!(init_if_empty(&config));
+        assert_eq!(*config.read().unwrap(), Some(true));
+        assert!(init_if_empty(&config));
 
-        let value = Bytes { raw: 0xAABBCCDD };
-        let ptr = &raw const value.bytes;
-        let bytes = unsafe { *ptr };
-        assert_eq!(bytes.len(), 4);
+        // 块末尾表达式的临时值先于局部变量销毁
+        assert_eq!(tail_expression_len(), "2024 edition".len());
 
+        // impl Trait 自动捕获参数的生命周期
+        assert_eq!(evens(&[1, 2, 3, 4, 5, 6]).collect::<Vec<_>>(), [2, 4, 6]);
+
+        // 原始标识符与原始生命周期
+        let r#gen = 7;
+        assert_eq!(r#gen, 7);
+        assert_eq!(pick_first("a", "b"), "a");
+
+        // Box<[T]>::into_iter 按值迭代
+        let boxed: Box<[String]> = vec!["x".to_string(), "y".to_string()].into_boxed_slice();
+        let owned: Vec<String> = boxed.into_iter().collect();
+        assert_eq!(owned, ["x", "y"]);
+    }
+
+    #[test]
+    fn test_use_path_keyword_renaming() {
+        assert_eq!(path_keyword_renaming_demo::nested::total(), 10 + 5 + 100);
+    }
+
+    #[test]
+    fn test_arrays_of_any_length_implement_traits() {
+        let buffer = [7_u8; 128];
+        assert_eq!(buffer.clone(), buffer);
+        assert!(format!("{buffer:?}").starts_with("[7, 7"));
+    }
+
+    #[test]
+    fn test_lazy_access_apis() {
         use std::cell::LazyCell;
         use std::sync::LazyLock;
 
@@ -5214,49 +4375,13 @@ mod tests {
     }
 
     #[test]
-    fn test_recent_low_level_improvements_part2() {
-        use std::cell::Cell;
-        use std::mem::MaybeUninit;
+    fn test_controlflow_const_methods() {
+        use std::ops::ControlFlow;
 
-        // MaybeUninit 数组转换（Rust 1.95）
-        let mut slots: [MaybeUninit<u32>; 3] = [MaybeUninit::uninit(); 3];
-        slots[0].write(10);
-        slots[1].write(20);
-        slots[2].write(30);
-        let whole: MaybeUninit<[u32; 3]> = slots.into();
-        let slots_again: [MaybeUninit<u32>; 3] = whole.into();
-        let sum: u32 = unsafe { slots_again.into_iter().map(|s| s.assume_init()).sum() };
-        assert_eq!(sum, 60);
-
-        // Cell 数组 AsRef（Rust 1.95）
-        let cells = Cell::new([1u32, 2, 3]);
-        let as_array: &[Cell<u32>; 3] = <Cell<[u32; 3]> as AsRef<[Cell<u32>; 3]>>::as_ref(&cells);
-        as_array[0].set(as_array[0].get() + 1);
-        assert_eq!(cells.get(), [2, 2, 3]);
-
-        // 裸指针 as_ref_unchecked / as_mut_unchecked（Rust 1.95）
-        let value = 42u32;
-        let raw_const = &value as *const u32;
-        assert_eq!(unsafe { raw_const.as_ref_unchecked() }, &42);
-        let mut mutable = 7u32;
-        let raw_mut = &mut mutable as *mut u32;
-        *unsafe { raw_mut.as_mut_unchecked() } += 1;
-        assert_eq!(mutable, 8);
-
-        // Layout repeat 系列（Rust 1.95）
-        let elem = std::alloc::Layout::new::<u32>();
-        let (array_layout, stride) = elem.repeat(4).unwrap();
-        assert_eq!(stride, 4);
-        assert_eq!(array_layout.size(), 16);
-        assert_eq!(elem.repeat_packed(4).unwrap().size(), 16);
-
-        // ControlFlow const 方法（Rust 1.95）
-        const IS_BREAK: bool = std::ops::ControlFlow::<u32, u32>::Break(3).is_break();
-        assert!(IS_BREAK);
-
-        // RepeatN: Default（Rust 1.97）
-        let empty: std::iter::RepeatN<u8> = Default::default();
-        assert_eq!(empty.count(), 0);
+        // is_break / is_continue 可以在常量求值里使用（Rust 1.95）
+        const IS_BREAK: bool = ControlFlow::<u32, u32>::Break(3).is_break();
+        const IS_CONTINUE: bool = ControlFlow::<u32, u32>::Continue(1).is_continue();
+        assert_eq!([IS_BREAK, IS_CONTINUE], [true, true]);
     }
 }
 

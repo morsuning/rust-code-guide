@@ -1,12 +1,6 @@
-#![allow(
-    dead_code,
-    unused_variables,
-    unused_imports,
-    unused_mut,
-    unused_assignments,
-    unused_macros,
-    deprecated
-)]
+// 教程里的类型、字段和方法经常只为演示语法而定义，不一定会被全部读取或调用，所以允许 dead_code；
+// 其他 lint（未使用的导入、变量、可变性等）必须保持干净，不要再给模块添加新的 allow。
+#![allow(dead_code)]
 
 // Rust 迭代器（Iterators）
 // 深入讲解迭代器概念、适配器、消费者、自定义迭代器等函数式编程特性
@@ -948,6 +942,7 @@ fn copyable_range_types() {
     let ri: RangeInclusive<usize> = (1..=2).into();
     let rf: RangeFrom<usize> = (3..).into();
     let rt: RangeToInclusive<usize> = (..=5).into();
+    println!("四种新范围类型的 Debug 输出: {r:?}，{ri:?}，{rf:?}，{rt:?}");
 
     // 新类型可以随意复制（Copy），这是旧类型做不到的。
     // 一个 `Span` 结构体可以直接存放范围，然后被到处传递。
@@ -983,14 +978,138 @@ fn copyable_range_types() {
     // RangeToInclusive 和旧版一样支持 Copy，这里展示它作为边界判断的用法。
     println!("RangeToInclusive(..=5) contains(5) = {}", rt.contains(&5));
 
-    // 未来版本会把 `0..5` 字面量默认解析成新类型，
-    // 同时旧类型会迁移到 `core::range::legacy` 模块。
-    // 现在写的代码两种都兼容，迁移时不会破坏。
+    // 未来的 edition 会把 `0..5` 字面量默认解析成新类型，
+    // 旧类型则通过 `core::range::legacy` 模块继续提供（该模块已在 Rust 1.98 稳定，见下一节）。
+    // 现在写的代码用 `RangeBounds` 这类抽象来接收范围，两种类型都能兼容。
 
     // 小结：
     // 1. 新范围类型解决的是“Copy 与迭代互斥”的设计难题
     // 2. 通过 `.into()` 从旧语法构造，向后兼容
     // 3. 泛型接口用 RangeBounds 抽象，新旧类型无缝混用
+    println!();
+}
+
+// ===========================================
+// 10. 迭代器与范围补充（Rust 1.97-1.99）
+// ===========================================
+
+// 迭代与范围相关的四处补充：
+// - `std::range::legacy`（1.98）：旧范围类型有了“官方点名路径”；
+//   新范围模块还补充导出了 `RangeFull` 和 `RangeTo`
+// - `RepeatN` 实现了 `Default`（1.97）
+// - 当 `I: FusedIterator` 时，`StepBy<I>` 也实现了 `FusedIterator`（1.99）
+// - `Box<[T; N]>` 可以按值迭代（`IntoIterator`，1.99），也支持 `&` / `&mut` 遍历
+// - 已耗尽的 `RangeInclusive` 的内部状态不再有保证（1.99，行为变化提示）
+//
+// 对新手来说，这一节要建立的直觉是：迭代器的“契约”比表面看起来更细——
+// 耗尽之后能不能继续调用 `next`？按值遍历会不会搬动整块数据？这些都是 API 设计要回答的问题。
+
+fn iterator_updates_198_199() {
+    println!("=== 迭代器与范围补充（Rust 1.97-1.99） ===");
+
+    // ---------- std::range::legacy（Rust 1.98） ----------
+    //
+    // 上一节说过，新范围类型最终会成为 `0..5` 字面量的默认类型，旧类型则要“退居二线”。
+    // 为了让代码在迁移期里能**明确指称旧类型**，1.98 稳定了 `std::range::legacy` 模块，
+    // 它只是把旧类型重新导出，和 `std::ops` 里的是同一个类型，不是新的拷贝。
+    use std::range::legacy;
+    let old_style: legacy::Range<u32> = 0..3;
+    let same_type: std::ops::Range<u32> = old_style; // 能直接赋值，说明它们就是同一个类型
+    let new_style: std::range::Range<u32> = same_type.clone().into(); // 转成新类型
+    println!("legacy::Range = {same_type:?}，新类型 = {new_style:?}，二者都能遍历");
+    println!(
+        "旧类型遍历: {:?}，新类型遍历: {:?}",
+        same_type.collect::<Vec<_>>(),
+        new_style.iter().collect::<Vec<_>>()
+    );
+
+    // 1.98 还让 `std::range` 导出了 `RangeFull`（`..`）和 `RangeTo`（`..n`）。
+    // 它们本来就没有迭代状态、一直是 Copy，不需要“换新”，
+    // 导出只是为了让 `std::range` 里凑齐全套范围类型，方便统一引入。
+    let all: std::range::RangeFull = ..;
+    let head: std::range::RangeTo<usize> = ..2;
+    let words = ["a", "b", "c", "d"];
+    println!("RangeFull 取全部: {:?}，RangeTo 取前两个: {:?}", &words[all], &words[head]);
+
+    // ---------- StepBy 实现 FusedIterator（Rust 1.99） ----------
+    //
+    // `Iterator` 的契约只保证：返回第一个 `None` 之前的行为是正常的。
+    // 一旦返回过 `None`，再调用 `next()` 会怎样，**契约没有规定**——
+    // 一个不守规矩的迭代器完全可以“耗尽之后又吐出新元素”。
+    struct Flaky(u8);
+    impl Iterator for Flaky {
+        type Item = u8;
+        fn next(&mut self) -> Option<u8> {
+            self.0 += 1;
+            match self.0 {
+                3 => None,        // 第 3 次：宣告耗尽
+                n => Some(n),     // 其余各次：照样产出，包括 None 之后！
+            }
+        }
+    }
+    let mut flaky = Flaky(0);
+    let seen: Vec<_> = (0..5).map(|_| flaky.next()).collect();
+    println!("不守规矩的迭代器: {seen:?}（None 之后居然又有了元素）");
+
+    // `FusedIterator` 是一个标记 trait，表示“一旦返回 None，就永远返回 None”。
+    // 泛型代码可以据此省掉防御性的检查，`.fuse()` 适配器也能据此省掉自己的状态标记。
+    // 对于没有这个保证的迭代器，可以用 `.fuse()` 强制补上：
+    let mut fused = Flaky(0).fuse();
+    let seen: Vec<_> = (0..5).map(|_| fused.next()).collect();
+    println!("加上 fuse() 之后: {seen:?}");
+
+    // 1.99 之前，`step_by` 返回的 `StepBy` 并不满足这个约束；现在只要底层迭代器满足（`0..10` 就满足），它也就满足了：
+    use std::iter::FusedIterator;
+    fn requires_fused<I: FusedIterator>(it: I) -> usize {
+        it.count()
+    }
+    println!("(0..10).step_by(3) 可以传给要求 FusedIterator 的泛型函数: {}", requires_fused((0..10).step_by(3)));
+
+    // ---------- Box<[T; N]> 按值迭代（Rust 1.99） ----------
+    //
+    // `Box<[T; N]>` 是“堆上的定长数组”。以前 `for x in boxed` 无法直接编译，
+    // 只能先 `*boxed` 把数组整个搬出来，数组很大时还可能先搬回栈上。
+    // 现在 `Box<[T; N]>` 自己就实现了 `IntoIterator`：
+    // - 按值遍历：每个元素的所有权交给循环变量，数组留在堆上，不需要搬回栈
+    // - `&boxed` / `&mut boxed`：和数组、切片一样按引用遍历
+    let owned: Box<[String; 3]> = Box::new(["甲".to_string(), "乙".to_string(), "丙".to_string()]);
+    let mut iter = owned.into_iter(); // 按值：Item = String
+    let first = iter.next();
+    println!("按值取走第一个元素: {first:?}，剩余（还没被取走的）: {:?}", iter.as_slice());
+
+    let mut scores: Box<[i32; 3]> = Box::new([60, 70, 80]);
+    for score in &mut scores {
+        *score += 5; // 按可变引用遍历，原地修改
+    }
+    let total: i32 = (&scores).into_iter().sum(); // 按共享引用遍历
+    println!("加分后: {scores:?}，总分 {total}");
+
+    // ---------- 已耗尽的 RangeInclusive（Rust 1.99） ----------
+    //
+    // `a..=b` 的迭代在 1.99 做了更好的优化。副作用是：
+    // 一个已经被迭代耗尽的 `RangeInclusive`，它的 `start()` / `end()` 返回什么、
+    // 把它当成切片下标会怎样，都可能和以前不同。
+    // 这些行为此前从来没有被保证过，所以官方不把它当作破坏性变更；
+    // 但如果你的代码依赖“耗尽之后的范围长什么样”，现在是时候改掉了——
+    // 要判断是否耗尽，请用 `is_empty()`，而不是去比较端点。
+    let mut finished = 1..=3;
+    finished.by_ref().for_each(drop); // 把它迭代到耗尽
+    println!("耗尽后 is_empty() = {}", finished.is_empty());
+
+    // Rust 1.97: RepeatN 实现 Default
+    //
+    // RepeatN 是 `repeat_n(x, n)` 产生的迭代器，表示“重复 n 次”。
+    // 现在它可以 Default 构造（空重复迭代器），
+    // 方便在泛型代码里用 Default::default() 占位。
+    let empty: std::iter::RepeatN<u8> = Default::default();
+    let count = empty.count();
+    println!("Default 的 RepeatN 元素数量: {count}");
+
+    // 小结：
+    // 1. `legacy` 模块给旧范围类型留了正式的“名分”，迁移期代码可以放心指称它
+    // 2. `FusedIterator` 表达“None 之后永远是 None”，底层迭代器满足它时，`StepBy` 现在也满足
+    // 3. `Box<[T; N]>` 终于可以直接 `for` 遍历，且不必把大数组搬回栈上
+    // 4. 不要依赖未被保证的行为（比如耗尽后的范围端点），它们会随优化而变化
     println!();
 }
 
@@ -1011,6 +1130,7 @@ pub fn main() {
     iterator_patterns();
     iterator_example_program();
     copyable_range_types();
+    iterator_updates_198_199();
 
     println!("迭代器演示完成！");
 }
@@ -1021,7 +1141,58 @@ pub fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    #[test]
+    fn test_iterator_updates_198_199() {
+        use std::iter::FusedIterator;
+        use std::range::legacy;
+
+        // RepeatN 实现 Default（Rust 1.97）：默认值是空的重复迭代器
+        let empty: std::iter::RepeatN<u8> = Default::default();
+        assert_eq!(empty.count(), 0);
+
+        // legacy::Range 与 std::ops::Range 是同一个类型
+        let old_style: legacy::Range<u32> = 0..3;
+        let same_type: std::ops::Range<u32> = old_style;
+        let new_style: std::range::Range<u32> = same_type.clone().into();
+        assert_eq!(same_type.collect::<Vec<_>>(), [0, 1, 2]);
+        assert_eq!(new_style.iter().collect::<Vec<_>>(), [0, 1, 2]);
+
+        // RangeFull / RangeTo 可以通过 std::range 引入并用于切片
+        let words = ["a", "b", "c", "d"];
+        let all: std::range::RangeFull = ..;
+        let head: std::range::RangeTo<usize> = ..2;
+        assert_eq!(&words[all], &["a", "b", "c", "d"]);
+        assert_eq!(&words[head], &["a", "b"]);
+
+        // StepBy 满足 FusedIterator（编译期约束 + 运行期行为）
+        fn requires_fused<I: FusedIterator>(it: I) -> usize {
+            it.count()
+        }
+        assert_eq!(requires_fused((0..10).step_by(3)), 4);
+        let mut stepped = (0..4).step_by(2);
+        assert_eq!(stepped.by_ref().count(), 2);
+        assert_eq!(stepped.next(), None);
+        assert_eq!(stepped.next(), None);
+
+        // Box<[T; N]> 的三种遍历方式
+        let owned: Box<[String; 3]> = Box::new(["甲".into(), "乙".into(), "丙".into()]);
+        let mut iter = owned.into_iter();
+        assert_eq!(iter.next().as_deref(), Some("甲"));
+        assert_eq!(iter.as_slice(), ["乙", "丙"]);
+        assert_eq!(iter.collect::<Vec<_>>(), ["乙", "丙"]);
+
+        let mut scores: Box<[i32; 3]> = Box::new([60, 70, 80]);
+        for score in &mut scores {
+            *score += 5;
+        }
+        assert_eq!(*scores, [65, 75, 85]);
+        assert_eq!((&scores).into_iter().sum::<i32>(), 225);
+
+        // 耗尽后用 is_empty() 判断，而不是比较端点
+        let mut finished = 1..=3;
+        finished.by_ref().for_each(drop);
+        assert!(finished.is_empty());
+    }
 
     #[test]
     fn test_iterator_next() {

@@ -1,10 +1,6 @@
-#![allow(
-    dead_code,
-    unused_variables,
-    unused_imports,
-    unused_mut,
-    unused_assignments
-)]
+// 教程里的类型、字段和方法经常只为演示语法而定义，不一定会被全部读取或调用，所以允许 dead_code；
+// 其他 lint（未使用的导入、变量、可变性等）必须保持干净，不要再给模块添加新的 allow。
+#![allow(dead_code)]
 
 // Rust 并发编程（Concurrency）
 // 深入讲解线程、通道、共享状态、原子操作等并发编程特性
@@ -79,15 +75,18 @@ fn thread_basics() {
     handle.join().unwrap();
 
     // 线程管理的最佳实践：
-    // 1. 总是使用 move 闭包来避免借用检查问题
-    // 2. 合理使用 join() 确保线程完成，避免僵尸线程
+    // 1. 传给 `thread::spawn` 的闭包通常需要 `move`：线程可能比当前函数活得更久，
+    //    闭包必须是 `'static`，不能借用局部变量；而 `thread::scope` 里的线程保证在作用域内结束，
+    //    可以直接借用局部变量，不需要 `move`
+    // 2. 用 join() 等待线程结束并拿到它的结果：没有 join 的线程会在主线程退出时被直接终止，
+    //    线程里的 panic 也不会被发现
     // 3. 为线程设置有意义的名称，便于调试
     // 4. 注意线程的创建开销，避免创建过多短命线程
     // 5. 使用线程池来管理大量并发任务
 
     // Rust 线程的优势：
-    // 1. 内存安全：编译时保证没有数据竞争
-    // 2. 零成本抽象：没有运行时开销
+    // 1. 内存安全：编译时保证没有数据竞争（注意：数据竞争不等于所有的竞态条件，死锁和逻辑竞态仍需自己避免）
+    // 2. 编译期检查没有运行时开销：Send / Sync 的检查完全发生在编译期（线程本身的创建与调度开销当然仍然存在，见第 4 条）
     // 3. 可组合性：与其他并发原语良好集成
     // 4. 错误处理：通过 Result 处理线程创建失败
 
@@ -331,7 +330,8 @@ fn shared_state_concurrency() {
 // ===========================================
 
 // 原子操作是并发编程中的基础构建块，它们提供了无锁的并发访问
-// 原子操作在单个 CPU 指令中完成，不会被其他线程中断
+// 原子操作对其他线程来说是不可分割的：要么完整生效，要么完全没发生，
+// 不会被别的线程看到“做了一半”的状态（硬件用一条或一小段专用指令来保证这一点）
 // 这是实现更复杂并发原语（如 Mutex）的基础
 
 fn atomic_operations() {
@@ -877,7 +877,6 @@ fn barrier_usage() {
 fn parallel_data_processing() {
     use std::sync::{Arc, Barrier};
     use std::thread;
-    use std::time::Duration;
 
     // 模拟数据：将一个大数组分成多个部分并行处理
     let data: Vec<i32> = (1..=100).collect();
@@ -965,9 +964,6 @@ fn parallel_data_processing() {
 fn concurrency_patterns() {
     println!("=== 并发模式 ===");
 
-    use std::sync::{Arc, Mutex, mpsc};
-    use std::thread;
-    use std::time::Duration;
 
     // 模式1：生产者-消费者模式
     // 这是最经典的并发模式之一，用于解耦数据的产生和处理
@@ -995,8 +991,8 @@ fn concurrency_patterns() {
     // 5. 可扩展性：系统的扩展需求
     //
     // Rust 中的并发优势：
-    // 1. 类型安全：编译时保证并发安全
-    // 2. 零成本抽象：无运行时开销
+    // 1. 类型安全：编译时保证没有数据竞争
+    // 2. 编译期检查零开销：Send / Sync 约束只在编译期检查（锁、通道本身的运行时开销仍然存在）
     // 3. 所有权系统：避免数据竞争
     // 4. 错误处理：强制的错误处理机制
 
@@ -1303,10 +1299,6 @@ fn master_worker_pattern() {
 fn concurrent_data_structures() {
     println!("=== 并发数据结构 ===");
 
-    use std::collections::HashMap;
-    use std::sync::{Arc, Mutex};
-    use std::thread;
-    use std::time::Duration;
 
     // 示例1：并发哈希表（Concurrent HashMap）
     // 使用单个互斥锁保护整个哈希表，简单但扩展性有限
@@ -1332,8 +1324,8 @@ fn concurrent_data_structures() {
     //
     // Rust 并发数据结构的优势：
     // 1. 类型安全：编译时保证线程安全
-    // 2. 零成本抽象：无运行时开销
-    // 3. 内存安全：避免数据竞争和内存泄漏
+    // 2. 编译期检查零开销：Send / Sync 约束只在编译期检查（锁、通道本身的运行时开销仍然存在）
+    // 3. 内存安全：避免数据竞争（注意：Rust 并不保证不泄漏内存，`Arc` 的循环引用仍然会泄漏）
     // 4. 组合性：可以与其他并发原语自由组合
 
     println!();
@@ -1494,8 +1486,7 @@ fn concurrent_hashmap_example() {
 fn segmented_hashmap_example() {
     use std::collections::HashMap;
     use std::hash::Hash;
-    use std::sync::{Arc, Mutex};
-    use std::thread;
+    use std::sync::Mutex;
 
     // 分段锁哈希表：提高并发度的实现
     #[derive(Debug)]
@@ -1658,10 +1649,10 @@ fn send_and_sync_traits() {
     use std::thread;
 
     // 示例：使用 Send trait 的类型
-    fn send_example<T: Send + 'static>(data: T) {
+    fn send_example<T: Send + std::fmt::Debug + 'static>(data: T) {
         thread::spawn(move || {
-            println!("在新线程中使用数据: {:?}", std::any::type_name::<T>());
-            // data 的所有权被移动到新线程
+            // data 的所有权被移动到新线程，并在新线程里使用
+            println!("在新线程中使用数据: {:?}（类型 {}）", data, std::any::type_name::<T>());
         });
     }
 
@@ -1687,7 +1678,6 @@ fn send_and_sync_traits() {
     // 对于自定义类型，通常不需要手动实现
     // 但有时需要为包含原始指针的类型实现
 
-    use std::ptr;
 
     // 自定义的线程安全指针包装器
     #[derive(Debug)]
@@ -1751,9 +1741,8 @@ fn send_and_sync_traits() {
 fn lock_free_programming() {
     println!("=== 无锁编程 ===");
 
-    use std::ptr;
     use std::sync::Arc;
-    use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::thread;
 
     // 示例1：无锁计数器
@@ -1879,8 +1868,9 @@ fn lock_free_programming() {
     // 优势：
     // 1. 性能：避免了锁的开销和争用
     // 2. 可扩展性：在多核系统上表现更好
-    // 3. 死锁安全：不会发生死锁
-    // 4. 公平性：没有线程饥饿问题
+    // 3. 死锁安全：不会发生死锁（但自旋重试的循环可能出现活锁）
+    // 4. 进展保证：lock-free 只保证“整体上总有线程在前进”，单个线程仍可能因为不断重试而饥饿；
+    //    只有 wait-free 才保证每个线程都能在有限步内完成
     //
     // 挑战：
     // 1. 复杂性：算法难以理解和实现
@@ -1910,7 +1900,7 @@ fn lock_free_programming() {
 fn concurrency_error_handling() {
     println!("=== 并发错误处理 ===");
 
-    use std::sync::{Arc, Mutex, mpsc};
+    use std::sync::mpsc;
     use std::thread;
     use std::time::Duration;
 
@@ -1977,7 +1967,8 @@ fn concurrency_error_handling() {
     }
 
     // 示例2：恐慌传播和恢复
-    let (panic_tx, panic_rx) = mpsc::channel();
+    // 接收端保持存活（变量名以下划线开头，表示有意不读取），这样线程里的 send 才不会因为通道关闭而失败
+    let (panic_tx, _panic_rx) = mpsc::channel();
 
     // 可能发生恐慌的工作线程
     let panic_handle = thread::spawn(move || {
@@ -2006,7 +1997,8 @@ fn concurrency_error_handling() {
         let (work_tx, work_rx) = mpsc::channel();
 
         // 创建工作线程
-        let handle = thread::spawn(move || {
+        // JoinHandle 被丢弃：线程不会被取消，而是在后台继续运行直到结束
+        let _handle = thread::spawn(move || {
             // 模拟耗时工作
             thread::sleep(Duration::from_millis(timeout_ms / 2));
             work_tx.send("工作完成".to_string()).unwrap();
@@ -2304,7 +2296,7 @@ fn concurrency_example_program() {
         result: String,
     }
 
-    let (task_tx, task_rx) = mpsc::channel();
+    let (task_tx, _task_rx) = mpsc::channel();
     let (result_tx, result_rx) = mpsc::channel();
     let result_tx = Arc::new(Mutex::new(result_tx));
 
@@ -2324,7 +2316,7 @@ fn concurrency_example_program() {
         ];
 
         for task in tasks {
-            let worker_tx: mpsc::Sender<Task> = task_tx.clone();
+            let _worker_tx: mpsc::Sender<Task> = task_tx.clone();
             let worker_result_tx = Arc::clone(&result_tx);
             let current_task_id = task_id;
 
@@ -2485,36 +2477,40 @@ fn concurrency_example_program() {
 }
 
 // ===========================================
-// ===========================================
-// 15. 概念演示：Exclusive<T> 独占访问包装器
+// 15. 概念演示：SyncView<T>（旧称 Exclusive<T>）独占访问包装器
 // ===========================================
 
-// 注意：标准库的 `std::sync::Exclusive<T>` 至今（Rust 1.97）仍是 nightly-only，
-// 尚未在 stable 稳定。本节用教学模拟讲解它的设计思想：
-// 为什么"独占访问"能让一个仅 Send 的类型安全地变为 Sync。
+// 注意：标准库里的这个类型至今（Rust 1.99）仍是 nightly-only（feature = `exclusive_wrapper`），
+// 没有在 stable 稳定。它的名字还变过：早期叫 `std::sync::Exclusive<T>`，
+// 现在叫 `std::sync::SyncView<T>`（文档里保留了 `Exclusive` 这个别名，按旧名字搜索仍能找到它）。
+// 本节用教学模拟讲解它的设计思想：为什么"独占访问"能让一个仅 Send 的类型安全地变为 Sync。
 //
 // 核心思路：
-// - Exclusive<T> 拥有 T，只通过 &mut self 暴露内部值
+// - SyncView<T> 拥有 T，主要通过 &mut self 暴露内部值（只有 T 本身是 Sync 时才额外允许共享访问）
 // - &mut 引用在编译期就保证了独占性（同一时刻只有一个可变借用）
-// - 因此共享引用 &Exclusive<T> 无法触及内部值，天然线程安全
+// - 因此对于不是 Sync 的 T，共享引用 &SyncView<T> 根本没有任何 API 可用，天然线程安全，
+//   所以 SyncView<T> 可以对任意 T 无条件实现 Sync
+//
+// 典型用途：Future 这类“只能被独占使用、通常是 Send 但不是 Sync”的值。
+// 把它包进 SyncView 之后，包含它的结构体就能满足 Sync 的要求，而这个值的功能一点也不受影响。
 //
 // 对比 Mutex：
 // - Mutex 是运行期互斥（加锁/解锁）
-// - Exclusive 是编译期互斥（借用规则）
-// - 两者用途不同：Exclusive 主要用于"只在线程间传递、不共享访问"的场景
+// - SyncView 是编译期互斥（借用规则）
+// - 两者用途不同：SyncView 主要用于"只在线程间传递、不共享访问"的场景
 
 pub fn sync_exclusive() {
-    println!("=== 概念演示：Exclusive<T> 独占访问包装器（尚未稳定） ===");
+    println!("=== 概念演示：SyncView<T>（旧称 Exclusive<T>）独占访问包装器（尚未稳定） ===");
 
     // 教学模拟：与标准库设计一致的最小实现。
     // 真实使用时应等待 stable，或用 nightly 的 `exclusive_wrapper` feature。
-    struct Exclusive<T: ?Sized> {
+    struct SyncView<T: ?Sized> {
         inner: T,
     }
 
-    impl<T> Exclusive<T> {
-        pub const fn new(t: T) -> Exclusive<T> {
-            Exclusive { inner: t }
+    impl<T> SyncView<T> {
+        pub const fn new(t: T) -> SyncView<T> {
+            SyncView { inner: t }
         }
 
         pub fn get_mut(&mut self) -> &mut T {
@@ -2522,20 +2518,20 @@ pub fn sync_exclusive() {
         }
     }
 
-    // Exclusive 实现了 Sync，只要 T 是 Sized
-    // 这是因为要访问 inner，必须拥有 Exclusive 的 &mut 引用
+    // SyncView 对任意 T（包括非 Sized 的）都无条件实现 Sync
+    // 这是因为要访问 inner，必须拥有 SyncView 的 &mut 引用
     // 而 &mut 引用本身就是互斥的
-    unsafe impl<T: ?Sized> Sync for Exclusive<T> {}
+    unsafe impl<T: ?Sized> Sync for SyncView<T> {}
 
-    let mut ex = Exclusive::new(42);
+    let mut ex = SyncView::new(42);
 
     // 独占访问
     let val = ex.get_mut();
     *val += 1;
 
-    println!("Exclusive 值: {}", ex.inner);
+    println!("SyncView 值: {}", ex.inner);
 
-    println!("Exclusive<T> 的主要用途是适配既有的 Send 类型为 Sync，用于特定并发场景。");
+    println!("SyncView<T> 的主要用途是适配“通常是 Send 但不是 Sync”的类型（如 Future），让外层结构体满足 Sync。");
     println!();
 }
 
@@ -2670,8 +2666,9 @@ fn concurrency_from_impls() {
     // Rust 1.96: `From<T> for LazyLock<T, F>`
     //
     // LazyLock 是线程安全的懒初始化容器（1.80 稳定）。
-    // 以前必须 `LazyLock::new(|| value)`，现在如果值已经算好，
-    // 可以直接 `value.into()` 构造，闭包类型会被推断成 `fn() -> T`。
+    // 以前必须 `LazyLock::new(|| value)`，现在如果值已经算好，可以直接 `value.into()` 构造。
+    // 注意：这个 `From` 实现对 `F` 没有任何约束，编译器无法从 `value` 推断出 `F`，
+    // 所以需要像下面这样把类型标注成 `LazyLock<T, fn() -> T>`。
     use std::sync::LazyLock;
 
     let precomputed: LazyLock<String, fn() -> String> = "hello".to_string().into();
@@ -2690,6 +2687,102 @@ fn concurrency_from_impls() {
     // 1. AssertUnwindSafe 的 From 让 catch_unwind 包装少一层样板
     // 2. LazyLock 的 From 让“已有值”与“懒初始化”两种模式无缝切换
     // 3. 这些实现本质上都是语法糖，真正重要的是理解底层语义
+    println!();
+}
+
+// ===========================================
+// 18. Rust 1.98-1.99 原子与线程局部变量补充
+// ===========================================
+
+// 并发原语上的两件小事：
+// - `AtomicU32::from_mut` / `from_mut_slice` / `get_mut_slice` 等（1.98）——
+//   在“普通整数”和“原子整数”之间安全地来回切换视角
+// - `LocalKey<Cell<T>>::update`（1.99）——线程局部计数器“读-改-写”一步完成
+//
+// 对新手来说，这一节想说明的是：原子类型和普通整数在内存里是同一回事，
+// 区别只在**访问规则**。所有权与借用规则正好能保证“谁在什么时候可以用哪种规则访问”。
+
+fn atomic_and_tls_updates_198_199() {
+    println!("=== Rust 1.98-1.99 原子与线程局部变量补充 ===");
+
+    use std::cell::Cell;
+    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::thread;
+
+    // ---------- from_mut_slice / get_mut_slice / from_mut（Rust 1.98） ----------
+    //
+    // 很常见的流程是：先用普通整数准备数据，中间一段时间交给多个线程并发处理，最后再当普通整数用。
+    // 以前要么一开始就全用原子类型（之后每次读取都得 `load`），要么写 unsafe 转换。
+    // 1.98 提供了**安全**的双向转换：
+    // - `AtomicU32::from_mut(&mut u32) -> &mut AtomicU32`
+    // - `AtomicU32::from_mut_slice(&mut [u32]) -> &mut [AtomicU32]`
+    // - `AtomicU32::get_mut_slice(&mut [AtomicU32]) -> &mut [u32]`
+    //
+    // 为什么安全？因为入口是 `&mut`：持有独占可变引用，说明此刻没有任何别的线程能碰这块内存。
+    // 转成原子类型后，借用期间可以放心地把共享引用分给多个线程；
+    // 借用一结束，`&mut` 的独占权恢复，数据又回到普通整数的世界。
+    let mut hits = [0_u32; 4];
+    {
+        let atomic_hits: &mut [AtomicU32] = AtomicU32::from_mut_slice(&mut hits);
+        // 作用域线程（thread::scope）允许线程直接借用栈上的数据，作用域结束前保证它们都已结束。
+        thread::scope(|scope| {
+            for worker in 0..4_u32 {
+                let shared: &[AtomicU32] = &*atomic_hits; // 重新借成共享引用，每个线程拿一份
+                scope.spawn(move || {
+                    for slot in shared {
+                        slot.fetch_add(worker + 1, Ordering::Relaxed);
+                    }
+                });
+            }
+        });
+    } // 原子视角的借用到此结束，`hits` 重新可以当普通数组使用
+    println!("并发累加后读到的普通数组: {hits:?}（每格 = 1+2+3+4）");
+
+    // 反方向：`get_mut_slice` 把 `&mut [AtomicU32]` 变回 `&mut [u32]`。
+    // 并发阶段结束后，就能直接用普通切片的全部 API（排序、求和、拷贝……），不必逐个 `load`。
+    let mut counters = [AtomicU32::new(3), AtomicU32::new(1), AtomicU32::new(2)];
+    let plain: &mut [u32] = AtomicU32::get_mut_slice(&mut counters);
+    plain.sort();
+    println!("取回普通切片后排序: {plain:?}");
+
+    // 单个整数用 `from_mut`：
+    let mut flag_bits = 0b0101_u32;
+    AtomicU32::from_mut(&mut flag_bits).fetch_or(0b1000, Ordering::Relaxed);
+    println!("from_mut + fetch_or 之后: {flag_bits:#06b}");
+
+    // 两点提醒：
+    // 1. 64 位原子（如 `AtomicU64`）的这组方法只在“原子类型与整数对齐相同”的目标上提供；
+    //    某些 32 位平台上 `u64` 的对齐比 `AtomicU64` 小，那里没有这些方法。
+    // 2. 发布说明里写作 `Atomic<T>::from_mut`，但泛型类型 `Atomic<T>` 本身目前仍是不稳定特性
+    //    （`generic_atomic`）。stable 上请使用 `AtomicU32`、`AtomicBool`、`AtomicPtr<T>` 等具体类型名。
+
+    // ---------- LocalKey<Cell<T>>::update（Rust 1.99） ----------
+    //
+    // 线程局部变量里放一个 `Cell<T>`，是最常见的“每线程独立计数器”写法。
+    // Rust 1.73 给 `LocalKey<Cell<T>>` 加了 `get` / `set` / `take` / `replace`，
+    // 但“读出来、改一下、写回去”仍然要写成两步：`COUNTER.set(COUNTER.get() + 1)`。
+    // 1.99 新增 `update`，接收一个 `FnOnce(T) -> T`，一步完成（要求 `T: Copy`），
+    // 和 1.88 的 `Cell::update` 同名同义。
+    thread_local! {
+        static REQUESTS: Cell<u32> = const { Cell::new(0) };
+    }
+    REQUESTS.update(|n| n + 1);
+    REQUESTS.update(|n| n * 10);
+    println!("主线程的计数器: {}", REQUESTS.get());
+
+    // “线程局部”意味着每个线程有自己独立的一份，互不影响：
+    let other = thread::spawn(|| {
+        REQUESTS.update(|n| n + 5); // 新线程从 0 开始
+        REQUESTS.get()
+    })
+    .join()
+    .unwrap();
+    println!("另一个线程的计数器: {other}，主线程的仍是: {}", REQUESTS.get());
+
+    // 小结：
+    // 1. `from_mut*`：用 `&mut` 的独占性换取一段“安全的原子视角”，无需 unsafe
+    // 2. `get_mut_slice`：并发结束后无损地回到普通整数视角
+    // 3. `LocalKey<Cell<T>>::update`：线程局部计数器的“读-改-写”从两步变一步
     println!();
 }
 
@@ -2718,6 +2811,7 @@ pub fn main() {
     sync_exclusive();
     latest_concurrency_primitives();
     concurrency_from_impls();
+    atomic_and_tls_updates_198_199();
 
     println!("并发编程演示完成！");
 }
@@ -2729,6 +2823,57 @@ pub fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_atomic_and_tls_updates_198_199() {
+        use std::cell::Cell;
+        use std::sync::atomic::{AtomicU32, Ordering};
+        use std::thread;
+
+        // from_mut_slice：4 个线程并发累加，结束后直接读普通数组
+        let mut hits = [0_u32; 4];
+        {
+            let atomic_hits = AtomicU32::from_mut_slice(&mut hits);
+            thread::scope(|scope| {
+                for worker in 0..4_u32 {
+                    let shared: &[AtomicU32] = &*atomic_hits;
+                    scope.spawn(move || {
+                        for slot in shared {
+                            slot.fetch_add(worker + 1, Ordering::Relaxed);
+                        }
+                    });
+                }
+            });
+        }
+        assert_eq!(hits, [10, 10, 10, 10]);
+
+        // get_mut_slice：回到普通切片后可以排序
+        let mut counters = [AtomicU32::new(3), AtomicU32::new(1), AtomicU32::new(2)];
+        let plain = AtomicU32::get_mut_slice(&mut counters);
+        plain.sort();
+        assert_eq!(plain, [1, 2, 3]);
+
+        // from_mut：对单个普通整数做原子操作，修改直接反映在原变量上
+        let mut bits = 0b0101_u32;
+        AtomicU32::from_mut(&mut bits).fetch_or(0b1000, Ordering::Relaxed);
+        assert_eq!(bits, 0b1101);
+
+        // LocalKey<Cell<T>>::update：每个线程独立计数
+        thread_local! {
+            static REQUESTS: Cell<u32> = const { Cell::new(0) };
+        }
+        REQUESTS.update(|n| n + 1);
+        REQUESTS.update(|n| n * 10);
+        assert_eq!(REQUESTS.get(), 10);
+        let other = thread::spawn(|| {
+            REQUESTS.update(|n| n + 5);
+            REQUESTS.get()
+        })
+        .join()
+        .unwrap();
+        assert_eq!(other, 5);
+        assert_eq!(REQUESTS.get(), 10);
+    }
 
     #[test]
     fn test_atomic_counter() {

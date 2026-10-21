@@ -1,10 +1,6 @@
-#![allow(
-    dead_code,
-    unused_variables,
-    unused_imports,
-    unused_mut,
-    unused_assignments
-)]
+// 教程里的类型、字段和方法经常只为演示语法而定义，不一定会被全部读取或调用，所以允许 dead_code；
+// 其他 lint（未使用的导入、变量、可变性等）必须保持干净，不要再给模块添加新的 allow。
+#![allow(dead_code)]
 
 // Rust 模式匹配
 // 深入讲解 Rust 模式匹配系统的各个方面，包括 match 表达式、模式语法、解构、守卫等高级特性
@@ -1080,6 +1076,144 @@ fn pattern_matching_example_program() {
 }
 
 // ===========================================
+// 15. 范围模式补充：半开区间、开放区间与嵌套或模式（Rust 1.80 / 1.55 / 1.53）
+// ===========================================
+
+// 范围模式现在有这些写法：
+// - `a..=b`：闭区间，包含 b（早已稳定）
+// - `a..b`：半开区间，**不包含** b（Rust 1.80）
+// - `a..`：没有上界，一直到该类型的最大值（Rust 1.55）
+// - `..b`：没有下界，到 b 之前为止、不含 b（Rust 1.80）
+//
+// 半开区间的好处：相邻的区间首尾相接，上一个区间的终点正好是下一个区间的起点，
+// 不用再手动写“减一”（`0..=5`、`6..=11` 这种写法既难读，改边界时也容易漏改）。
+// 编译器还会检查整数区间有没有覆盖所有取值：有缝隙或漏掉某一段，就会编译失败，
+// 所以不用再加一个无意义的 `_` 分支“兜底”。
+//
+// 嵌套或模式（Rust 1.53）：`|` 可以出现在模式的任意内层位置，而不只是整个模式的最外层。
+// 以前只能把整条模式重复写多遍（`Some(1) | Some(2) | Some(3)`），现在可以把公共部分提出来：`Some(1 | 2 | 3)`。
+
+fn range_patterns_and_nested_or_patterns() {
+    println!("=== 范围模式补充：半开区间、开放区间与嵌套或模式（Rust 1.80 / 1.55 / 1.53） ===");
+
+    // ---------- 半开区间 + 开放区间 ----------
+    // 一天里的时段：每个区间的终点就是下一个区间的起点，读起来像时间轴
+    fn period_of(hour: u32) -> &'static str {
+        match hour {
+            0..6 => "凌晨",
+            6..12 => "上午",
+            12..18 => "下午",
+            18..24 => "晚上",
+            24.. => "无效的小时", // 开放区间：24 及以上的所有值
+        }
+    }
+    println!("3 点是{}，12 点是{}，23 点是{}", period_of(3), period_of(12), period_of(23));
+
+    // 温度：用 `..0` 表示“小于 0 的所有整数”，用 `28..` 表示“28 及以上”。
+    // 四个区间合起来恰好覆盖了 i32 的全部取值，所以不需要 `_` 分支。
+    fn describe_temperature(celsius: i32) -> &'static str {
+        match celsius {
+            ..0 => "结冰",
+            0..15 => "寒冷",
+            15..28 => "舒适",
+            28.. => "炎热",
+        }
+    }
+    println!("-5 度: {}，20 度: {}", describe_temperature(-5), describe_temperature(20));
+
+    // ---------- 嵌套或模式 ----------
+    // HTTP 状态码分类：`|` 写在 Some 的括号里面，也可以和半开区间一起用
+    fn classify_status(status: Option<u16>) -> &'static str {
+        match status {
+            Some(200 | 201 | 204) => "成功",
+            Some(301 | 302 | 307 | 308) => "重定向",
+            Some(400..500) => "客户端错误",
+            Some(500..600) => "服务器错误",
+            Some(_) => "其他状态码",
+            None => "没有状态码",
+        }
+    }
+    for status in [Some(204), Some(302), Some(404), Some(503), Some(100), None] {
+        println!("{status:?} -> {}", classify_status(status));
+    }
+
+    // 最佳实践：
+    // 1. 数值分段（分数、时段、温度、HTTP 状态码）优先用半开区间，边界一目了然
+    // 2. 能让编译器检查“区间是否覆盖完整”时，就不要写 `_` 兜底：以后改动边界留下缝隙，会立刻编译失败
+    // 3. 多个取值共用同一个分支时，把 `|` 写在最内层，避免重复书写外层结构
+    println!();
+}
+
+// ===========================================
+// 16. if let 链：用 && 连接多个条件（Rust 1.88，仅 2024 edition）
+// ===========================================
+
+// 想要“同时满足多个模式匹配和布尔条件”时，过去只能一层层嵌套：
+//     if let Some(user) = users.get(&id) {
+//         if user.active {
+//             if let Some(email) = &user.email {
+//                 ...
+//             }
+//         }
+//     }
+// 每多一个条件就多缩进一层，而且各层的 else 没法合并。
+// 1.88 起（仅 Rust 2024 edition），可以用 `&&` 把 `let` 模式和普通布尔条件串在一起：
+//     if let Some(user) = users.get(&id) && user.active && let Some(email) = &user.email { ... }
+// 规则：
+// 1. 从左到右依次求值，前面绑定的变量可以直接用在后面的条件里；任何一环不满足，整个 `if` 就走 `else`
+// 2. 只能用 `&&` 连接，不能用 `||`
+// 3. 同样可以用在 `while` 的条件里
+// 4. 只有 2024 edition 才能用（本项目就是 2024）；2021 edition 的 crate 里不能写
+// 5. 它和第 12 节的“match 分支里的 if let 守卫”（1.95）是两回事：守卫写在 `match` 的分支上，let 链写在 `if` / `while` 的条件里
+
+fn let_chains() {
+    println!("=== if let 链：用 && 连接多个条件（Rust 1.88，2024 edition） ===");
+
+    use std::collections::HashMap;
+
+    struct User {
+        name: String,
+        active: bool,
+        email: Option<String>,
+    }
+
+    // 典型场景：“用户存在 && 账号可用 && 有邮箱”才发送通知，缺任何一项都走同一个 else
+    fn contact_of(users: &HashMap<u32, User>, id: u32) -> String {
+        if let Some(user) = users.get(&id)
+            && user.active
+            && let Some(email) = &user.email
+        {
+            format!("{} <{}>", user.name, email)
+        } else {
+            String::from("找不到可用的联系方式")
+        }
+    }
+
+    let mut users = HashMap::new();
+    users.insert(1, User { name: "小明".into(), active: true, email: Some("ming@example.com".into()) });
+    users.insert(2, User { name: "小红".into(), active: false, email: Some("hong@example.com".into()) });
+    users.insert(3, User { name: "小刚".into(), active: true, email: None });
+    for id in 1..=4 {
+        println!("用户 {id}: {}", contact_of(&users, id));
+    }
+
+    // while 里同样可以用：弹出栈顶元素，并且要求它是正数才继续
+    let mut stack = vec![-1, 3, 2, 1];
+    let mut popped = Vec::new();
+    while let Some(top) = stack.pop()
+        && top > 0
+    {
+        popped.push(top);
+    }
+    println!("遇到非正数之前弹出的元素: {popped:?}，栈里还剩 {stack:?}");
+
+    // 最佳实践：
+    // 1. 凡是“嵌套三层以上的 if let / if”，先考虑能不能用 let 链拍平
+    // 2. 失败时的处理（else）只有一份，逻辑集中；不要为了拍平而把毫不相干的条件硬塞进同一个 if
+    println!();
+}
+
+// ===========================================
 // 主函数
 // ===========================================
 
@@ -1102,6 +1236,8 @@ pub fn main() {
     assert_matches_macro();
     pattern_matching_best_practices();
     pattern_matching_example_program();
+    range_patterns_and_nested_or_patterns();
+    let_chains();
 
     println!("模式匹配演示完成！");
 }
@@ -1112,8 +1248,6 @@ pub fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_match_basics() {
         let number = 3;
@@ -1149,7 +1283,7 @@ mod tests {
         let result = match x {
             Some(n) if n < 5 => "小于 5",
             Some(n) if n == 5 => "等于 5",
-            Some(n) => "大于 5",
+            Some(_) => "大于 5",
             None => "none",
         };
         assert_eq!(result, "等于 5");
@@ -1160,7 +1294,7 @@ mod tests {
         let x = 5;
         let result = match x {
             x @ 1..=5 if x % 2 == 0 => "偶数",
-            x @ 1..=5 => "奇数",
+            1..=5 => "奇数",
             _ => "其他",
         };
         assert_eq!(result, "奇数");
@@ -1169,7 +1303,7 @@ mod tests {
     #[test]
     fn test_if_let() {
         let some_value = Some(5);
-        let mut result = String::new();
+        let result;
 
         if let Some(value) = some_value {
             result = format!("找到 {}", value);
@@ -1354,5 +1488,88 @@ mod tests {
             core::assert_matches!(Some(1), Some(2));
         });
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_range_patterns_and_nested_or_patterns() {
+        fn period_of(hour: u32) -> &'static str {
+            match hour {
+                0..6 => "凌晨",
+                6..12 => "上午",
+                12..18 => "下午",
+                18..24 => "晚上",
+                24.. => "无效的小时",
+            }
+        }
+        // 半开区间：终点属于下一个区间
+        assert_eq!([5, 6, 11, 12, 23, 24].map(period_of), ["凌晨", "上午", "上午", "下午", "晚上", "无效的小时"]);
+
+        fn describe_temperature(celsius: i32) -> &'static str {
+            match celsius {
+                ..0 => "结冰",
+                0..15 => "寒冷",
+                15..28 => "舒适",
+                28.. => "炎热",
+            }
+        }
+        assert_eq!([i32::MIN, -1, 0, 14, 15, 27, 28, i32::MAX].map(describe_temperature),
+            ["结冰", "结冰", "寒冷", "寒冷", "舒适", "舒适", "炎热", "炎热"]);
+
+        // 嵌套或模式 + 半开区间
+        fn classify_status(status: Option<u16>) -> &'static str {
+            match status {
+                Some(200 | 201 | 204) => "成功",
+                Some(301 | 302 | 307 | 308) => "重定向",
+                Some(400..500) => "客户端错误",
+                Some(500..600) => "服务器错误",
+                Some(_) => "其他状态码",
+                None => "没有状态码",
+            }
+        }
+        assert_eq!(classify_status(Some(204)), "成功");
+        assert_eq!(classify_status(Some(308)), "重定向");
+        assert_eq!(classify_status(Some(499)), "客户端错误");
+        assert_eq!(classify_status(Some(500)), "服务器错误");
+        assert_eq!(classify_status(Some(600)), "其他状态码");
+        assert_eq!(classify_status(None), "没有状态码");
+    }
+
+    #[test]
+    fn test_let_chains() {
+        use std::collections::HashMap;
+
+        struct User {
+            active: bool,
+            email: Option<&'static str>,
+        }
+        fn contact_of(users: &HashMap<u32, User>, id: u32) -> Option<&'static str> {
+            if let Some(user) = users.get(&id)
+                && user.active
+                && let Some(email) = user.email
+            {
+                Some(email)
+            } else {
+                None
+            }
+        }
+        let mut users = HashMap::new();
+        users.insert(1, User { active: true, email: Some("a@example.com") });
+        users.insert(2, User { active: false, email: Some("b@example.com") });
+        users.insert(3, User { active: true, email: None });
+        assert_eq!(contact_of(&users, 1), Some("a@example.com"));
+        assert_eq!(contact_of(&users, 2), None); // 账号不可用
+        assert_eq!(contact_of(&users, 3), None); // 没有邮箱
+        assert_eq!(contact_of(&users, 4), None); // 用户不存在
+
+        // while 里的 let 链：遇到非正数就停止，且该元素已被弹出
+        let mut stack = vec![-1, 3, 2, 1];
+        let mut popped = Vec::new();
+        while let Some(top) = stack.pop()
+            && top > 0
+        {
+            popped.push(top);
+        }
+        assert_eq!(popped, [1, 2, 3]);
+        assert!(stack.is_empty());
     }
 }

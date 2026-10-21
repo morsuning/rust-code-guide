@@ -97,5 +97,10 @@ fn main() {
     mod_18_oop_features::main();
     println!();
 
+    // 运行进阶参考
+    println!("19. 进阶参考：");
+    mod_19_advanced_reference::main();
+    println!();
+
     println!("所有教程演示完成！");
 }

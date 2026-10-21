@@ -20,14 +20,4 @@ pub mod mod_15_ffi;
 pub mod mod_16_smart_pointers;
 pub mod mod_17_async_await;
 pub mod mod_18_oop_features;
-
-// 库级别的测试
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn test_all_modules() {
-        // 这个测试确保所有模块都能正确编译
-        // 实际的测试在各个模块中
-        assert!(true);
-    }
-}
+pub mod mod_19_advanced_reference;

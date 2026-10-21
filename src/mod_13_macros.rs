@@ -1,10 +1,6 @@
-#![allow(
-    dead_code,
-    unused_variables,
-    unused_imports,
-    unused_mut,
-    unused_assignments
-)]
+// 教程里的类型、字段和方法经常只为演示语法而定义，不一定会被全部读取或调用，所以允许 dead_code；
+// 其他 lint（未使用的导入、变量、可变性等）必须保持干净，不要再给模块添加新的 allow。
+#![allow(dead_code)]
 
 // Rust 宏系统
 // 深入讲解 Rust 的元编程能力，包括声明式宏、过程宏和高级宏技巧
@@ -402,6 +398,16 @@ fn repetition_patterns() {
 // - 语法上下文（Syntax Contexts）：每个标识符都有其来源信息
 // - 局部变量作用域：宏内部变量不会影响外部同名变量
 // - 宏参数隔离：宏参数在展开时保持其卫生性
+//
+// 重要限制：`macro_rules!` 的卫生性只覆盖**局部变量和循环标签**，并不是全面的卫生：
+// - 宏里定义的函数、结构体、模块等“条目”，名字会直接出现在调用处的作用域里（演示 4）
+// - 宏体里引用的函数、类型等非局部名字，是在**调用处**解析的（演示 5）
+// - 需要引用宏所在 crate 里的东西时，用 `$crate` 写绝对路径（演示 6）
+
+// 供下面“$crate 演示”引用的辅助函数：必须是模块级的公开函数，才能被 `$crate::mod_13_macros::...` 路径找到
+pub fn hygiene_demo_helper() -> &'static str {
+    "来自 crate 根路径的 helper"
+}
 
 fn macro_hygiene() {
     println!("=== 宏卫生 ===");
@@ -448,83 +454,74 @@ fn macro_hygiene() {
     let result = safe_increment!(value);
     println!("安全递增: {} -> {}", value, result);
 
-    // 演示4：卫生性与标识符生成
-    // 使用 $crate 来引用宏定义所在的 crate，确保路径的卫生性
-    // 注意：这个宏在表达式中定义结构体会导致编译错误，暂时注释掉
-    /*
-    macro_rules! create_logger {
+    // 演示4：条目（函数、结构体、模块等）不受卫生性保护
+    // 局部变量是卫生的，但宏里定义的“条目”，名字会直接出现在调用处的作用域里。
+    // 这有时正是我们想要的（宏专门用来批量生成函数、结构体），但要清楚它不是隔离的。
+    macro_rules! define_answer_fn {
         () => {
-            // 使用 $crate 确保引用正确的模块
-            struct Logger {
-                name: String,
+            fn answer_from_macro() -> i32 {
+                42
             }
-
-            impl Logger {
-                fn new(name: &str) -> Self {
-                    Logger {
-                        name: name.to_string(),
-                    }
-                }
-
-                fn log(&self, message: &str) {
-                    println!("[{}] {}", self.name, message);
-                }
-            }
-
-            Logger::new("DefaultLogger")
         };
     }
 
-    let logger = create_logger!();
-    logger.log("这是一条日志消息");
-    */
+    define_answer_fn!();
+    println!("宏里定义的函数在调用处可以直接使用: {}", answer_from_macro());
 
-    // 提供一个简单的替代实现
-    struct Logger {
-        name: String,
+    // 演示5：卫生性的局限——宏体里的“非局部名字”是在调用处解析的
+    // 局部变量按“宏定义处”解析（上面几个演示已经看到了）；
+    // 但宏体里引用的函数、类型等名字，是在**调用处**解析的：
+    // 如果调用处恰好有同名的东西，就会悄悄换成它。
+    fn scale() -> i32 {
+        10
     }
-
-    impl Logger {
-        fn new(name: &str) -> Self {
-            Logger {
-                name: name.to_string(),
-            }
-        }
-
-        fn log(&self, message: &str) {
-            println!("[{}] {}", self.name, message);
-        }
-    }
-
-    let logger = Logger::new("DefaultLogger");
-    logger.log("这是一条日志消息");
-
-    // 演示5：卫生性的局限性
-    // 某些情况下，卫生性可能不够，需要额外的注意
-    macro_rules! risky_macro {
-        () => {
-            // 这个宏可能影响外部的同名变量
-            // 虽然在卫生性上是安全的，但可能在语义上造成混淆
-            let counter = 100;
-            println!("宏内创建的 counter: {}", counter);
+    macro_rules! scaled {
+        ($e:expr) => {
+            $e * scale() // 这里的 scale 是在调用处解析的
         };
     }
 
-    let counter = 50;
-    risky_macro!();
-    println!("外部的 counter: {}", counter);
+    println!("调用处没有同名函数: {}", scaled!(2)); // 2 * 10 = 20
+    {
+        fn scale() -> i32 {
+            100
+        }
+        println!("调用处有同名函数遮蔽: {}", scaled!(2)); // 2 * 100 = 200，而不是 20
+    }
+
+    // 演示6：用 `$crate` 写绝对路径，避免被调用处遮蔽
+    // `$crate` 在展开时总是指向“宏定义所在的 crate”的根，不受调用处的任何名字影响。
+    // 这对用 `#[macro_export]` 导出给其他 crate 使用的宏尤其重要：
+    // 宏体里写 `$crate::some_module::helper()`，无论使用者怎么 `use`、有没有同名的东西，都能找到正确的函数。
+    macro_rules! call_unqualified {
+        () => {
+            hygiene_demo_helper()
+        };
+    }
+    macro_rules! call_with_crate {
+        () => {
+            $crate::mod_13_macros::hygiene_demo_helper()
+        };
+    }
+    {
+        fn hygiene_demo_helper() -> &'static str {
+            "被遮蔽的同名函数"
+        }
+        println!("不带路径的调用: {}", call_unqualified!()); // 被调用处的同名函数遮蔽
+        println!("使用 $crate 的调用: {}", call_with_crate!()); // 仍然指向 crate 根下的那一个
+    }
 
     // 宏卫生的最佳实践：
-    // 1. 避免使用通用的变量名：使用具有描述性的名称
-    // 2. 使用块表达式：将宏展开的代码包装在块中
-    // 3. 谨慎使用标识符：避免可能与外部冲突的标识符
-    // 4. 考虑 $crate：在跨 crate 使用时使用 $crate
-    // 5. 文档化行为：清楚说明宏的副作用和卫生性保证
+    // 1. 需要产出一个值时，用块表达式 `{ ... }` 把展开的代码包起来，避免临时变量泄漏到外面
+    // 2. 宏体里引用其他项（函数、类型、trait）时，用 `$crate::...` 或 `::std::...` 写绝对路径，
+    //    不要依赖调用处恰好有同名的东西
+    // 3. 宏里定义的条目（函数、结构体）会直接进入调用处作用域，起名要考虑冲突，或把它们放进模块
+    // 4. 文档化行为：清楚说明宏会产生哪些名字、依赖哪些外部名字
 
     // 与 C/C++ 宏的对比：
     // C/C++ 宏：简单的文本替换，容易产生命名冲突
-    // Rust 宏：语法级别的转换，具有卫生性保证
-    // 这使得 Rust 宏更加安全和可预测
+    // Rust 宏：语法级别的转换，局部变量和标签是卫生的，其余名字仍要留意解析位置
+    // 这使得 Rust 宏比文本替换安全得多，但并非万无一失
 
     println!();
 }
@@ -588,7 +585,7 @@ fn procedural_macros_basics() {
     let file = file!(); // 当前文件名
     let line = line!(); // 当前行号
     let column = column!(); // 当前列号
-    println!("文件: {}, 行: {}", file, line);
+    println!("文件: {}, 行: {}, 列: {}", file, line, column);
 
     // 编译时环境宏：访问编译时环境
     // 这些宏提供编译时的上下文信息
@@ -1416,6 +1413,91 @@ fn cfg_select_macro() {
 }
 
 // ===========================================
+// 12. Rust 1.98-1.99 宏相关补充
+// ===========================================
+
+// 宏系统上的三件小事：
+// - `derive` 宏可以通过路径 `core::derive` / `std::derive` 引用（1.98 正式确认；
+//   它在 1.96 被意外稳定，所以最低版本要求是 1.96，不是 1.98）
+// - 属性宏可以直接作用于外联模块声明 `#[my_macro] mod foo;`（1.99）
+// - `cfg_select!` 里写在“必中分支”之后的分支会触发 lint `unreachable_cfg_select_predicates`
+//   （它随 `cfg_select!` 在 1.95 就有了，默认 warn；1.99 起并入 `unused` 组）
+//
+// 对新手来说，这一节的价值是看清“宏也是有路径、有解析规则的普通语言项”。
+
+// 用 `std::derive` 的绝对路径写派生宏：效果与裸写 `#[derive(...)]` 完全相同。
+// 为什么需要这个写法？`derive` 平时靠 prelude 里的裸名字解析；
+// 宏生成的代码里如果也写裸名字，就可能被使用者作用域里同名的条目遮蔽。
+// 现在可以写成 `#[::core::derive(...)]` 这样的绝对路径，不依赖调用处有什么名字在作用域里。
+#[std::derive(Debug, Clone, PartialEq)]
+struct PathDerived {
+    id: u32,
+    label: &'static str,
+}
+
+fn macro_updates_198_199() {
+    println!("=== Rust 1.98-1.99 宏相关补充 ===");
+
+    // ---------- 通过路径使用 derive（Rust 1.98） ----------
+    let original = PathDerived { id: 7, label: "路径派生" };
+    let copy = original.clone();
+    println!("通过 std::derive 派生的 Debug/Clone/PartialEq: {:?}, 相等: {}", copy, original == copy);
+
+    // ---------- 属性宏作用于外联模块（Rust 1.99） ----------
+    //
+    // 外联模块是指内容放在单独文件里的模块：`mod handlers;`（内容在 handlers.rs）。
+    // 此前，自定义属性宏不能作用于这种声明，派生宏/属性宏的输入里也不能出现 `mod foo;`，
+    // 这是一个长期不稳定的限制。
+    // 1.99 起稳定了：
+    //
+    //     #[my_attr]        // 由某个 proc-macro crate 提供的属性宏
+    //     mod handlers;     // 外联模块，内容在 handlers.rs 里
+    //
+    //     #[my_attr]
+    //     mod outer {
+    //         mod inner;    // 在属性宏/派生宏作用的内容里出现外联模块，同样允许
+    //     }
+    //
+    // 需要注意：宏看到的只是 `mod handlers;` 这一条声明本身的 token，
+    // 读取对应文件是编译器的事，不是宏的事。
+    // 演示这个特性需要一个单独的 proc-macro crate（本项目是单个 crate），所以这里只用注释说明。
+    // 它让“给整个模块文件统一加注解”（例如自动注册路由、给每个函数加埋点）的属性宏终于能用在 stable 上。
+
+    // ---------- cfg_select! 的不可达分支 lint（Rust 1.95 起，1.99 并入 unused 组） ----------
+    //
+    // 上一节讲过 `cfg_select!` 的分支是**从上到下，命中第一个就停**的。
+    // 所以写在 `_`（通配）分支之后的分支永远不会被选中——这几乎一定是写错了顺序。
+    // lint `unreachable_cfg_select_predicates`（随 `cfg_select!` 在 1.95 一起提供）会提示这种情况：
+    //
+    //     warning: unreachable configuration predicate
+    //         _ => 2,          - always matches
+    //         windows => 3,    ^^^^^^^ this configuration predicate is never reached
+    //
+    // 它默认就是 warn；1.99 起还被并入了 `unused` 组，所以 `#![deny(unused)]` 这类整体设置现在也会覆盖它。
+    // 这种写法本身就是错的，所以这里不演示它（演示就得用 allow 压住警告），而是改用两个互相重叠、
+    // 但都不是“恒真”的条件，演示同一个规则——“首个命中者胜出”：
+    let chosen = cfg_select! {
+        any(unix, windows) => { "桌面或服务器平台" }
+        unix => { "unix（在 unix 上同样满足，但写在后面，不会被选中）" }
+        _ => { "其他平台" }
+    };
+    println!("cfg_select! 选中的是: {chosen}");
+
+    // 附带一个宏编写的提醒：`macro_rules!` 的展开结果用在表达式位置时，末尾不要多写分号。
+    // 宏体里 `{ 1; }` 这样的结尾分号被当作表达式使用，从 1.91 起对本 crate 内定义的宏就是直接报错
+    // （lint `semicolon_in_expressions_from_macros` 升级为 deny）；
+    // 1.99 又把检查扩展到来自**其他 crate** 的宏，新增了 warn 级的
+    // `semicolon_in_expressions_from_non_local_macros`。
+    // 如果你的依赖触发了这条警告，请去提醒那个 crate 的维护者修复，而不是在自己这边把它压掉。
+
+    // 小结：
+    // 1. 宏有自己的路径，`std::derive` 与裸写 `derive` 等价，宏生成代码时更稳妥
+    // 2. 属性宏可以用于 `mod foo;` 了，需要 proc-macro crate 才能实际体验
+    // 3. `cfg_select!` 是“首个命中者胜出”，分支顺序写错现在会有 lint 提醒
+    println!();
+}
+
+// ===========================================
 // 主函数
 // ===========================================
 
@@ -1434,8 +1516,100 @@ pub fn main() {
     advanced_macro_patterns();
     macro_example_program();
     cfg_select_macro();
+    macro_updates_198_199();
+    conditional_compilation_updates();
 
     println!("宏系统演示完成！");
+}
+
+// ===========================================
+// 13. 条件编译补充：布尔谓词、新增的配置项与检查（Rust 1.88 / 1.54 / 1.78 / 1.80）
+// ===========================================
+
+// 条件编译（`#[cfg(..)]`、`cfg!(..)`、`#[cfg_attr(..)]`）决定哪些代码参与编译。这一节补充近年的几处变化：
+// - `cfg(true)` / `cfg(false)`（1.88）：布尔字面量可以直接当作条件
+// - `target_family = "wasm"`（1.54）：WebAssembly 目标有了自己的 family
+// - `target_abi`（1.78）：同一个架构、同一个操作系统，仍然可以按 ABI 细分
+// - `unexpected_cfgs`（1.80）：编译器检查 cfg 的名字和取值，拼写错误会收到警告
+
+// ---------- cfg(true) / cfg(false) ----------
+// 以前想表达“恒真”“恒假”，要绕道写 `cfg(all())`（空的 all 恒为真）和 `cfg(any())`（空的 any 恒为假），很难读。
+// 现在可以直接写布尔字面量。典型用途：
+// - 临时屏蔽一段代码：`#[cfg(false)]`。它和 `/* */` 注释的区别是：被屏蔽的代码依然必须能被**解析**（语法要正确），
+//   只是不参与类型检查和名字解析，因此它引用的东西不存在也没关系
+// - 宏生成代码：宏拼出 cfg 条件时，可以直接填 true / false
+#[cfg(true)]
+fn build_banner() -> &'static str {
+    "启用的版本"
+}
+
+#[cfg(false)]
+fn build_banner() -> &'static str {
+    "被屏蔽的版本" // 这个函数不参与编译，但语法必须正确
+}
+
+fn conditional_compilation_updates() {
+    println!("=== 条件编译补充：布尔谓词、新增的配置项与检查（Rust 1.88 / 1.54 / 1.78 / 1.80） ===");
+
+    println!("build_banner() = {}", build_banner());
+    println!("cfg!(true) = {}，cfg!(false) = {}", cfg!(true), cfg!(false));
+
+    // ---------- target_family = "wasm" ----------
+    // 目标平台的 family 现在有三类：unix、windows、wasm（WebAssembly，wasm32 与 wasm64 都属于它）。
+    // `unix` 和 `windows` 还有简写：`#[cfg(unix)]`、`#[cfg(windows)]`。
+    println!(
+        "当前平台 family: unix = {}，windows = {}，wasm = {}",
+        cfg!(unix),
+        cfg!(windows),
+        cfg!(target_family = "wasm")
+    );
+
+    // ---------- target_abi ----------
+    // 例子：32 位 ARM 的 Linux 目标有软浮点（eabi）和硬浮点（eabihf）两种；x86_64 上的 x32 ABI 使用 32 位指针。
+    // 注意：Apple 平台上的 "macabi"（Mac Catalyst）和 "sim"（模拟器）从 1.91 起改用 `target_env` 判断。
+    let abi = cfg_select! {
+        target_abi = "eabihf" => { "硬浮点 EABI" }
+        target_abi = "eabi" => { "软浮点 EABI" }
+        target_abi = "x32" => { "x32（32 位指针的 x86_64）" }
+        _ => { "没有特殊的 ABI 后缀" }
+    };
+    println!("target_abi: {abi}");
+
+    // ---------- unexpected_cfgs：检查 cfg 的名字和取值 ----------
+    // 1.80 起，编译器会检查 `cfg` 里用到的名字和取值是否是“已知的”：
+    // 编译器自己认识的（target_os、unix……）、Cargo 的 features，以及你主动声明过的。
+    // 它能抓住最常见的一类笔误——feature 名字拼错，原本整段代码会悄悄地被排除在编译之外，没有任何提示。
+    // 例如 Cargo.toml 里声明了 `serde` feature，却写成了 `#[cfg(feature = "serd")]`，现在会得到这样的警告：
+    //     warning: unexpected `cfg` condition value: `serd`
+    //       help: there is a expected value with a similar name: `"serde"`
+    // 取值写错同理，比如 `cfg!(target_os = "macoss")`，警告会提示你 "macos"。
+    //
+    // 自己定义的 cfg 标志（比如 `#[cfg(my_flag)]`，由 build.rs 或 RUSTFLAGS 设置）需要先声明，否则收到：
+    //     warning: unexpected `cfg` condition name: `my_flag`
+    // 声明的办法有两种，二选一：
+    //     # 在 Cargo.toml 里
+    //     [lints.rust]
+    //     unexpected_cfgs = { level = "warn", check-cfg = ['cfg(my_flag)'] }
+    //
+    //     // 或者在 build.rs 里
+    //     println!("cargo::rustc-check-cfg=cfg(my_flag)");
+    // 如果能用 Cargo feature 表达，就用 feature——它是 Cargo 内建的，不需要额外声明。
+
+    // ---------- 属性的值可以是宏调用（Rust 1.54） ----------
+    // 内置属性等号右边的值，现在可以是宏调用，最常见的写法是把外部文件的内容当作文档：
+    //     #![doc = include_str!("../README.md")]       // 放在 lib.rs 开头，让 README 同时成为 crate 的首页文档
+    // 配合 `cfg_attr` 可以按条件附加文档；下面的函数文档在编译期由 `concat!` 和 `env!` 拼出来：
+    #[cfg_attr(true, doc = concat!("本函数属于 ", env!("CARGO_PKG_NAME"), " 的宏教程"))]
+    fn documented_by_macro() -> &'static str {
+        "文档由宏在编译期生成（用 cargo doc 可以看到）"
+    }
+    println!("{}", documented_by_macro());
+
+    // 最佳实践：
+    // 1. 想临时屏蔽代码，用 `#[cfg(false)]`：它比注释更容易保持语法正确，取消屏蔽时也不用逐行去掉注释符号
+    // 2. 不要用 `#[allow(unexpected_cfgs)]` 压警告，而是把自定义的 cfg 声明给 check-cfg
+    // 3. 在 Cargo.toml 里新增或改名 feature 之后，全局搜一遍 `feature = "旧名字"`——现在编译器会替你查出遗漏
+    println!();
 }
 
 // ===========================================
@@ -1445,6 +1619,30 @@ pub fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_macro_updates_198_199() {
+        // std::derive 路径派生出的 trait 与裸 #[derive] 等价
+        let a = PathDerived { id: 1, label: "x" };
+        assert_eq!(a.clone(), a);
+        assert_eq!(format!("{a:?}"), "PathDerived { id: 1, label: \"x\" }");
+
+        // cfg_select! 首个命中者胜出：两个条件在 unix 上都满足，选中的是写在前面的那个
+        let chosen = cfg_select! {
+            any(unix, windows) => { "first" }
+            unix => { "second" }
+            _ => { "other" }
+        };
+        assert_eq!(chosen, if cfg!(any(unix, windows)) { "first" } else { "other" });
+
+        // 条件在前时按条件选择
+        let family = cfg_select! {
+            unix => { "unix" }
+            windows => { "windows" }
+            _ => { "other" }
+        };
+        assert!(["unix", "windows", "other"].contains(&family));
+    }
 
     #[test]
     fn test_basic_macro() {
@@ -1478,15 +1676,50 @@ mod tests {
 
     #[test]
     fn test_macro_hygiene() {
-        let x = 100;
-
-        // 注意：由于宏在表达式上下文中的限制，这里简化实现
+        // 局部变量按“宏定义处”解析：调用处的同名变量不会被宏体捕获
+        let factor = 3;
+        macro_rules! times_factor {
+            ($e:expr) => {
+                $e * factor
+            };
+        }
         let result = {
-            let x = 42;
-            x
+            let factor = 1000; // 调用处的同名变量，宏看不到它
+            assert_eq!(factor, 1000);
+            times_factor!(2)
         };
-        assert_eq!(result, 42);
-        assert_eq!(x, 100); // 外部变量不受影响
+        assert_eq!(result, 6);
+
+        // 条目不卫生：宏里定义的函数在调用处可见
+        macro_rules! define_answer_fn {
+            () => {
+                fn answer_from_macro() -> i32 {
+                    42
+                }
+            };
+        }
+        define_answer_fn!();
+        assert_eq!(answer_from_macro(), 42);
+
+        // 非局部名字在调用处解析会被遮蔽；$crate 绝对路径不受影响
+        macro_rules! call_unqualified {
+            () => {
+                hygiene_demo_helper()
+            };
+        }
+        macro_rules! call_with_crate {
+            () => {
+                $crate::mod_13_macros::hygiene_demo_helper()
+            };
+        }
+        {
+            fn hygiene_demo_helper() -> &'static str {
+                "shadowed"
+            }
+            assert_eq!(call_unqualified!(), "shadowed");
+            assert_eq!(call_with_crate!(), "来自 crate 根路径的 helper");
+        }
+        assert_eq!(call_unqualified!(), "来自 crate 根路径的 helper");
     }
 
     #[test]
@@ -1524,5 +1757,23 @@ mod tests {
         };
 
         assert!(!platform.is_empty());
+    }
+
+    #[test]
+    fn test_conditional_compilation_updates() {
+        // cfg(true) 的那个函数参与编译，cfg(false) 的那个被屏蔽
+        assert_eq!(build_banner(), "启用的版本");
+        assert_eq!(cfg!(true), !cfg!(false));
+        // 旧写法 all() / any() 与新的布尔字面量等价
+        assert_eq!(cfg!(all()), cfg!(true));
+        assert_eq!(cfg!(any()), cfg!(false));
+
+        // target_abi 作为 cfg_select! 的条件：总能选出一个分支
+        let abi = cfg_select! {
+            target_abi = "eabihf" => { "eabihf" }
+            target_abi = "eabi" => { "eabi" }
+            _ => { "default" }
+        };
+        assert!(["eabihf", "eabi", "default"].contains(&abi));
     }
 }

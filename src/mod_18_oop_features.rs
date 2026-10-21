@@ -1,12 +1,6 @@
-#![allow(
-    dead_code,
-    unused_variables,
-    unused_imports,
-    unused_mut,
-    unused_assignments,
-    unused_macros,
-    deprecated
-)]
+// 教程里的类型、字段和方法经常只为演示语法而定义，不一定会被全部读取或调用，所以允许 dead_code；
+// 其他 lint（未使用的导入、变量、可变性等）必须保持干净，不要再给模块添加新的 allow。
+#![allow(dead_code)]
 
 // Rust 面向对象特性
 // 深入讲解 Rust 中实现面向对象编程的各种模式和技术
@@ -483,47 +477,92 @@ impl Screen {
 }
 
 // ===========================================
-// 5. 对象安全 (Object Safety)
+// 5. dyn 兼容性 (Dyn Compatibility，旧称“对象安全” Object Safety)
 // ===========================================
 
-// Trait 对象要求 trait 是对象安全的 (object safe)
-// 对象安全的 trait 才能被用作 trait 对象
+// 只有 dyn 兼容（dyn compatible）的 trait 才能被用作 trait 对象（`dyn Trait`）。
+// 这个概念以前叫“对象安全”（object safety），Rust 官方文档和编译器报错现在统一称为“dyn 兼容性”：
+// 报错信息形如 "the trait `X` is not dyn compatible"（错误码 E0038）。
+//
+// 为什么有这个限制？trait 对象在运行时只有一个“胖指针”（数据指针 + vtable），不知道具体类型。
+// 凡是必须在编译期知道具体类型才能生成的东西——泛型方法要为每个类型单独生成代码、
+// 返回 Self 要知道它有多大——都没法放进 vtable，这样的 trait 就不能做成 trait 对象。
+//
+// 规则（出自 Rust Reference）：
+// 1. 不能要求 `Self: Sized`（包括在 supertrait 里要求），所有 supertrait 也必须是 dyn 兼容的
+// 2. 不能有关联常量，也不能有带泛型参数的关联类型（GAT）
+// 3. 每个方法要么“可分派”，要么显式写 `where Self: Sized` 把自己排除在 trait 对象之外。
+//    可分派的方法必须：
+//    - 没有类型参数（生命周期参数可以）
+//    - 除接收者以外，参数和返回值里不出现 `Self`
+//    - 接收者是 `&self`、`&mut self`、`self: Box<Self>`、`Rc<Self>`、`Arc<Self>` 或 `Pin<P>`
+//    - 不是 `async fn`，也不返回 `impl Trait`
+// 容易误会的一点：trait 自己带泛型参数是允许的，例如 `Box<dyn Convert<i32>>`。
 
 fn object_safety() {
-    println!("=== 对象安全 ===");
+    println!("=== dyn 兼容性 ===");
 
-    // 展示对象安全的 trait
+    // 展示 dyn 兼容的 trait
     let notifier = EmailNotifier;
     send_notification(&notifier, "重要通知".to_string());
 
-    // 展示非对象安全的 trait 的替代方案
+    // 展示不兼容 trait 的替代方案
     let factory = AnimalFactory;
     let dog = factory.create_animal("Buddy");
     dog.make_sound();
 
-    println!("理解对象安全对于正确使用 trait 对象很重要");
+    // 带 `where Self: Sized` 的方法被排除出 trait 对象，trait 本身依然可以做成 dyn
+    let boxed: Box<dyn Duplicate> = Box::new(Token("abc".to_string()));
+    println!("通过 dyn 调用 name: {}", boxed.name());
+    // boxed.duplicate(); // 编译错误：the `duplicate` method cannot be invoked on a trait object
+    let concrete = Token("xyz".to_string());
+    println!("在具体类型上可以调用 duplicate: {}", concrete.duplicate().name());
+
+    println!("理解 dyn 兼容性对于正确使用 trait 对象很重要");
     println!();
 }
 
-// 对象安全的 trait
-// 不包含泛型参数、Self 类型或返回 Self 类型的方法
+// dyn 兼容的 trait：方法都有 `&self` 接收者，参数和返回值里不出现 Self，也没有类型参数
 trait Notifier {
     fn send(&self, message: String);
 
-    // 这个方法是对象安全的
+    // 这个有默认实现的方法同样是 dyn 兼容的
     fn send_twice(&self, message: String) {
         self.send(message.clone());
         self.send(message);
     }
 }
 
-// 非对象安全的 trait
-// 包含返回 Self 类型的方法
+// 不是 dyn 兼容的 trait：方法返回 `Self`。
+// 把它写成 `Box<dyn CloneFactory>` 会得到编译错误：
+//     error[E0038]: the trait `CloneFactory` is not dyn compatible
+// 因为 trait 对象在运行时不知道具体类型，也就不知道 `create` 返回的 `Self` 有多大。
 trait CloneFactory {
     fn create(&self) -> Self;
 }
 
-// 对象安全的 Notifier 实现
+// 办法一：用 `where Self: Sized` 把这类方法排除出 trait 对象。
+// trait 仍然 dyn 兼容，只是不能通过 `dyn` 调用被排除的方法（在具体类型上仍然可以）。
+trait Duplicate {
+    fn name(&self) -> String;
+    fn duplicate(&self) -> Self
+    where
+        Self: Sized;
+}
+
+struct Token(String);
+
+impl Duplicate for Token {
+    fn name(&self) -> String {
+        self.0.clone()
+    }
+
+    fn duplicate(&self) -> Self {
+        Token(self.0.clone())
+    }
+}
+
+// Notifier 的实现
 struct EmailNotifier;
 
 impl Notifier for EmailNotifier {
@@ -532,7 +571,7 @@ impl Notifier for EmailNotifier {
     }
 }
 
-// 为非对象安全 trait 提供替代方案
+// 办法二：把“返回具体类型”改成“返回 trait 对象”，用工厂方法替代 `-> Self`
 trait AnimalCreator {
     fn create_animal(&self, name: &str) -> Box<dyn Animal>;
 }
@@ -545,7 +584,7 @@ impl AnimalCreator for AnimalFactory {
     }
 }
 
-// 使用对象安全的 trait 对象
+// 使用 dyn 兼容的 trait 对象
 fn send_notification(notifier: &dyn Notifier, message: String) {
     notifier.send(message);
 }
@@ -915,6 +954,14 @@ pub fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_dyn_compatibility_opt_out() {
+        // `where Self: Sized` 的方法不影响 trait 做成 dyn；该方法只能在具体类型上调用
+        let boxed: Box<dyn Duplicate> = Box::new(Token("abc".to_string()));
+        assert_eq!(boxed.name(), "abc");
+        assert_eq!(Token("x".to_string()).duplicate().name(), "x");
+    }
 
     #[test]
     fn test_circle_encapsulation() {
