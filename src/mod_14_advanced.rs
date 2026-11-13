@@ -857,6 +857,8 @@ fn advanced_type_features() {
     // 2. 在控制流分析中很有用
     // 3. 用于表示不可能的情况
     // 4. 在错误处理中标记致命错误
+    // 5. 1.100 起 `!` 正式稳定，可以写在任意类型位置（比如 `Result<T, !>`），不再只能出现在 `-> !` 里；
+    //    详见本模块第 21 节“never 类型 `!` 正式稳定（Rust 1.100）”
 
     // 动态大小类型和 Sized trait（Dynamically Sized Types & Sized Trait）
     // 动态大小类型是编译时大小未知的类型，如 [T] 和 str
@@ -2812,7 +2814,7 @@ fn advanced_example_program() {
 // 16. cfg(accessible) 配置谓词（RFC 2523，尚未实现）
 // ===========================================
 
-// 注意：截至 Rust 1.99，`cfg(accessible)` 没有稳定，而且 RFC 提出的写法编译器根本还没有实现：
+// 注意：截至 Rust 1.100，`cfg(accessible)` 没有稳定，而且 RFC 提出的写法编译器根本还没有实现：
 // - RFC 2523 设想的写法是 `#[cfg(accessible(::path::to::thing))]`，
 //   可以和 `not` / `all` / `any` 组合——这个谓词写法目前不被支持
 // - 标准库里只有一个内置属性宏 `#[cfg_accessible(path)]`（追踪 issue #64797），
@@ -3472,9 +3474,11 @@ fn rust_2024_edition_features() {
     //        let r = unsafe { &COUNTER };          // 2024 里是编译错误（static_mut_refs）
     //        let p = unsafe { &raw const COUNTER }; // 正确：直接取裸指针，不制造引用
     // 8. never 类型回退：以前一个类型推断不出来的位置遇到 `!` 时，会回退成 `()`；2024 起回退成 `!`。
-    //    依赖旧行为的代码需要写明类型。1.92 起，检测这类风险的两个 lint
-    //    `never_type_fallback_flowing_into_unsafe` 和 `dependency_on_unit_never_type_fallback`
-    //    在所有 edition 里都默认 deny，所以在升级 edition 之前就会收到提示。
+    //    这一条已经不再是 edition 之间的差异：1.100 把 2015 / 2018 / 2021 也统一改成了回退成 `!`，
+    //    依赖旧行为的代码需要写明类型（详见本模块第 21 节）。
+    //    相应地，检测这类风险的 lint `dependency_on_unit_never_type_fallback` 在 1.100 被移除了
+    //    （编译器的提示是 “the code warned by this lint no longer compiles”），
+    //    `never_type_fallback_flowing_into_unsafe` 仍然保留，默认 deny。
     // 14. env::set_var：
     //        unsafe { std::env::set_var("KEY", "value") }  // 2024 里必须写 unsafe
     //     原因是在 Unix 上，其他线程可能同时在读取环境变量（包括 C 库里的代码），修改它会造成数据竞争。
@@ -3541,6 +3545,160 @@ fn use_path_keyword_renaming() {
 }
 
 // ===========================================
+// 21. never 类型 `!` 正式稳定（Rust 1.100）
+// ===========================================
+
+// never 类型写作 `!`，是“永远不会产生值”的类型（一个没有任何值的空类型）。
+// 你其实一直在用它：`return`、`break`、`continue`、`panic!()`、`loop {}`、`std::process::exit(..)`
+// 这些表达式的类型都是 `!`——它们之后的代码永远执行不到。
+// `!` 能隐式转换成**任何**类型（never-to-any 转换），所以 `match` 的某个分支可以直接 `return`，不必凑出一个值：
+//     let value = match option { Some(x) => x, None => return };   // `return` 是 `!`，被转换成 x 的类型
+// 这也是 `!` 和普通空类型（比如自己写的 `enum Never {}`）的区别：空枚举不会自动转成别的类型，`!` 会。
+//
+// 以前 `!` 只能出现在函数返回类型的位置（`fn f() -> !`），想在别处写它要靠 nightly 的 `#![feature(never_type)]`。
+// 1.100 经过十年、五次失败的稳定化尝试，终于让它在**任意类型位置**都能直接写：
+//     Result<T, !>      // “永远不会失败”的结果
+//     Result<!, E>      // “永远不会成功返回”的结果
+//     type Err = !;     // 关联类型
+//     impl Trait for !  // 为它实现 trait
+//
+// 配套的两处变化，都可能影响已有代码：
+// 1. `std::convert::Infallible` 现在是 `!` 的类型别名。标准库里所有“不会失败”的 API（比如 `TryFrom` 的自反实现、
+//    `String` 的 `FromStr`），错误类型现在都等于 `!`
+// 2. 类型推断的“回退”规则统一了：详见下面的第 4 点
+
+// ---------- Result<T, !>：用不可反驳模式取值 ----------
+
+fn unwrap_infallible<T>(result: Result<T, !>) -> T {
+    // `Err(!)` 永远构造不出来，所以编译器知道这个模式一定匹配，不需要 else 分支。
+    // 对比 `result.unwrap()`：unwrap 会留下一条“理论上不会走到”的 panic 路径；
+    // 这里是编译器证明的——日后如果错误类型改成了可能出错的类型，这一行会立刻编译失败，提醒你补上错误处理。
+    let Ok(value) = result;
+    value
+}
+
+// ---------- 关联类型 `type Err = !` ----------
+
+// 任何文本都是合法的标签，所以解析永远不会失败；把错误类型写成 `!`，调用方就不用处理 Err
+struct Tag(String);
+
+impl std::str::FromStr for Tag {
+    type Err = !;
+
+    fn from_str(text: &str) -> Result<Self, !> {
+        Ok(Tag(text.trim().to_lowercase()))
+    }
+}
+
+// ---------- Result<!, E>：只会以错误结束的长期循环 ----------
+
+fn handle_request(id: u32) -> Result<(), String> {
+    if id < 3 { Ok(()) } else { Err(format!("处理第 {id} 个请求时连接断开")) }
+}
+
+// 服务循环、事件循环这类函数，正常情况下永远不会返回，只有出错才会退出。
+// 返回类型写成 `Result<!, E>`，就把“没有成功返回的路径”写进了类型里。
+fn serve_until_error() -> Result<!, String> {
+    let mut id = 0;
+    // 函数体是 `loop`，它的类型是 `!`，可以转换成返回类型 `Result<!, String>`
+    loop {
+        id += 1;
+        handle_request(id)?; // 出错就用 `?` 提前返回；整个函数没有任何“正常退出”的路径
+    }
+}
+
+// ---------- 类型推断的回退（fallback）----------
+
+trait FallbackProbe {
+    fn name() -> &'static str;
+}
+
+impl FallbackProbe for () {
+    fn name() -> &'static str {
+        "()"
+    }
+}
+
+impl FallbackProbe for ! {
+    fn name() -> &'static str {
+        "!"
+    }
+}
+
+// `T` 只能从“永远不会返回的闭包”推断出来，没有任何别的线索——这时编译器要靠“回退规则”替它选一个类型
+fn fallback_type_name<T: FallbackProbe>(_diverging: impl FnOnce() -> T) -> &'static str {
+    T::name()
+}
+
+// ---------- 结构体里放 Result<T, !>：derive 需要 `!` 实现了这些 trait ----------
+
+#[derive(Debug, Clone, PartialEq)]
+struct Reading {
+    value: Result<u32, !>,
+}
+
+// 只用来在编译期证明 `X: AsRef<T> + AsMut<T>`：函数体什么也不做，能通过编译就说明约束成立
+fn assert_as_ref_and_as_mut<T: ?Sized, X: AsRef<T> + AsMut<T>>() {}
+
+fn never_type_stabilized() {
+    println!("=== never 类型 `!` 正式稳定（Rust 1.100） ===");
+
+    use std::any::TypeId;
+    use std::convert::Infallible;
+
+    // ---------- 1. 到处都能写 `!` ----------
+    println!("unwrap_infallible(Ok(7)) = {}", unwrap_infallible::<u32>(Ok(7)));
+    let Ok(tag) = " Rust ".parse::<Tag>(); // 解析永远成功，不需要处理 Err
+    println!("Tag 解析结果: {:?}", tag.0);
+
+    // ---------- 2. Infallible 现在是 `!` 的别名 ----------
+    println!("Infallible 与 ! 是同一个类型: {}", TypeId::of::<Infallible>() == TypeId::of::<!>());
+    // 标准库里“不会失败”的转换，错误类型就是 Infallible，所以同样可以用不可反驳模式。
+    // clippy 会提醒“能用 From 就别用 TryFrom”：这里是故意用 try_from 来演示 Infallible，实际代码里请直接写 `u64::from(5_u32)`
+    #[allow(clippy::unnecessary_fallible_conversions)]
+    let Ok(wide) = u64::try_from(5_u32); // u32 → u64 总能成功，错误类型是 Infallible
+    let Ok(owned) = "文本".parse::<String>(); // 任何文本都能解析成 String
+    println!("u64::try_from(5u32) = {wide}，\"文本\".parse::<String>() = {owned:?}");
+    // 兼容性提示：同时写 `impl From<Infallible> for X` 和 `impl From<!> for X` 会报 E0119（冲突的实现），
+    // 因为它们现在是同一个 impl，保留一份即可。
+
+    // ---------- 3. Result<!, E>：只会以错误结束 ----------
+    let Err(error) = serve_until_error(); // `Ok(!)` 不可能出现，只剩 Err 这一个模式
+    println!("服务循环退出的原因: {error}");
+
+    // ---------- 4. 回退规则统一成了 `!` ----------
+    // 没有任何线索时，推断不出的类型会“回退”成某个默认类型：
+    // 以前 2015 / 2018 / 2021 回退成 `()`，2024 回退成 `!`；1.100 起所有 edition 都回退成 `!`。
+    println!("没有任何线索时，T 回退成: {}", fallback_type_name(|| panic!("闭包不会被调用")));
+    // 影响：依赖旧行为的代码会编译失败。例如只给 `()` 实现了 trait，而 `T` 又只能靠回退推断，
+    // 在 2021 里以前能过，现在会报：
+    //     error[E0277]: the trait bound `!: FallbackProbe` is not satisfied
+    //     = note: this error might have been caused by changes to Rust's type-inference algorithm (see issue #148922)
+    // 修法：显式写出类型，`fallback_type_name::<()>(|| panic!(..))`。
+    // 官方说明里举的受影响场景之一是“忽略一个返回泛型参数的函数的结果”，整体上这类情况很罕见。
+
+    // ---------- 5. `!` 自己实现的 trait ----------
+    // `!` 实现了 Clone / Copy / PartialEq / Eq / PartialOrd / Ord / Debug / Display / Error，
+    // 以及对任意 T 的 AsRef<T> / AsMut<T>。因为没有值，这些方法永远不会真的被调用；
+    // 存在的意义是：让含有 `Result<T, !>` 字段的类型可以照常 derive（上面的 `Reading` 就靠这些实现才能编译）
+    let reading = Reading { value: Ok(5) };
+    println!("{reading:?}（克隆后相等: {}）", reading.clone() == reading);
+    // 对任意 T，`!` 都实现了 AsRef<T> 和 AsMut<T>：下面两行只在编译期检查约束，运行时什么也不发生
+    assert_as_ref_and_as_mut::<str, !>();
+    assert_as_ref_and_as_mut::<[u8], !>();
+    // `Err` 变体不可能出现，编译器就不必为它留位置：`Result<u32, !>` 通常和 `u32` 一样大（布局优化，不是语言保证）
+    println!("Result<u32, !> 占 {} 字节，u32 占 {} 字节", size_of::<Result<u32, !>>(), size_of::<u32>());
+
+    // 小结：
+    // 1. 表示“不会失败”的结果用 `Result<T, !>`，取值用 `let Ok(v) = result;`：比 `unwrap()` 多一层“编译器证明”
+    // 2. 永远不会成功返回的函数（服务循环、事件循环）写成 `-> Result<!, E>`，调用方用 `let Err(e) = ..;` 取出错误
+    // 3. 自己的“永不出错”场景用 `!` 当错误类型，不要再定义空枚举——空枚举不能自动转成别的类型，`!` 可以
+    // 4. `Infallible` 与 `!` 是同一个类型，不要给两者各写一份 impl
+    // 5. 升级后看到 “the trait bound `!: SomeTrait` is not satisfied”，说明推断依赖了旧的 `()` 回退，给泛型参数写上显式类型即可
+    println!();
+}
+
+// ===========================================
 // 主函数
 // ===========================================
 
@@ -3567,6 +3725,7 @@ pub fn main() {
     lazy_access_apis();
     rust_2024_edition_features();
     use_path_keyword_renaming();
+    never_type_stabilized();
     advanced_example_program();
 
     println!("高级特性演示完成！");
@@ -4349,6 +4508,36 @@ mod tests {
     #[test]
     fn test_use_path_keyword_renaming() {
         assert_eq!(path_keyword_renaming_demo::nested::total(), 10 + 5 + 100);
+    }
+
+    #[test]
+    fn test_never_type_stabilized() {
+        use std::any::TypeId;
+        use std::convert::Infallible;
+
+        // Result<T, !> 的不可反驳模式
+        assert_eq!(unwrap_infallible::<u8>(Ok(7)), 7);
+        let Ok(tag) = " Rust ".parse::<Tag>();
+        assert_eq!(tag.0, "rust");
+
+        // Infallible 就是 `!`
+        assert_eq!(TypeId::of::<Infallible>(), TypeId::of::<!>());
+        let Ok(owned) = "文本".parse::<String>();
+        assert_eq!(owned, "文本");
+
+        // Result<!, E>：只会以错误结束
+        let Err(error) = serve_until_error();
+        assert_eq!(error, "处理第 3 个请求时连接断开");
+
+        // 回退类型统一成了 `!`（以前 2021 及更早的 edition 里是 `()`）
+        assert_eq!(fallback_type_name(|| panic!("闭包不会被调用")), "!");
+
+        // `!` 实现了 Clone / PartialEq / Debug，所以带 Result<T, !> 字段的结构体可以 derive
+        let reading = Reading { value: Ok(5) };
+        assert_eq!(reading.clone(), reading);
+        assert_eq!(format!("{reading:?}"), "Reading { value: Ok(5) }");
+        assert_as_ref_and_as_mut::<str, !>();
+        assert_as_ref_and_as_mut::<[u8], !>();
     }
 
     #[test]

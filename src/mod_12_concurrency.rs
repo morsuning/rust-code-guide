@@ -2480,7 +2480,7 @@ fn concurrency_example_program() {
 // 15. 概念演示：SyncView<T>（旧称 Exclusive<T>）独占访问包装器
 // ===========================================
 
-// 注意：标准库里的这个类型至今（Rust 1.99）仍是 nightly-only（feature = `exclusive_wrapper`），
+// 注意：标准库里的这个类型至今（Rust 1.100）仍是 nightly-only（feature = `exclusive_wrapper`），
 // 没有在 stable 稳定。它的名字还变过：早期叫 `std::sync::Exclusive<T>`，
 // 现在叫 `std::sync::SyncView<T>`（文档里保留了 `Exclusive` 这个别名，按旧名字搜索仍能找到它）。
 // 本节用教学模拟讲解它的设计思想：为什么"独占访问"能让一个仅 Send 的类型安全地变为 Sync。
@@ -2787,6 +2787,68 @@ fn atomic_and_tls_updates_198_199() {
 }
 
 // ===========================================
+// 19. Once 实现 Default：带一次性初始化的结构体也能 derive(Default)（Rust 1.100）
+// ===========================================
+
+// `std::sync::Once` 是最基础的“只执行一次”原语：无论多少个线程、调用多少次 `call_once`，
+// 传进去的闭包只会执行一次，而且其他线程会等它执行完再继续。
+// 它本身**不存值**，只记录“做没做过”——想要“只初始化一次的值”，用 `OnceLock<T>`（见 mod_14）；
+// `Once` 适合没有返回值的一次性副作用：初始化某个 C 库、注册信号处理函数、安装日志后端……
+//
+// 以前 `Once` 没有 `Default`：结构体里只要放了一个 `Once` 字段，就不能 `#[derive(Default)]`，
+// 只能手写 `Default`；而 `Mutex`、`AtomicBool`、`OnceLock` 这些同类原语早就有了，`Once` 是落单的那个。
+// 1.100 补上了：`Once::default()` 等价于 `Once::new()`。
+//
+// 典型场景：**每个实例**各自懒初始化一次（不是全局一次）——
+// 比如一个客户端对象，第一次真正用到时才建立连接，之后的调用直接跳过。
+// 全局的一次性初始化仍然写 `static INIT: Once = Once::new();`：
+// `Once::new` 是 const fn，而 `Default` 目前还不是稳定的 const trait，`static` 里不能写 `Once::default()`。
+
+use std::sync::Once;
+use std::sync::atomic::{AtomicU32, Ordering};
+
+// 每个字段（`Once`、`AtomicU32`）都实现了 `Default`，所以整个结构体可以直接 derive
+#[derive(Default)]
+struct LazyClient {
+    connect_once: Once,
+    connect_count: AtomicU32,
+}
+
+impl LazyClient {
+    // 多个线程同时调用也只会“连接”一次，而且其他线程会等连接完成再返回
+    fn ensure_connected(&self) {
+        self.connect_once.call_once(|| {
+            self.connect_count.fetch_add(1, Ordering::SeqCst);
+        });
+    }
+
+    fn connect_count(&self) -> u32 {
+        self.connect_count.load(Ordering::SeqCst)
+    }
+}
+
+fn once_default_impl() {
+    println!("=== Once 实现 Default（Rust 1.100） ===");
+
+    let client = LazyClient::default();
+    println!("还没调用时是否完成: {}", client.connect_once.is_completed());
+
+    // 8 个线程同时要求“确保已连接”，真正的连接动作只会发生一次
+    std::thread::scope(|scope| {
+        for _ in 0..8 {
+            scope.spawn(|| client.ensure_connected());
+        }
+    });
+    println!("8 个线程之后：连接次数 = {}，是否完成 = {}", client.connect_count(), client.connect_once.is_completed());
+
+    // 小结：
+    // 1. 每个实例各自懒初始化一次的场景，把 `Once` 放进结构体里，整个结构体可以 `#[derive(Default)]`
+    // 2. 全局一次性初始化继续用 `static INIT: Once = Once::new();`（`static` 里不能用 `Once::default()`）
+    // 3. 需要保存初始化出来的值时，用 `OnceLock<T>`，不要自己用 `Once` + `static mut` 拼
+    println!();
+}
+
+// ===========================================
 // 主函数
 // ===========================================
 
@@ -2812,6 +2874,7 @@ pub fn main() {
     latest_concurrency_primitives();
     concurrency_from_impls();
     atomic_and_tls_updates_198_199();
+    once_default_impl();
 
     println!("并发编程演示完成！");
 }
@@ -3039,5 +3102,26 @@ mod tests {
         use std::sync::LazyLock;
         let precomputed: LazyLock<String, fn() -> String> = "hello".to_string().into();
         assert_eq!(LazyLock::force(&precomputed), "hello");
+    }
+
+    #[test]
+    fn test_once_default_impl() {
+        // 含有 Once 字段的结构体可以直接 derive(Default)
+        let client = LazyClient::default();
+        assert!(!client.connect_once.is_completed());
+        assert_eq!(client.connect_count(), 0);
+
+        // 多个线程同时要求连接，闭包只执行一次
+        std::thread::scope(|scope| {
+            for _ in 0..8 {
+                scope.spawn(|| client.ensure_connected());
+            }
+        });
+        assert_eq!(client.connect_count(), 1);
+        assert!(client.connect_once.is_completed());
+
+        // 之后再调用也不会重复连接
+        client.ensure_connected();
+        assert_eq!(client.connect_count(), 1);
     }
 }

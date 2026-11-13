@@ -2156,6 +2156,85 @@ fn anonymous_pipe() {
 }
 
 // ===========================================
+// 18. Windows 进程扩展：CommandExt::show_window 与 ChildExt::main_thread_handle（Rust 1.100）
+// ===========================================
+
+// 在 Windows 上创建进程靠 `CreateProcess`，它还接收一个 `STARTUPINFO` 结构，决定新进程怎么“出生”。
+// 标准库通过 `std::os::windows::process` 里的扩展 trait 暴露了其中一部分，1.100 又补了两项：
+//
+// - `CommandExt::show_window(cmd_show: u16)`：设置 `STARTUPINFO.wShowWindow`，决定新进程第一个窗口怎么显示。
+//   取值是 Win32 `ShowWindow` 函数的 `SW_*` 常量，常用的有 `SW_HIDE = 0`（隐藏）、`SW_SHOWNORMAL = 1`（正常）、
+//   `SW_SHOWMINIMIZED = 2`（最小化）、`SW_SHOWMAXIMIZED = 3`（最大化）。
+//   典型场景：图形界面程序在后台启动一个不希望弹出窗口的辅助程序。标准库会自动带上 `STARTF_USESHOWWINDOW` 标志，不用自己管。
+//   它只对会创建窗口的程序有意义；想让**控制台程序**不弹出黑窗口，要用 `creation_flags(CREATE_NO_WINDOW)`（0x08000000）。
+//
+// - `ChildExt::main_thread_handle()`：返回子进程**主线程**的句柄（`BorrowedHandle`，只借用，不转移所有权）。
+//   `CreateProcess` 其实会同时返回进程句柄和主线程句柄，`Child` 以前只提供了前者（`AsRawHandle`）。
+//   典型场景：以“挂起”状态创建进程（`creation_flags(CREATE_SUSPENDED)`），趁它的第一条指令还没执行时做准备——
+//   放进作业对象（Job Object）限制资源、注入监控代码、挂上调试钩子——准备好再对主线程调用 `ResumeThread` 放行。
+//   没有主线程句柄，就没办法“放行”一个挂起的子进程。
+//
+// 这两个 API 只存在于 Windows，所以示例代码用 `#[cfg(windows)]` 包住，其他平台只打印一句提示。
+
+#[cfg(windows)]
+fn windows_process_demo() -> std::io::Result<()> {
+    use std::os::windows::io::{AsRawHandle, RawHandle};
+    use std::os::windows::process::{ChildExt, CommandExt};
+    use std::process::Command;
+
+    // Win32 常量，数值来自 Windows SDK 头文件
+    const CREATE_SUSPENDED: u32 = 0x0000_0004; // 以挂起状态创建主线程
+    const SW_HIDE: u16 = 0; // 隐藏窗口
+
+    // 恢复被挂起的线程。raw-dylib 的写法见 mod_19 第 10 节；返回值是之前的挂起计数，失败时返回 u32::MAX
+    #[link(name = "kernel32", kind = "raw-dylib")]
+    unsafe extern "system" {
+        fn ResumeThread(thread: RawHandle) -> u32;
+    }
+
+    // `cmd /C exit 0` 是 Windows 上最轻量的“启动后立刻退出”的命令
+    let mut child = Command::new("cmd")
+        .args(["/C", "exit", "0"])
+        .creation_flags(CREATE_SUSPENDED) // 此刻子进程的主线程被挂起，还没有执行任何代码
+        .show_window(SW_HIDE)
+        .spawn()?;
+
+    // 这里本来是“准备工作”的位置：放进作业对象、注入代码……
+    let main_thread = child.main_thread_handle();
+    println!("进程句柄 {:?}，主线程句柄 {:?}", child.as_raw_handle(), main_thread.as_raw_handle());
+
+    // SAFETY: 句柄来自刚创建的子进程，`child` 存活期间有效；ResumeThread 只是把线程的挂起计数减一
+    let previous_suspend_count = unsafe { ResumeThread(main_thread.as_raw_handle()) };
+    if previous_suspend_count == u32::MAX {
+        return Err(std::io::Error::last_os_error());
+    }
+    println!("放行主线程，之前的挂起计数 = {previous_suspend_count}");
+
+    let status = child.wait()?;
+    println!("子进程退出状态: {status}");
+    Ok(())
+}
+
+fn windows_process_extensions() {
+    println!("=== Windows 进程扩展：CommandExt::show_window 与 ChildExt::main_thread_handle（Rust 1.100） ===");
+
+    #[cfg(windows)]
+    {
+        if let Err(error) = windows_process_demo() {
+            println!("演示失败: {error}");
+        }
+    }
+    #[cfg(not(windows))]
+    println!("这两个 API 只存在于 Windows 平台，当前平台跳过");
+
+    // 小结：
+    // 1. 想控制新进程窗口的初始显示方式，用 `show_window(SW_*)`；控制台程序隐藏黑窗口用 `CREATE_NO_WINDOW`
+    // 2. 想在子进程执行第一条指令之前做准备，用 `CREATE_SUSPENDED` 创建，再用 `main_thread_handle()` 拿到主线程句柄去 `ResumeThread`
+    // 3. 句柄是借来的（`BorrowedHandle`），不能比 `Child` 活得更久；需要长期持有就自己复制一份（`try_clone_to_owned`）
+    println!();
+}
+
+// ===========================================
 // 主函数
 // ===========================================
 
@@ -2180,6 +2259,7 @@ pub fn main() {
     path_file_prefix();
     create_new_file();
     anonymous_pipe();
+    windows_process_extensions();
 
     println!("FFI 演示完成！");
 }
@@ -2486,5 +2566,12 @@ mod tests {
         }
         let _ = fs::remove_file(&link);
         let _ = fs::remove_file(&target);
+    }
+
+    // 这两个 API 只存在于 Windows：以挂起状态创建隐藏窗口的子进程，再用主线程句柄放行
+    #[test]
+    #[cfg(windows)]
+    fn test_windows_process_extensions() {
+        windows_process_demo().expect("Windows 进程扩展演示应当成功");
     }
 }

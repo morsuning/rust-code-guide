@@ -916,6 +916,175 @@ fn rc_unwrap_or_clone() {
 }
 
 // ===========================================
+// 12. 在每条退出路径上执行清理：DropGuard（Rust 1.100）
+// ===========================================
+
+// `Drop` trait 保证：值离开作用域时一定会被清理——不管是正常走到末尾、`return`、用 `?` 提前返回，还是 panic 展开
+// （本章前面的“Drop trait”一节讲的就是这个）。
+// 但如果只是想“函数退出时无论如何都要执行这一小段收尾代码”，专门定义一个类型再给它实现 `Drop` 就太重了。
+// 1.100 稳定了 `std::mem::DropGuard`：把“一个值 + 一个闭包”打包，离开作用域时把值交给闭包。
+// 其他语言里类似的东西叫 `defer`（Go）、`finally`（Java）、`ScopeGuard`（C++ 与 Rust 的第三方 crate）。
+//
+// 用法要点：
+// - `DropGuard::new(值, |值| 收尾代码)`：创建守卫。守卫被丢弃时，闭包以**值的所有权**被调用
+// - 守卫实现了 `Deref` / `DerefMut`，被包着的值照常使用；你改成什么样，闭包里看到的就是什么样
+// - `DropGuard::dismiss(守卫)`：解除守卫，取回内部的值，**不**运行闭包。这是实现“事务式回滚”的关键：
+//   先动手修改，全部成功就 dismiss，中途失败（`?` 提前返回或 panic）就让守卫生效，把状态回滚
+// - `dismiss` 是关联函数而不是方法（写 `DropGuard::dismiss(g)`，不写 `g.dismiss()`），
+//   这样不会和被包装的值自己的同名方法冲突（`Box::leak`、`Rc::try_unwrap` 也是同样的命名风格）
+// - 官方文档特别说明：想解除守卫，优先用 `dismiss`，不要用 `mem::forget`——
+//   `dismiss` 会把闭包捕获的资源正常释放，`forget` 会让它们泄漏
+//
+// 两个典型场景：
+// - 事务式回滚：批量修改一个集合，中途出错就恢复原样（见下面的 `parse_all_or_nothing`）
+// - 收尾清理：不管从哪条路径退出，都要还原一个临时状态，比如“正在处理”的标记（见 `process_with_busy_flag`）
+//
+// 一个常见的坑：守卫必须绑定到**有名字**的变量。写成 `let _ = DropGuard::new(..);` 时，
+// 值没有被任何变量接住，会在这一行结束时立刻被丢弃，清理代码就提前执行了；
+// 写成 `let _cleanup = DropGuard::new(..);`（带下划线前缀的普通变量）才会一直活到作用域末尾。
+
+use std::mem::DropGuard;
+use std::num::ParseIntError;
+
+// 全部解析成功才保留；只要有一个失败，`nums` 就保持调用之前的样子
+fn parse_all_or_nothing(nums: &mut Vec<u32>, texts: &[&str]) -> Result<(), ParseIntError> {
+    let original_len = nums.len();
+    // 守卫包着 `&mut Vec<u32>`；闭包拿到它，失败时把中途推进去的元素截掉
+    let mut nums = DropGuard::new(nums, move |nums| nums.truncate(original_len));
+
+    for text in texts {
+        nums.push(text.parse()?); // `?` 提前返回时守卫被丢弃，闭包执行，完成回滚
+    }
+
+    // 全部成功：解除守卫，闭包不会执行。取回的 `&mut Vec` 不再需要，直接丢弃
+    DropGuard::dismiss(nums);
+    Ok(())
+}
+
+// 收尾清理：不管从哪条路径退出，都要把“处理中”标记还原
+fn process_with_busy_flag(busy: &Cell<bool>, input: &str) -> Result<u32, String> {
+    busy.set(true);
+    // 闭包里用不到内部的值，所以守卫里放一个 `()`
+    let _cleanup = DropGuard::new((), |()| busy.set(false));
+
+    if input.is_empty() {
+        return Err("输入为空".to_string()); // 提前返回：守卫照样执行
+    }
+    input.parse::<u32>().map_err(|error| error.to_string()) // 正常返回 / 解析失败：同样执行
+}
+
+fn drop_guard_demo() {
+    println!("=== 在每条退出路径上执行清理：DropGuard（Rust 1.100） ===");
+
+    // ---------- 事务式回滚 ----------
+    let mut numbers = vec![1, 2];
+    let first = parse_all_or_nothing(&mut numbers, &["3", "4"]);
+    println!("全部成功: {first:?}，numbers = {numbers:?}");
+    let second = parse_all_or_nothing(&mut numbers, &["5", "x", "6"]);
+    println!("中途失败: 出错 = {}，numbers = {numbers:?}（回滚到了这次调用之前）", second.is_err());
+
+    // ---------- 收尾清理：每条退出路径都会执行 ----------
+    let busy = Cell::new(false);
+    for input in ["42", "", "abc"] {
+        let result = process_with_busy_flag(&busy, input);
+        println!("处理 {input:?} -> {result:?}，退出之后 busy = {}", busy.get());
+    }
+
+    // ---------- Deref / DerefMut：守卫里的值照常使用 ----------
+    let log = RefCell::new(Vec::new());
+    {
+        let mut guarded = DropGuard::new(String::from("草稿"), |text| log.borrow_mut().push(format!("保存: {text}")));
+        guarded.push_str("（已修改）"); // 通过 DerefMut 直接调用 String 的方法
+        println!("守卫里的值: {}", *guarded);
+    } // 守卫在这里被丢弃，闭包拿到的是修改之后的值
+    println!("离开作用域之后的日志: {:?}", log.borrow());
+
+    // ---------- dismiss：取回值，闭包不执行 ----------
+    let guard = DropGuard::new(String::from("不需要保存"), |text| log.borrow_mut().push(format!("保存: {text}")));
+    let value = DropGuard::dismiss(guard);
+    println!("dismiss 取回 {value:?}，日志条数仍是 {}", log.borrow().len());
+
+    // 最佳实践：
+    // 1. “先改、后确认”的批量操作，用 `DropGuard` 包住被修改的对象，成功后 `dismiss`，失败（含 `?` 和 panic）自动回滚
+    // 2. 守卫一定要绑定到有名字的变量（`_cleanup`），不要写成 `let _ = ..`
+    // 3. 需要对资源有完整的生命周期管理（有状态、要复用）时，仍然应该定义专门的类型并实现 `Drop`；
+    //    `DropGuard` 适合一次性的、写在函数里的收尾逻辑
+    println!();
+}
+
+// ===========================================
+// 13. 就地变换智能指针里的值：Box::map、Box::take、Rc::map、Arc::map（Rust 1.100）
+// ===========================================
+
+// 场景：手里有一个 `Box<T>`，想得到一个 `Box<U>`。
+// 以前只能写 `Box::new(f(*boxed))`：把值从盒子里搬出来、算出新值、再**重新申请一块堆内存**装它，旧的那块被释放——
+// 一次释放加一次分配。1.100 稳定了一组关联函数，把“尽量复用原来那块堆内存”变成了标准做法：
+// - `Box::map(盒子, |值| 新值)`：值按**所有权**交给闭包，返回 `Box<U>`。
+//   `T` 和 `U` 的大小、对齐都相同时，直接在原来那块堆内存上放新值，不分配也不释放；不同就释放旧的、分配新的
+// - `Box::take(盒子)`：取走值，但**保留堆内存**，返回 `(T, Box<MaybeUninit<T>>)`；
+//   配合 `Box::write(空盒子, 新值)`（1.87）可以在同一块堆内存上反复“取出—处理—放回”
+// - `Rc::map(rc, |值: &T| 新值)` / `Arc::map(arc, |值: &T| 新值)`：闭包拿到的是 `&T`（引用），不是 `T`——
+//   因为 Rc / Arc 可能还有别的持有者，值不能被搬走。返回新的 `Rc<U>` / `Arc<U>`；
+//   只有当它是唯一持有者、并且 `T` 与 `U` 的布局相同时才会复用分配，否则就是新分配一份
+//
+// 为什么都写成关联函数（`Box::map(b, f)`，而不是 `b.map(f)`）？
+// 因为这些智能指针会自动解引用：如果 `T` 自己也有一个叫 `map` 的方法（比如 `Option::map`、`Iterator::map`），
+// `b.map(f)` 就分不清调的是谁。这是标准库里一贯的做法（`Rc::clone`、`Box::leak` 也一样）。
+//
+// 典型场景：流水线里把 `Box<Request>` 逐级转换成 `Box<Response>`；
+// 配置放在 `Arc<Config>` 里共享，给某个子系统派生出一个只含名字的 `Arc<String>`。
+// 注意：只是想看一眼数据、不需要变换时，不要用 map——借用 `&T` 就够了。
+
+fn smart_pointer_map() {
+    println!("=== 就地变换智能指针里的值：Box::map、Box::take、Rc::map、Arc::map（Rust 1.100） ===");
+
+    // ---------- Box::map：值的所有权交给闭包，返回 Box<U> ----------
+    let boxed_text: Box<String> = Box::new(String::from("rust 1.100"));
+    let boxed_len: Box<usize> = Box::map(boxed_text, |text| text.len()); // String → usize，布局不同，会重新分配
+    println!("Box::map 把 Box<String> 变成 Box<usize>: {boxed_len}");
+
+    // u64 → i64：大小、对齐都相同，可以直接复用原来那块堆内存
+    let boxed_unsigned = Box::new(41_u64);
+    let address_before: *const u64 = Box::as_ptr(&boxed_unsigned);
+    let boxed_signed: Box<i64> = Box::map(boxed_unsigned, |value| value as i64 + 1);
+    let address_after: *const i64 = Box::as_ptr(&boxed_signed);
+    println!(
+        "u64 → i64 之后: {boxed_signed}，堆地址是否相同: {}（复用是实现细节，文档只承诺“尽可能复用”）",
+        address_before.cast::<i64>() == address_after
+    );
+
+    // ---------- Box::take：取走值，保留堆内存 ----------
+    let boxed = Box::new(String::from("第一份"));
+    // first 是取出来的 String；empty_box 是 `Box<MaybeUninit<String>>`：堆内存还在，只是里面没有值
+    let (first, empty_box) = Box::take(boxed);
+    let boxed = Box::write(empty_box, String::from("第二份")); // 在同一块堆内存上放新值
+    println!("take 取出了 {first:?}，同一块内存里换成了 {boxed:?}");
+
+    // ---------- Rc::map / Arc::map：闭包拿到的是 &T ----------
+    #[derive(Debug)]
+    struct Config {
+        name: String,
+        retries: u32,
+    }
+    let config = Rc::new(Config { name: "api-server".to_string(), retries: 3 });
+    let other_holder = Rc::clone(&config);
+    // 派生出只含名字的 Rc<String>：闭包拿到 &Config，返回的必须是自己拥有数据的新值（不能借用 &Config 里的东西）
+    let name_only: Rc<String> = Rc::map(config, |config| config.name.clone());
+    println!("Rc::map 派生出 {name_only:?}；另一个持有者仍然持有 {other_holder:?}");
+
+    let numbers = Arc::new(vec![1, 2, 3]);
+    let total: Arc<i32> = Arc::map(numbers, |numbers| numbers.iter().sum());
+    println!("Arc::map 求和得到 {total}");
+
+    // 小结：
+    // 1. `Box::map(b, f)`：把 `Box<T>` 变成 `Box<U>`，能复用堆内存就复用；比 `Box::new(f(*b))` 少一次分配和释放
+    // 2. `Box::take(b)` + `Box::write(空盒子, 新值)`：循环里反复“取出—处理—放回”，整个过程只分配一次
+    // 3. `Rc::map` / `Arc::map` 的闭包拿到的是 `&T`，返回值要自己拥有数据；原来的其他持有者不受影响
+    // 4. 都是关联函数：写 `Box::map(b, f)`，不写 `b.map(f)`，避免和被包装类型自己的 `map` 方法混淆
+    println!();
+}
+
+// ===========================================
 // 主函数
 // ===========================================
 
@@ -934,6 +1103,8 @@ pub fn main() {
     smart_pointer_combinations();
     practical_examples();
     rc_unwrap_or_clone();
+    drop_guard_demo();
+    smart_pointer_map();
 
     println!("智能指针演示完成！");
 }
@@ -1083,5 +1254,65 @@ mod tests {
         let other_arc = std::sync::Arc::clone(&arc);
         assert_eq!(std::sync::Arc::unwrap_or_clone(arc), [1, 2, 3]);
         assert_eq!(*other_arc, [1, 2, 3]);
+    }
+
+    #[test]
+    fn test_drop_guard() {
+        use std::panic::{AssertUnwindSafe, catch_unwind};
+
+        // 事务式回滚：全部成功才保留
+        let mut numbers = vec![1, 2];
+        assert_eq!(parse_all_or_nothing(&mut numbers, &["3", "4"]), Ok(()));
+        assert_eq!(numbers, [1, 2, 3, 4]);
+        assert!(parse_all_or_nothing(&mut numbers, &["5", "x", "6"]).is_err());
+        assert_eq!(numbers, [1, 2, 3, 4]);
+
+        // 收尾清理：每条退出路径之后标记都被还原
+        let busy = Cell::new(false);
+        assert_eq!(process_with_busy_flag(&busy, "42"), Ok(42));
+        assert!(!busy.get());
+        assert!(process_with_busy_flag(&busy, "").is_err());
+        assert!(!busy.get());
+
+        // panic 展开时守卫同样会执行
+        let flag = Cell::new(0);
+        let outcome = catch_unwind(AssertUnwindSafe(|| {
+            let _guard = DropGuard::new((), |()| flag.set(1));
+            panic!("模拟中途 panic");
+        }));
+        assert!(outcome.is_err());
+        assert_eq!(flag.get(), 1);
+
+        // dismiss 不执行闭包；而 `let _ = ..` 会让守卫在这一行结束时立刻被丢弃
+        let ran = Cell::new(0);
+        let guard = DropGuard::new(5, |_| ran.set(ran.get() + 1));
+        assert_eq!(DropGuard::dismiss(guard), 5);
+        assert_eq!(ran.get(), 0);
+        let _ = DropGuard::new(5, |_| ran.set(ran.get() + 1));
+        assert_eq!(ran.get(), 1);
+    }
+
+    #[test]
+    fn test_smart_pointer_map() {
+        // Box::map：值的所有权交给闭包，类型可以变
+        let boxed_len: Box<usize> = Box::map(Box::new(String::from("rust")), |text| text.len());
+        assert_eq!(*boxed_len, 4);
+
+        // Box::take + Box::write：同一块堆内存先后放两个值
+        let (first, empty) = Box::take(Box::new(String::from("甲")));
+        let second = Box::write(empty, String::from("乙"));
+        assert_eq!((first.as_str(), second.as_str()), ("甲", "乙"));
+
+        // Rc::map：闭包拿到 &T，原来的另一个持有者不受影响
+        let shared = Rc::new(String::from("api"));
+        let other_holder = Rc::clone(&shared);
+        let length: Rc<usize> = Rc::map(shared, |text| text.len());
+        assert_eq!(*length, 3);
+        assert_eq!(*other_holder, "api");
+        assert_eq!(Rc::strong_count(&other_holder), 1); // map 消耗了传进去的那份引用
+
+        // Arc::map 同理
+        let total: Arc<i32> = Arc::map(Arc::new(vec![1, 2, 3]), |numbers| numbers.iter().sum());
+        assert_eq!(*total, 6);
     }
 }

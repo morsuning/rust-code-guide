@@ -1474,6 +1474,71 @@ fn char_constants_and_methods() {
 }
 
 // ===========================================
+// 15. 布尔值原地取反：bool::toggle（Rust 1.100）
+// ===========================================
+
+// 给布尔变量取反，以前只能写 `flag = !flag;`：变量名要写两遍；
+// 变量名一长（比如 `self.sidebar.is_expanded`），或者手里只有一个 `&mut bool`（得写 `*flag = !*flag;`），
+// 这一行就变得又啰嗦又容易写岔。
+// 1.100 稳定了 `bool::toggle`：`flag.toggle()`，语义就是 `*self = !*self`，并且是 `const fn`。
+// 它和 `Option::take` 这类方法是同一种风格——接收 `&mut self`，直接修改变量本身。
+//
+// 两个容易搞混的点：
+// - `!flag` 是一个产生新值的表达式，`flag.toggle()` 是原地修改的语句，两者不能互换着当值用
+// - `toggle` 返回 `()`，不能写在表达式里；想拿到翻转后的值，再读一次变量即可
+//
+// 典型场景：
+// - 开关状态：点击一次翻转一次（侧边栏展开 / 收起、暗色模式开关）
+// - 标志数组里翻转某一项：`flags[i].toggle()`，不用写 `flags[i] = !flags[i]` 把下标写两遍
+// - 只拿到 `&mut bool` 的函数里翻转它，不需要手写解引用
+
+fn bool_toggle() {
+    println!("=== 布尔值原地取反：bool::toggle（Rust 1.100） ===");
+
+    // ---------- 基本用法 ----------
+    let mut dark_mode = false;
+    dark_mode.toggle();
+    println!("点击一次后 dark_mode = {dark_mode}");
+    dark_mode.toggle();
+    println!("再点击一次后 dark_mode = {dark_mode}");
+
+    // ---------- 只拿到 &mut bool：方法调用会自动解引用 ----------
+    fn flip(flag: &mut bool) {
+        // 以前要写 `*flag = !*flag;`
+        flag.toggle();
+    }
+    let mut collapsed = true;
+    flip(&mut collapsed);
+    println!("flip 之后 collapsed = {collapsed}");
+
+    // ---------- 标志数组：经典的“灯泡开关”问题 ----------
+    // 10 盏灯一开始都是灭的；第 n 轮把编号为 n 的倍数的灯翻转一次。
+    // 10 轮之后亮着的灯恰好是编号为完全平方数的那些（因为只有完全平方数有奇数个约数，被翻转奇数次）。
+    let mut lights = [false; 10];
+    for round in 1..=10 {
+        for number in (round..=10).step_by(round) {
+            lights[number - 1].toggle(); // 编号从 1 开始，下标从 0 开始
+        }
+    }
+    let lit: Vec<usize> = (1..=10).filter(|number| lights[number - 1]).collect();
+    println!("10 轮之后亮着的灯: {lit:?}");
+
+    // ---------- const fn：编译期也能用 ----------
+    const FLIPPED: bool = {
+        let mut value = false;
+        value.toggle();
+        value
+    };
+    println!("在 const 里翻转的结果: {FLIPPED}");
+
+    // 小结：
+    // 1. 想把布尔变量原地取反，用 `flag.toggle()`，不用再把变量名写两遍
+    // 2. 它返回 `()`；需要新值时再读一次变量，需要“新值作为表达式”时仍然用 `!flag`
+    // 3. 和 `bool::then` / `then_some` 不同：后两者是根据布尔值生成 `Option`，不会修改布尔值本身
+    println!();
+}
+
+// ===========================================
 // 主函数
 // ===========================================
 
@@ -1495,6 +1560,7 @@ pub fn main() {
     destructuring_assignment_and_unicode_identifiers();
     labeled_block_break();
     char_constants_and_methods();
+    bool_toggle();
 
     println!("基础语法演示完成！");
 }
@@ -1868,4 +1934,32 @@ fn test_labeled_block_break_and_char_constants() {
     let generic_form: std::num::NonZero<u32> = std::num::NonZero::new(7).unwrap();
     let alias_form: std::num::NonZeroU32 = generic_form;
     assert_eq!(alias_form.get(), 7);
+}
+
+#[test]
+fn test_bool_toggle() {
+    // 基本翻转
+    let mut flag = false;
+    flag.toggle();
+    assert!(flag);
+    flag.toggle();
+    assert!(!flag);
+
+    // 灯泡开关：第 n 轮翻转编号为 n 的倍数的灯，最后亮着的是完全平方数
+    let mut lights = [false; 10];
+    for round in 1..=10 {
+        for number in (round..=10).step_by(round) {
+            lights[number - 1].toggle();
+        }
+    }
+    let lit: Vec<usize> = (1..=10).filter(|number| lights[number - 1]).collect();
+    assert_eq!(lit, [1, 4, 9]);
+
+    // const fn：编译期翻转
+    const FLIPPED: bool = {
+        let mut value = false;
+        value.toggle();
+        value
+    };
+    const { assert!(FLIPPED) }; // 编译期断言：翻转的结果在编译时就已经确定
 }

@@ -2,7 +2,7 @@
 
 > 注：建议使用最新版本的Rust工具链查看和阅读本项目，本项目默认你使用了全新安装的工具链，并未修改任何编译配置等，因此部分预览和实验性等需要对编译器进行特殊设置的特性必要时已经被注释以保证全部代码都可以通过编译
 
-基于《The Rust Programming Language》书籍的 Rust 语言特性完整教程，并补充完善了截止 Rust 1.99 版本的新增语言特性，主要特性均配有代码示例、详细注释和测试（“版本特性追踪”一节列出各版本的真实亮点：语言和标准库层面的条目在教程里都有对应的演示，Cargo 与工具链层面的条目只作索引，必要时在代码注释里说明用法）。
+基于《The Rust Programming Language》书籍的 Rust 语言特性完整教程，并补充完善了截止 Rust 1.100 版本的新增语言特性，主要特性均配有代码示例、详细注释和测试（“版本特性追踪”一节列出各版本的真实亮点：语言和标准库层面的条目在教程里都有对应的演示，Cargo 与工具链层面的条目只作索引，必要时在代码注释里说明用法）。
 
 建议有一定编程经验的读者阅读本指南，本指南不适合编程初学者（即Rust为打算学习的第一门编程语言）。
 
@@ -48,6 +48,7 @@ rust-code-guide/
 - [解构赋值与 Unicode 标识符](src/mod_01_basics.rs)
 - [带标签的代码块：break '标签 值](src/mod_01_basics.rs)
 - [char 的关联常量与方法](src/mod_01_basics.rs)
+- [bool::toggle：布尔值原地取反](src/mod_01_basics.rs)
 
 ### 核心概念
 
@@ -96,6 +97,7 @@ rust-code-guide/
 - [get_disjoint_mut：同时可变借用多个元素](src/mod_09_collections.rs)
 - [partition_point：有序切片的分界点](src/mod_09_collections.rs)
 - [black_box：防止优化器抹掉测量代码](src/mod_09_collections.rs)
+- [Vec::from_fn 与 trim_prefix / trim_suffix](src/mod_09_collections.rs)
 
 ### 函数式编程
 
@@ -109,6 +111,7 @@ rust-code-guide/
 - [共享状态](src/mod_12_concurrency.rs)
 - [RwLock 降级与原子更新 API](src/mod_12_concurrency.rs)
 - [原子 from_mut 与线程局部 update](src/mod_12_concurrency.rs)
+- [Once 实现 Default](src/mod_12_concurrency.rs)
 
 ### 宏系统
 
@@ -124,10 +127,12 @@ rust-code-guide/
 - [LazyCell / LazyLock 的访问 API](src/mod_14_advanced.rs)
 - [Rust 2024 Edition：与 2021 的主要区别](src/mod_14_advanced.rs)
 - [use 导入路径关键字并重命名](src/mod_14_advanced.rs)
+- [never 类型 `!` 正式稳定](src/mod_14_advanced.rs)
 - [C 字符串字面量 c"..."](src/mod_15_ffi.rs)
 - [IsTerminal 与 Path::file_prefix](src/mod_15_ffi.rs)
 - [File::create_new：原子地创建新文件](src/mod_15_ffi.rs)
 - [匿名管道 std::io::pipe](src/mod_15_ffi.rs)
+- [Windows 进程扩展：show_window 与 main_thread_handle](src/mod_15_ffi.rs)
 
 ### 智能指针
 
@@ -136,6 +141,8 @@ rust-code-guide/
 - [RefCell 和内部可变性](src/mod_16_smart_pointers.rs)
 - [Weak 指针和循环引用](src/mod_16_smart_pointers.rs)
 - [Rc / Arc 的 unwrap_or_clone](src/mod_16_smart_pointers.rs)
+- [DropGuard：在每条退出路径上执行清理](src/mod_16_smart_pointers.rs)
+- [Box::map / Box::take 与 Rc::map / Arc::map](src/mod_16_smart_pointers.rs)
 
 ### 异步编程
 
@@ -177,6 +184,9 @@ rust-code-guide/
 - [安全函数上的 #[target_feature]](src/mod_19_advanced_reference.rs)
 - [悬垂指针 lint 与 unsafe 前置条件断言](src/mod_19_advanced_reference.rs)
 - [自定义全局分配器](src/mod_19_advanced_reference.rs)
+- [Allocator trait：给单个集合指定分配器](src/mod_19_advanced_reference.rs)
+- [extern "custom"：自定义调用约定](src/mod_19_advanced_reference.rs)
+- [UnsafeCell 的直接访问方法与 conjure_zst](src/mod_19_advanced_reference.rs)
 - [工具链与构建配置速查](src/mod_19_advanced_reference.rs)
 
 ## 版本特性追踪
@@ -542,6 +552,20 @@ rust-code-guide/
 - 旧整数模块（如 `std::i32::MAX`）全面弃用，请改用 `i32::MAX`
 - Cargo：新增 `debug` profile；edition 2024 的工作区成员可覆盖继承依赖的 `default-features`
 - 1.99.1（2026-10-15）：修复 x86_64 上 FFI `bool` 返回值误编译、UEFI/嵌入式目标缺失 `wcslen`、macOS 上 rust-lld 的 libLLVM rpath
+
+### Rust 1.100 (2026-11-12)
+
+- never 类型 `!` 正式稳定：可以写在任意类型位置（`Result<T, !>`、`type Err = !`），`Infallible` 成为 `!` 的别名；类型推断的回退类型在所有 edition 统一为 `!`（2015 / 2018 / 2021 此前是 `()`，依赖旧行为的代码需要显式写出类型）
+- `Allocator` trait 的核心部分稳定（`Allocator`、`AllocError`、`Global`、`System`，以及 `Vec` / `Box` 的 `new_in`、`with_capacity_in`、`allocator` 等）；`Rc` / `Arc` 的 `new_in` 与其他集合的分配器支持仍未稳定
+- `extern "custom"` 稳定：声明不遵守任何标准调用约定的裸函数，只能通过内联汇编调用
+- `core::mem::DropGuard`（在每条退出路径上执行清理闭包，`dismiss` 解除）、`core::mem::conjure_zst`（凭空造出零大小类型的值）
+- `bool::toggle`、`Vec::from_fn`、`str` / `[T]` 的 `trim_prefix` / `trim_suffix` 与 `Path::trim_prefix`、`impl Default for Once`
+- `Box::take` / `Box::map`、`Rc::map` / `Arc::map`、`UnsafeCell::replace` / `as_ref_unchecked` / `as_mut_unchecked`
+- `Vec<T>`、`&[T]`、`&mut [T]` 可以直接与 `Cow<'_, [U]>` 比较；`impl AsRef<T> for !` / `AsMut<T> for !`
+- Windows：`CommandExt::show_window`、`ChildExt::main_thread_handle`
+- Cargo：自带 lint 体系（`[lints.cargo]`，新增 `cargo::unused_dependencies`）；依赖冷却期（`registry.global-min-publish-age`）；`cargo install` 默认使用包内自带的 Cargo.lock；构建目录采用新布局（不是稳定接口，请用 JSON 消息定位产物）
+- 编译器与平台：`-C profile-sample-use` 稳定；新增 lint `repeated_reprs`，`aligned_fields_in_packed` 由硬错误改为默认 deny 的 lint；`wasm32-wasip3` 升为 Tier 2；Unicode 升级到 18.0.0
+- 兼容性提示：`str::escape_debug`（以及 `{:?}`）总是转义组合用字符，含组合重音符的字符串的 Debug 输出会变成 `\u{301}` 形式；闭包对 `if let` 中用到的变量捕获更精确，可能产生新的编译错误；`ENOTSUP` 现在映射为 `io::ErrorKind::Unsupported`；同时写 `impl From<Infallible>` 与 `impl From<!>` 会冲突
 
 ## 如何使用
 

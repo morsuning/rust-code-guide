@@ -4,7 +4,7 @@
 
 // Rust 进阶参考（Advanced Reference）
 // 本章收纳「低频、偏底层」的语言与标准库特性：裸指针与内存布局、ABI 与 FFI 细节、
-// 内联汇编、全局分配器，以及工具链 / 构建配置。
+// 内联汇编、分配器（全局分配器与 `Allocator`），以及工具链 / 构建配置。
 //
 // 为什么单独成章？
 // 前 18 章讲的是写业务代码时天天用到的东西；这一章里的特性有三个共同点——
@@ -2200,6 +2200,357 @@ fn custom_global_allocator() {
 }
 
 // ===========================================
+// 17. 给单个集合指定分配器：Allocator trait 与 Vec::new_in / Box::new_in（Rust 1.100）
+// ===========================================
+
+// 上一节的 `GlobalAlloc` 是“整个程序只有一个”的全局分配器，换分配器就是整个程序一起换。
+// 更细的需求它满足不了：只想让**某一个集合**走特殊的分配策略，别的集合照旧。
+// `Allocator` trait 就是为此设计的：分配器是一个**普通的值**，交给集合保管，并且写进类型里——
+// `Vec<T, A>`、`Box<T, A>`，其中 `A: Allocator`。平时写的 `Vec<T>` 其实是 `Vec<T, Global>`：
+// `Global` 就是“转发给全局分配器”的那个默认值，所以已有的代码都不受影响。
+// 1.100 稳定了这个 trait 的核心部分，它是官方“Allocators 1.0”项目目标的基础。
+//
+// 典型场景：
+// - 内存配额 / 沙箱：给处理不受信任输入的子系统单独一个有上限的分配器，超限时返回错误，而不是拖垮整个进程
+//   （见下面的 `QuotaAllocator`）
+// - Arena / bump 分配器：一次请求（或一帧）内的所有临时对象都从一块内存里切，用完整块释放，比逐个 malloc / free 快得多
+// - 统计与调试：按子系统记录分配次数和字节数，定位内存增长的来源
+// - 特殊内存：共享内存、GPU 可见内存、嵌入式设备上的片上 RAM 池
+//
+// 实现一个分配器的要点（它是 `unsafe trait`，实现者要为下面这些约定负责）：
+// - 必须实现两个方法：`allocate(&self, Layout) -> Result<NonNull<[u8]>, AllocError>` 和
+//   `unsafe fn deallocate(&self, NonNull<u8>, Layout)`。`allocate_zeroed`、`grow`、`grow_zeroed`、`shrink` 都有默认实现；
+//   默认的 `grow` 是“申请新块 → 拷贝 → 释放旧块”，所以增长时的峰值占用是新旧两块之和，想原地扩容才需要自己实现
+// - 返回的块可以比请求的更大（`NonNull<[u8]>` 的长度就是实际大小）
+// - 内存耗尽时返回 `Err(AllocError)`，不要 panic；所有分配、释放方法都**不允许 unwind**
+// - 接收者是 `&self`：状态要靠内部可变性（`Cell`、原子类型……）维护，因为集合里可能只持有分配器的引用
+// - 分配出去的内存块要一直保持有效，直到被释放，或者分配器本身被销毁、被 `&mut` 修改、类型里的生命周期结束
+//
+// 分配失败之后会发生什么，取决于调用的是哪个 API（1.100 实测）：
+// - `Vec::try_reserve` 这类 `try_*` 方法把 `AllocError` 变成 `Err` 交给调用者，可以优雅处理
+// - `push`、`extend` 这类普通方法遇到分配失败，仍然会打印 “memory allocation of N bytes failed” 并终止进程（abort）
+// 所以“配额超限不拖垮进程”要靠调用方在关键路径上使用 `try_reserve`，光有分配器本身是不够的。
+//
+// 1.100 稳定的范围：
+// - trait 与类型：`Allocator`、`AllocError`、`Global`、`System`；`&A`、`&mut A`、`Box<A>`、`Rc<A>`、`Arc<A>`
+//   自己也实现了 `Allocator`，所以可以用引用或引用计数在多个集合之间共享同一个分配器
+// - `Vec`：`new_in`、`with_capacity_in`、`allocator`，以及与裸指针往返的 `from_raw_parts_in`、`from_parts_in`、
+//   `into_raw_parts_with_allocator`、`into_parts_with_allocator`
+// - `Box`：`new_in`、`allocator`，以及 `from_raw_in`、`from_non_null_in`、`into_raw_with_allocator`、`into_non_null_with_allocator`
+// 仍未稳定（1.100 实测，feature = `allocator_ext`）：`Rc::new_in` / `Arc::new_in`、`VecDeque` / `HashMap` 等其他集合的 `new_in`、
+// `Vec::try_with_capacity_in`、`Box::try_new_in`。所以目前真正能用上自定义分配器的只有 `Vec` 和 `Box`；
+// 官方的发布说明提到，把更多集合和指针类型接上是接下来要做的事。
+
+use std::alloc::{AllocError, Allocator, Global};
+use std::cell::Cell;
+use std::ptr::NonNull;
+
+// 带配额的分配器：包装另一个分配器，限制“同时存活”的字节总数
+struct QuotaAllocator<A: Allocator = Global> {
+    inner: A,
+    limit: usize,
+    used: Cell<usize>,
+}
+
+impl<A: Allocator> QuotaAllocator<A> {
+    fn new(inner: A, limit: usize) -> Self {
+        Self { inner, limit, used: Cell::new(0) }
+    }
+
+    // 当前占用的字节数
+    fn used(&self) -> usize {
+        self.used.get()
+    }
+}
+
+// SAFETY: 所有请求都转发给 `inner`，它满足 `Allocator` 的全部约定；
+// 本类型只额外维护一个计数器，既不读写已分配的内存，也不会 panic。
+unsafe impl<A: Allocator> Allocator for QuotaAllocator<A> {
+    fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+        // 超出配额就返回 Err（不 panic、不 abort），让调用方有机会优雅地处理
+        let after = self.used.get().checked_add(layout.size()).ok_or(AllocError)?;
+        if after > self.limit {
+            return Err(AllocError);
+        }
+        let block = self.inner.allocate(layout)?;
+        self.used.set(after);
+        Ok(block)
+    }
+
+    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
+        // SAFETY: 调用者保证 `ptr` 与 `layout` 对应本分配器的某次分配，而我们原样转发给 `inner`
+        unsafe { self.inner.deallocate(ptr, layout) };
+        // 释放方法里不允许 panic，所以用 saturating_sub：debug 构建里普通的减法溢出会 panic
+        self.used.set(self.used.get().saturating_sub(layout.size()));
+    }
+}
+
+fn allocator_api_per_collection() {
+    println!("=== 给单个集合指定分配器：Allocator trait（Rust 1.100） ===");
+
+    use std::rc::Rc;
+
+    // 配额 64 字节：同时存活的堆内存总量不能超过它
+    let quota = QuotaAllocator::new(Global, 64);
+
+    // ---------- Vec::with_capacity_in / Box::new_in：把分配器交给集合 ----------
+    // 类型里多了一个参数：`Vec<u32, &QuotaAllocator>`。这里把分配器的**引用**交给了 Vec，
+    // 借用检查会保证 Vec 活得不比 `quota` 长
+    let mut numbers: Vec<u32, &QuotaAllocator> = Vec::with_capacity_in(4, &quota);
+    numbers.extend([1, 2, 3, 4]);
+    println!("放入 4 个 u32：已占用 {} 字节（配额 64）", quota.used());
+
+    // ---------- 超出配额：try_reserve 返回 Err，原有数据不受影响 ----------
+    match numbers.try_reserve(1000) {
+        Ok(()) => println!("多申请 1000 个元素成功（配额失效了？）"),
+        Err(_) => println!("多申请 1000 个元素被配额拦下了，原有数据完好: {numbers:?}"),
+    }
+
+    // ---------- 增长：默认的 grow 是“申请新块 → 拷贝 → 释放旧块” ----------
+    // 增长过程中新旧两块同时存在，峰值占用是两者之和，所以配额要留足余量
+    numbers.push(5);
+    println!("push 第 5 个元素之后：容量 {}，占用 {} 字节", numbers.capacity(), quota.used());
+
+    // ---------- Box::new_in：同一个分配器可以同时借给多个集合 ----------
+    let boxed = Box::new_in(7_u64, &quota);
+    println!("再放一个 Box<u64>：占用 {} 字节；通过 Box::allocator 读到的占用 = {}", quota.used(), Box::allocator(&boxed).used());
+    drop(boxed);
+    drop(numbers);
+    println!("全部释放之后：占用 {} 字节", quota.used());
+
+    // ---------- 共享分配器的方式 ----------
+    // 1. 借用：`&A` 本身就实现了 `Allocator`（上面用的就是这种），适合分配器比所有集合都活得久的情况
+    // 2. `Rc<A>` / `Arc<A>`：它们也实现了 `Allocator`，每个集合各持有一份引用计数，不用操心生命周期
+    let shared = Rc::new(QuotaAllocator::new(Global, 1024));
+    let mut left: Vec<u8, Rc<QuotaAllocator>> = Vec::new_in(Rc::clone(&shared));
+    let mut right: Vec<u8, Rc<QuotaAllocator>> = Vec::new_in(Rc::clone(&shared));
+    left.extend([0_u8; 10]);
+    right.extend([0_u8; 20]);
+    println!("两个 Vec 共用一个分配器：占用 {} 字节，分配器的引用计数 = {}", shared.used(), Rc::strong_count(&shared));
+
+    // ---------- Global 与 System ----------
+    // `Global` 转发给“当前的全局分配器”（也就是 `#[global_allocator]` 指定的那个，默认是系统分配器）；
+    // `System` 永远是操作系统自带的分配器，哪怕程序注册了别的 `#[global_allocator]`
+    let from_system: Vec<u8, System> = Vec::with_capacity_in(8, System);
+    let from_global: Vec<u8, Global> = Vec::with_capacity_in(8, Global);
+    println!("System 分配的容量 {}，Global 分配的容量 {}", from_system.capacity(), from_global.capacity());
+
+    // 小结：
+    // 1. `GlobalAlloc` 管整个程序，`Allocator` 管单个集合；后者写进类型 `Vec<T, A>`，不影响别的集合
+    // 2. 实现只需要 `allocate` 和 `deallocate`；耗尽时返回 `Err(AllocError)`，所有方法都不能 unwind
+    // 3. 要优雅处理分配失败，必须使用 `try_reserve` 这类 `try_*` 方法；`push` 遇到失败仍然会 abort
+    // 4. 目前只有 `Vec` 和 `Box` 能用上自定义分配器；真有 arena 之类的需求，也可以先看成熟的 crate（bumpalo 等）
+    println!();
+}
+
+// ===========================================
+// 18. 自定义调用约定：extern "custom"（Rust 1.100）
+// ===========================================
+
+// 第 12 节的裸函数里，汇编函数体经常**并不遵守任何一种标准的调用约定**：
+// - 中断 / 异常入口：进入时寄存器的状态由硬件规定，不是编译器能理解的 ABI
+// - 协程、绿色线程的上下文切换桩：要在汇编里手动换栈，参数放在约定好的特殊寄存器里
+// - 跳板函数（trampoline）：把某个寄存器里的值原样转交给另一个函数
+// 以前只能给这些函数硬套一个 `extern "C"`，再“撒个谎”说它有几个参数——
+// 于是 Rust 代码就可以照着这个谎话直接调用它，参数传错了编译器完全不知道，运行时才出莫名其妙的错。
+//
+// 1.100 稳定了 `extern "custom"`：明确告诉编译器“这个函数的调用约定你不认识”。
+// 编译器的应对很干脆：**禁止从 Rust 代码里调用它**。唯一的调用方式是写内联汇编，并且由你亲手遵守它的约定。
+// 这样就把一个“只能靠自觉避免”的错误，变成了编译期就拒绝的错误。
+//
+// 规则（每一条的报错信息都用 1.100 实测过）：
+// 1. 必须是 `unsafe`：
+//        error: functions with the "custom" ABI must be unsafe
+// 2. 不能有参数，返回类型只能是 `()`（省略，或者显式写成 `()`；写成指向 `()` 的类型别名也不行）：
+//        error: invalid signature for `extern "custom"` function
+// 3. 函数定义必须是裸函数（`#[unsafe(naked)]`）：
+//        error: an `extern "custom"` function can only be declared externally or defined via naked functions
+// 4. 不能从 Rust 代码里调用，通过函数指针调用也不行：
+//        error: functions with the "custom" ABI cannot be called
+// 5. 不能标 `#[cold]`
+// 6. 也可以在 `extern` 块里声明，用来引用 `global_asm!` 或外部汇编文件里实现的函数：
+//        unsafe extern "custom" { fn external_entry(); }
+//    同样不能有参数和返回值，而且不能写 `safe fn`（报错 “foreign functions with the "custom" ABI cannot be safe”）
+//
+// 既然没有“标准参数”，约定写在哪里？写在**文档注释**里：哪个寄存器进、哪个寄存器出、哪些寄存器会被改写、其余寄存器必须保持不变。
+// 调用它的内联汇编要照着这份约定声明操作数（比如 `inout("x0") value`）和被破坏的寄存器（比如 `out("x30") _`）。
+// 编译器既不知道这份约定，也不会帮你检查——这正是它被标成 `unsafe` 的原因。
+//
+// 绝大多数程序用不到这个特性，写内核、嵌入式固件、语言运行时、协程库的人才会遇到。
+
+// 自定义约定：参数从 x0（aarch64）/ rax（x86_64）传入，结果从同一个寄存器传出，只会改动这一个寄存器，其余寄存器保持原样。
+// 约定只存在于这行文档里；编译器不认识它。
+#[cfg(target_arch = "aarch64")]
+#[unsafe(naked)]
+unsafe extern "custom" fn increment_in_register() {
+    naked_asm!("add x0, x0, 1", "ret")
+}
+
+#[cfg(target_arch = "x86_64")]
+#[unsafe(naked)]
+unsafe extern "custom" fn increment_in_register() {
+    naked_asm!("add rax, 1", "ret")
+}
+
+// 唯一的调用方式：内联汇编。操作数和被破坏的寄存器，必须与上面写的约定逐条对应
+#[cfg(target_arch = "aarch64")]
+fn call_increment_in_register(value: u64) -> u64 {
+    let mut value = value;
+    // SAFETY: 汇编遵守 increment_in_register 的约定：x0 传入、x0 传出；
+    // `bl` 会把返回地址写进链接寄存器 x30，这里已经声明它被破坏
+    unsafe {
+        std::arch::asm!("bl {}", sym increment_in_register, inout("x0") value, out("x30") _);
+    }
+    value
+}
+
+#[cfg(target_arch = "x86_64")]
+fn call_increment_in_register(value: u64) -> u64 {
+    let mut value = value;
+    // SAFETY: 汇编遵守 increment_in_register 的约定：rax 传入、rax 传出；`call` 用到的栈空间由编译器负责预留
+    unsafe {
+        std::arch::asm!("call {}", sym increment_in_register, inout("rax") value);
+    }
+    value
+}
+
+fn custom_abi_functions() {
+    println!("=== 自定义调用约定：extern \"custom\"（Rust 1.100） ===");
+
+    #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
+    println!("经内联汇编调用: increment_in_register(41) = {}", call_increment_in_register(41));
+    #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
+    println!("当前架构没有对应的示例，跳过");
+
+    // 函数指针类型和普通函数指针一样大，可以存进函数表（比如中断向量表），但同样不能直接调用
+    println!("extern \"custom\" 函数指针的大小: {} 字节", size_of::<unsafe extern "custom" fn()>());
+
+    // 小结：
+    // 1. 汇编函数体不遵守任何标准调用约定时，声明成 `unsafe extern "custom" fn()`，而不是硬套 `extern "C"`
+    // 2. 它不能有参数和返回值，也不能被 Rust 代码调用——只能通过内联汇编（`sym 函数名`）调用
+    // 3. 约定（寄存器的进出与被破坏情况）写在文档注释里，调用处的汇编要逐条对应
+    println!();
+}
+
+// ===========================================
+// 19. UnsafeCell 的直接访问方法与凭空造出零大小类型：conjure_zst（Rust 1.100）
+// ===========================================
+
+// 这一节是 1.100 里两处偏底层的小改进。
+//
+// (1) UnsafeCell 的三个新方法：replace / as_ref_unchecked / as_mut_unchecked
+//     `UnsafeCell<T>` 是内部可变性的根基：`Cell`、`RefCell`、`Mutex`、`OnceLock` 都是在它之上加规则（借用检查、锁……）。
+//     它唯一的能力是：通过共享引用 `&UnsafeCell<T>` 拿到指向内容的裸指针 `get() -> *mut T`。
+//     以前读写内容要写 `unsafe { *cell.get() = value }`：先拿裸指针，再解引用。
+//     1.100 稳定了三个更直白、同样是 `unsafe` 的方法（都是 const fn）：
+//     - `replace(&self, value: T) -> T`：换入新值，拿回旧值
+//     - `as_ref_unchecked(&self) -> &T`：从共享引用直接得到 `&T`
+//     - `as_mut_unchecked(&self) -> &mut T`：从**共享引用**直接得到 `&mut T`
+//     它们的安全前提都由调用者保证：不能有数据竞争；`as_mut_unchecked` 返回的 `&mut` 存活期间，
+//     不能再有任何别的引用指向内容；`as_ref_unchecked` 返回的 `&` 存活期间，不能修改内容。
+//     自己写这种类型，几乎总是应该直接用 `Cell` / `RefCell` / `Mutex`——它们把这些前提变成了检查或者锁；
+//     只有在实现这些原语本身、或者有它们都满足不了的需求时，才需要直接碰 `UnsafeCell`。
+//
+// (2) mem::conjure_zst：凭空造出一个零大小类型（ZST）的值
+//     ZST 只有唯一的一个值——没有任何数据，所有“实例”都一模一样。
+//     泛型代码里常遇到：已知 `T` 是 ZST（比如函数项类型、没有捕获的闭包、`()`），却没有 `Default` / `Clone` 之类的约束可以造出一个 `T`。
+//     以前的办法是 `mem::zeroed()`、`MaybeUninit::uninit().assume_init()`、`transmute(())` 等“各显神通”的写法，每一种都有各自的坑；
+//     1.100 给出了标准答案：`unsafe { mem::conjure_zst::<T>() }`（也是 const fn）。
+//     - 如果 `T` 不是 ZST，运行时会 panic（在 const 里是编译错误 E0080），不会悄悄造出一个垃圾值
+//     - 它是 `unsafe` 的，因为“能造”不等于“该造”：很多库靠“这个类型造不出来”来保证安全。
+//       比如 PyO3 里的 `Python<'py>` 是零大小的标记，代表“当前线程持有 Python 的全局解释器锁”；
+//       如果任何人都能凭空造一个，“持有锁”这个前提就形同虚设。
+//       所以只能对你**确知**“凭空复制它是安全的”的类型使用：零大小 + 可以随意复制（`Copy`）+ 确实存在（手里有一个值作为证明），三者缺一不可
+//     下面的 `reify_to_fn_pointer` 是标准库自己的用法（proc_macro 内部的 `selfless_reify`）：
+//     把“零大小、可 Copy 的闭包”变成一个普通的函数指针。
+
+// 只能在单线程里使用的计数器：`UnsafeCell` 不是 `Sync`，包含它的类型自动也不是 `Sync`，编译器会拦住跨线程共享
+struct Counter {
+    value: std::cell::UnsafeCell<u32>,
+}
+
+impl Counter {
+    fn new() -> Self {
+        Self { value: std::cell::UnsafeCell::new(0) }
+    }
+
+    // 自增并返回新值
+    fn bump(&self) -> u32 {
+        // SAFETY: Counter 不是 Sync，同一时刻只有当前线程能访问；这个 `&mut` 用完就丢，期间没有别的引用指向内容
+        let value = unsafe { self.value.as_mut_unchecked() };
+        *value += 1;
+        *value
+    }
+
+    // 读取当前值
+    fn peek(&self) -> u32 {
+        // SAFETY: 同上；返回前就把值复制出来了，`&u32` 不会逃出这个函数
+        *unsafe { self.value.as_ref_unchecked() }
+    }
+
+    // 重置为 0，返回重置之前的值
+    fn reset(&self) -> u32 {
+        // SAFETY: 同上；此刻没有任何指向内容的引用存活
+        unsafe { self.value.replace(0) }
+    }
+}
+
+// 把“零大小、可 Copy 的闭包”变成普通的 `fn` 指针。
+// 泛型代码里只知道 `F: Fn(i32) -> i32`，不能直接把它转成函数指针（那需要看到具体的、没有捕获的闭包类型）；
+// 办法是造一个“蹦床”函数：函数指针本身不带数据，蹦床在被调用时凭空造出一个 `F` 再调用它。
+// 这样做之所以安全，靠三个条件：`F` 是零大小（下面的 const 断言）、`F` 是 `Copy`（可以随意复制）、
+// 调用方传进来了一个 `F` 的值（证明它确实存在，不是某种造不出来的类型）。
+fn reify_to_fn_pointer<F: Fn(i32) -> i32 + Copy>(f: F) -> fn(i32) -> i32 {
+    // 编译期检查：捕获了变量的闭包不是零大小类型，在这里直接编译失败
+    const { assert!(size_of::<F>() == 0, "闭包必须是零大小类型（不能捕获变量）") };
+
+    fn trampoline<F: Fn(i32) -> i32 + Copy>(value: i32) -> i32 {
+        // SAFETY: F 是零大小且 Copy，调用方传入过一个 F 的值，所以它存在，并且可以随意复制
+        let f: F = unsafe { std::mem::conjure_zst() };
+        f(value)
+    }
+
+    let _proof_of_existence = f;
+    trampoline::<F>
+}
+
+fn unsafe_cell_access_and_conjure_zst() {
+    println!("=== UnsafeCell 的直接访问方法与 conjure_zst（Rust 1.100） ===");
+
+    // ---------- UnsafeCell 的三个新方法 ----------
+    let counter = Counter::new();
+    counter.bump();
+    counter.bump();
+    println!("自增两次之后 peek = {}", counter.peek());
+    let before_reset = counter.reset();
+    println!("reset 返回重置之前的值 = {before_reset}，现在 peek = {}", counter.peek());
+
+    // ---------- conjure_zst：凭空造出零大小类型的值 ----------
+    // SAFETY: `()` 和 `[i32; 0]` 都是零大小、只有唯一的值，没有任何需要维护的不变量
+    let (unit, empty): ((), [i32; 0]) = unsafe { (std::mem::conjure_zst(), std::mem::conjure_zst()) };
+    println!("凭空造出的值: {unit:?}、{empty:?}");
+
+    // 标准库自己的用法：把零大小、可 Copy 的闭包变成普通函数指针
+    let add_one = reify_to_fn_pointer(|value| value + 1);
+    println!("闭包变成函数指针之后调用: add_one(41) = {}", add_one(41));
+    // 闭包捕获了变量，就不是零大小类型了，在编译期就会被拦下：
+    //     let offset = 5;
+    //     reify_to_fn_pointer(move |value| value + offset);
+    //     error[E0080]: evaluation panicked: 闭包必须是零大小类型（不能捕获变量）
+    // 顺便说一句：在能看见具体闭包的地方，没有捕获的闭包可以直接转成函数指针：`let p: fn(i32) -> i32 = |x| x + 1;`
+    // 上面这个包装函数是为了应对“泛型代码里只知道 F: Fn”的场合。
+    //
+    // 对非零大小的类型调用 conjure_zst（比如 `conjure_zst::<u32>()`）会 panic：
+    //     mem::conjure_zst invoked on type u32, which is not zero-sized
+
+    // 小结：
+    // 1. 需要直接访问 `UnsafeCell` 的内容时，用 `replace` / `as_ref_unchecked` / `as_mut_unchecked`，比先取裸指针再解引用直白
+    // 2. 日常代码仍然优先用 `Cell` / `RefCell` / `Mutex`，不要直接碰 `UnsafeCell`
+    // 3. `conjure_zst` 只用于“确知凭空复制它是安全的”的 ZST；要保证“造不出来”的标记类型，永远不应该被它绕过
+    println!();
+}
+
+// ===========================================
 // 附录：工具链与构建配置速查（只有文字，没有可运行的代码）
 // ===========================================
 
@@ -2247,6 +2598,66 @@ fn custom_global_allocator() {
 //        warnings = "deny"    # 可选 "allow"（静默）、"warn"（默认）、"deny"（有警告就失败）
 //    也可以用环境变量临时覆盖，比如 `CARGO_BUILD_WARNINGS=allow cargo check`，不会使缓存失效。
 //    CI 里配合 `--keep-going` 使用，可以一次性收集所有包的错误和警告，而不是遇到第一个失败的包就停下。
+//
+// 7. Cargo 自己的 lint 体系与未使用依赖检查（Rust 1.100）
+//    Cargo 现在有了和 rustc 类似的 lint 机制：在 `Cargo.toml` 的 `[lints.cargo]` 表里调整级别（键名不带 `cargo::` 前缀）：
+//        [lints.cargo]
+//        unused_dependencies = "deny"
+//    新增的 `unused_dependencies`（默认 warn）会指出 `[dependencies]` 里没有任何构建目标用到的依赖：
+//        warning: unused dependency `tracing-subscriber`
+//        help: consider removing the dependency on `tracing-subscriber`
+//    它比 rustc 自带的 `unused_crate_dependencies` 靠谱：后者按单个编译目标判断，一个包里有多个 bin / lib 时，
+//    依赖只被其中一个目标用到，也会对其他目标误报。
+//    限制：只有把所有可能用到该依赖的构建目标都构建过，警告才会出现（`cargo check --bin foo` 不会报
+//    `[dependencies]` 里的，因为别的 bin 可能在用它）；`dev-dependencies` 不检查。
+//    升级到 1.100 之后，建议完整地 `cargo build` 一遍，看有没有这类警告，没用的依赖直接删掉。
+//
+// 8. 依赖冷却期：min-publish-age（Rust 1.100，RFC 3923）
+//    恶意版本的包，通常在发布后几小时到几天内就会被扫描器或社区发现。让 Cargo 别急着用刚发布的版本，就能躲过这个窗口期，
+//    这种做法叫“依赖冷却期”（dependency cooldown）。在 `.cargo/config.toml` 里开启：
+//        [registry]
+//        global-min-publish-age = "3 days"
+//    也可以在 `[registries.<名字>]` 里用 `min-publish-age` 为某个 registry 单独设置。
+//    解析依赖时，发布时间比这更近的版本会被跳过（`Cargo.lock` 里已经锁定的版本不受影响），`cargo update` 会告诉你挡住了哪些版本。
+//    急需某个新版本时，可以单次放行：
+//        CARGO_RESOLVER_INCOMPATIBLE_PUBLISH_AGE=allow cargo update foo --precise 1.2.3
+//    注意三点：
+//    - 要求 registry 在索引里记录发布时间（`pubtime` 字段），没有这个字段的版本不会被拦
+//    - `cargo install` 不受冷却期限制（要固定版本就写 `cargo install foo@1.2.3`）
+//    - 冷却期只能降低一部分供应链攻击的风险，不能代替对依赖更新的审查
+//
+// 9. `cargo install` 默认使用包内自带的 Cargo.lock（Rust 1.100）
+//    以前 `cargo install foo` 不加 `--locked` 就会重新解析依赖；现在默认使用 `.crate` 压缩包里自带的 lockfile，
+//    `--locked` 变成了无操作。好处是装出来的二进制所用的依赖版本，与作者发布时测试过的一致。
+//
+// 10. 构建目录的新布局（Rust 1.100）
+//    Cargo 先把所有库和二进制构建到 `build-dir`（默认在 `target` 里），再把最终产物“提升”到 `target-dir`。
+//    不同的构建配置（比如 `--features`）会产生同一个库的多份副本，靠“构建配置哈希”区分；
+//    以前这个哈希因为平台限制并不总是用上，会造成多余的重编译、漏掉的重编译，多个 git worktree 共享 `build-dir` 时更严重。
+//    1.100 起 `build-dir` 按“构建步骤”而不是文件类型组织目录，并且把哈希统一放在目录这一层，所有内容都带上它。
+//    这是后续改进（缓存垃圾回收、跨工作区共享缓存、细粒度锁）的基础。
+//    **这个布局不是稳定接口**：想找到构建产物，请读 Cargo 的 JSON 消息（`cargo build --message-format=json`），不要硬编码路径；
+//    有些依赖旧目录结构的脚本和测试可能需要调整（cargo 仓库里的 issue #17287 讨论了常见的迁移办法）。
+//
+// 11. 基于采样的 PGO：`-C profile-sample-use`（Rust 1.100）
+//    PGO（按运行时数据做优化）有两种数据来源：插桩（`-C profile-generate`，程序会变慢，数据精确），
+//    和采样（用 perf 之类的工具对运行中的程序抽样，额外开销很小，可以直接对生产环境采样）。
+//    采样 PGO 对应的编译参数 `-C profile-sample-use=<文件>.prof` 在 1.100 稳定了。流程是：
+//    (a) 带行号调试信息构建（至少要 `-C debuginfo=line-tables-only`）；
+//    (b) 在采样分析器下运行程序（比如 Linux 上的 perf，用 `-b` 记录分支历史）；
+//    (c) 用 `llvm-profgen`（或者 AutoFDO 项目的 `create_llvm_prof`）把采样结果转换成 LLVM 能读的 `.prof` 文件；
+//    (d) 带着 `-C profile-sample-use` 重新编译。
+//    详细步骤见 rustc book 的 “Profile-guided Optimization” 一章。
+//
+// 12. 编译器 lint 的变化（Rust 1.100）
+//    - 新增 `repeated_reprs`（warn，属于 `unused` 组）：重复写 `#[repr(..)]` 的同一项会警告，
+//      比如 `#[repr(C, C)]`，或者连着写两行 `#[repr(C)]`（提示：for consistency, only specify the representation once）
+//    - `aligned_fields_in_packed`（deny）：`#[repr(packed)]` 的类型里，不能（包括间接地）含有 `#[repr(align)]` 的类型。
+//      这一条以前是硬错误，1.100 起改成了默认 deny 的 lint
+//      （报错文字：packed type cannot transitively contain a `#[repr(align)]` type）
+//    - `dropping_references`、`dropping_copy_types`、`undropped_manually_drops` 这三个 lint 的检查范围，
+//      扩大到了 `ptr::drop_in_place` 调用
+//    - `dependency_on_unit_never_type_fallback` 被移除了，原因见第 14 章第 21 节
 
 // ===========================================
 // 主函数
@@ -2272,6 +2683,9 @@ pub fn main() {
     safe_target_feature();
     dangling_pointers_and_precondition_checks();
     custom_global_allocator();
+    allocator_api_per_collection();
+    custom_abi_functions();
+    unsafe_cell_access_and_conjure_zst();
 
     println!("进阶参考演示完成！");
 }
@@ -2775,5 +3189,82 @@ mod tests {
         let mut max = 0;
         let sum = unsafe { variadic_sum_max(4, &mut max, 3, 9, 4, 7) };
         assert_eq!((sum, max), (23, 9));
+    }
+
+    #[test]
+    fn test_allocator_api_per_collection() {
+        use std::rc::Rc;
+
+        let quota = QuotaAllocator::new(Global, 64);
+        {
+            let mut numbers: Vec<u32, &QuotaAllocator> = Vec::with_capacity_in(4, &quota);
+            numbers.extend([1, 2, 3, 4]);
+            // 占用的字节数 = 容量 × 元素大小
+            assert_eq!(quota.used(), numbers.capacity() * size_of::<u32>());
+            // 超出配额：try_reserve 返回 Err，已有数据不受影响
+            assert!(numbers.try_reserve(1000).is_err());
+            assert_eq!(numbers, [1, 2, 3, 4]);
+            // 增长：先申请新块再释放旧块，峰值仍在配额之内
+            numbers.push(5);
+            assert_eq!(quota.used(), numbers.capacity() * size_of::<u32>());
+            // 同一个分配器同时借给 Box
+            let boxed = Box::new_in(7_u64, &quota);
+            assert_eq!(*boxed, 7);
+            assert_eq!(Box::allocator(&boxed).used(), quota.used());
+        }
+        // 集合全部释放之后，占用回到 0
+        assert_eq!(quota.used(), 0);
+
+        // Rc<A> 让多个集合共享同一个分配器
+        let shared = Rc::new(QuotaAllocator::new(Global, 1024));
+        let mut left: Vec<u8, Rc<QuotaAllocator>> = Vec::new_in(Rc::clone(&shared));
+        let mut right: Vec<u8, Rc<QuotaAllocator>> = Vec::new_in(Rc::clone(&shared));
+        left.extend([0_u8; 10]);
+        right.extend([0_u8; 20]);
+        assert_eq!(shared.used(), left.capacity() + right.capacity());
+        assert_eq!(Rc::strong_count(&shared), 3);
+
+        // System 与 Global 都可以作为 Vec 的分配器
+        let from_system: Vec<u8, System> = Vec::with_capacity_in(8, System);
+        let from_global: Vec<u8, Global> = Vec::with_capacity_in(8, Global);
+        assert!(from_system.capacity() >= 8 && from_global.capacity() >= 8);
+    }
+
+    #[test]
+    fn test_custom_abi_functions() {
+        // 唯一的调用方式是内联汇编：x0 / rax 进、同一个寄存器出
+        #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
+        assert_eq!(call_increment_in_register(41), 42);
+
+        // 函数指针类型和普通函数指针一样大
+        assert_eq!(size_of::<unsafe extern "custom" fn()>(), size_of::<usize>());
+    }
+
+    #[test]
+    fn test_unsafe_cell_access_and_conjure_zst() {
+        // UnsafeCell 的直接访问方法
+        let counter = Counter::new();
+        assert_eq!(counter.bump(), 1);
+        assert_eq!(counter.bump(), 2);
+        assert_eq!(counter.peek(), 2);
+        assert_eq!(counter.reset(), 2);
+        assert_eq!(counter.peek(), 0);
+
+        // conjure_zst：零大小类型可以凭空造出来，const 里也可以
+        const UNIT: () = unsafe { std::mem::conjure_zst() };
+        let () = UNIT;
+        let empty: [u64; 0] = unsafe { std::mem::conjure_zst() };
+        assert!(empty.is_empty());
+
+        // 零大小、可 Copy 的闭包可以变成普通函数指针
+        let add_one = reify_to_fn_pointer(|value| value + 1);
+        assert_eq!(add_one(41), 42);
+    }
+
+    // 对非零大小的类型凭空造值会 panic，而不是悄悄造出一个垃圾值
+    #[test]
+    #[should_panic]
+    fn test_conjure_zst_panics_on_non_zst() {
+        let _ = unsafe { std::mem::conjure_zst::<u32>() };
     }
 }

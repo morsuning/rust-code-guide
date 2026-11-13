@@ -2,7 +2,7 @@
 
 ## 仓库定位
 
-基于《The Rust Programming Language》的 **Rust 教程代码库**（中文），面向有编程经验但 Rust 不熟练的读者。覆盖全部语言主题，并追踪到最新 stable 版本（当前 1.99）的所有新特性。
+基于《The Rust Programming Language》的 **Rust 教程代码库**（中文），面向有编程经验但 Rust 不熟练的读者。覆盖全部语言主题，并追踪到最新 stable 版本（当前 1.100）的所有新特性。
 
 ## 结构
 

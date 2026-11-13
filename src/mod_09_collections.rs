@@ -1751,6 +1751,101 @@ fn optimizer_hints_demo() {
 }
 
 // ===========================================
+// 14. 按下标生成 Vec 与可选前后缀的裁剪：Vec::from_fn、trim_prefix / trim_suffix（Rust 1.100）
+// ===========================================
+
+// 这一节是三件小事，都是“以前能做，但得绕一圈”的写法被收编成了标准库方法：
+//
+// (1) `Vec::from_fn(长度, |下标| 元素)`：按下标生成一个 `Vec`。
+//     以前要写 `(0..n).map(|i| ..).collect()`；而 `vec![x; n]` 要求元素是 `Clone`，
+//     `Mutex`、`AtomicU32` 这类不能克隆的类型就没法用——`Vec::from_fn` 正好补上这个缺口。
+//     它是 `std::array::from_fn`（1.63）的 `Vec` 版：数组长度要在编译期确定，`Vec` 的长度可以运行时才知道。
+//     闭包按下标从小到大依次调用，所以可以带可变状态。
+//
+// (2) `str` 与 `[T]` 的 `trim_prefix` / `trim_suffix`：去掉“可有可无”的前缀 / 后缀。
+//     它和两个相近的方法容易搞混，区别在这里：
+//     - `strip_prefix`：返回 `Option`，没有前缀时是 `None`——需要知道“有没有这个前缀”时用
+//     - `trim_prefix`：总是返回 `&str`，没有前缀就原样返回——只想“有就去掉”，并且想链式调用时用
+//     - `trim_start_matches`：把**重复出现**的前缀全部去掉（`"foofoo"` 会被去成 `""`）；`trim_prefix` 最多只去一次
+//
+// (3) `Path::trim_prefix`：关系同上，但只按**路径组件**匹配，所以 `/ab` 不是 `/a/b` 的前缀。
+//     注意：1.100 里 `Path` 只有 `trim_prefix`，没有 `trim_suffix`。
+//
+// 另外，1.100 补上了 `Vec<T>`、`&[T]`、`&mut [T]` 与 `Cow<'_, [U]>` 之间的 `PartialEq` 比较：
+// 返回 `Cow<'_, [T]>` 的函数（“不需要改就借用，需要改才分配”）可以直接和 `Vec` / 切片比较，不用先 `.into_owned()`。
+
+fn vec_from_fn_and_trim_affixes() {
+    println!("=== 按下标生成 Vec 与可选前后缀的裁剪：Vec::from_fn、trim_prefix / trim_suffix（Rust 1.100） ===");
+
+    use std::borrow::Cow;
+    use std::path::Path;
+    use std::sync::Mutex;
+
+    // ---------- Vec::from_fn ----------
+    let squares = Vec::from_fn(5, |index| index * index);
+    println!("按下标生成平方数: {squares:?}");
+
+    // 元素不能 Clone 时，`vec![Mutex::new(0); 4]` 编译不过；from_fn 每个元素都是各自新建的，可以
+    let shards: Vec<Mutex<u32>> = Vec::from_fn(4, |_| Mutex::new(0));
+    *shards[2].lock().unwrap() += 7;
+    let totals: Vec<u32> = shards.iter().map(|shard| *shard.lock().unwrap()).collect();
+    println!("四个互不相干的分片: {totals:?}");
+
+    // 闭包按下标升序调用，所以可以带可变状态，比如生成 2 的幂
+    let mut next = 1_u32;
+    let powers = Vec::from_fn(6, |_| {
+        let current = next;
+        next *= 2;
+        current
+    });
+    println!("2 的幂: {powers:?}");
+
+    // ---------- str::trim_prefix / trim_suffix ----------
+    // 版本号标签：有 `v` 就去掉，没有也不出错
+    println!("{:?} {:?}", "v1.100.0".trim_prefix('v'), "1.100.0".trim_prefix('v'));
+    // 每一步返回的都是 &str 而不是 Option，所以可以直接链式调用
+    println!("{:?}", "https://example.com/".trim_prefix("https://").trim_suffix('/'));
+    // 与 trim_start_matches 的区别：只去一次 vs 去到没有为止
+    println!("trim_prefix: {:?}，trim_start_matches: {:?}", "foofoo".trim_prefix("foo"), "foofoo".trim_start_matches("foo"));
+    // 与 strip_prefix 的区别：Option vs 总是 &str
+    println!("strip_prefix: {:?} / {:?}", "foo:bar".strip_prefix("foo:"), "bar".strip_prefix("foo:"));
+
+    // ---------- 切片：二进制协议的帧头 / 帧尾 ----------
+    // 参数是切片（或数组）的引用，元素类型需要实现 PartialEq
+    let frame = [0xAA_u8, 0x55, 0x01, 0x02, 0x03, 0x0D];
+    let payload = frame.trim_prefix(&[0xAA, 0x55]).trim_suffix(&[0x0D]);
+    println!("去掉帧头 AA 55 与帧尾 0D 之后的数据: {payload:02X?}");
+
+    // ---------- Path::trim_prefix：只按路径组件匹配 ----------
+    let root = Path::new("/home/dev/project");
+    let inside = Path::new("/home/dev/project/src/main.rs");
+    let outside = Path::new("/etc/hosts");
+    println!("项目内的文件显示相对路径: {}", inside.trim_prefix(root).display());
+    println!("项目外的文件保持原样: {}", outside.trim_prefix(root).display());
+    println!("按组件匹配，/home/dev/proj 不是前缀: {}", inside.trim_prefix("/home/dev/proj").display());
+
+    // ---------- Vec / 切片可以直接和 Cow<[T]> 比较 ----------
+    fn without_zeros(values: &[i32]) -> Cow<'_, [i32]> {
+        if values.contains(&0) {
+            Cow::Owned(values.iter().copied().filter(|&value| value != 0).collect())
+        } else {
+            Cow::Borrowed(values)
+        }
+    }
+    let cleaned = without_zeros(&[1, 0, 2]);
+    let untouched = without_zeros(&[3, 4]);
+    println!("清理后: {cleaned:?}（拥有所有权: {}），原样借用: {untouched:?}", matches!(cleaned, Cow::Owned(_)));
+    println!("Vec 与 Cow 直接比较: {}", vec![1, 2] == cleaned);
+    println!("切片与 Cow 直接比较: {}", &[3, 4][..] == untouched);
+
+    // 最佳实践：
+    // 1. 想把同一个值复制 n 份且元素是 `Clone`，用 `vec![x; n]`；元素不能克隆、或要按下标生成，用 `Vec::from_fn`
+    // 2. 只在乎结果、不在乎有没有前缀，用 `trim_prefix`；有无前缀要走不同逻辑，用 `strip_prefix`
+    // 3. 要去掉重复出现的字符（比如一串前导的 `0`），用 `trim_start_matches`，别指望 `trim_prefix`
+    println!();
+}
+
+// ===========================================
 // Rust 集合教程
 // ===========================================
 
@@ -1771,6 +1866,7 @@ pub fn main() {
     disjoint_mutable_borrows();
     partition_point_demo();
     optimizer_hints_demo();
+    vec_from_fn_and_trim_affixes();
 
     println!("集合类型解析完成！");
     println!("\n关键要点总结:");
@@ -2127,5 +2223,52 @@ mod tests {
         let rejected = names.next_if_map_mut(|name| name.starts_with('a').then(|| std::mem::take(name)));
         assert_eq!(rejected, None);
         assert_eq!(names.next().as_deref(), Some("bob")); // 被拒绝的元素原样保留
+    }
+
+    #[test]
+    fn test_vec_from_fn_and_trim_affixes() {
+        use std::borrow::Cow;
+        use std::path::Path;
+        use std::sync::Mutex;
+
+        // Vec::from_fn：按下标升序调用，闭包可以带状态；元素不必 Clone
+        assert_eq!(Vec::from_fn(5, |index| index * index), [0, 1, 4, 9, 16]);
+        let mut next = 1;
+        assert_eq!(
+            Vec::from_fn(4, |_| {
+                let current = next;
+                next *= 3;
+                current
+            }),
+            [1, 3, 9, 27]
+        );
+        let shards: Vec<Mutex<u32>> = Vec::from_fn(3, |_| Mutex::new(0));
+        *shards[1].lock().unwrap() = 5;
+        assert_eq!(*shards[0].lock().unwrap() + *shards[1].lock().unwrap(), 5);
+
+        // str：最多去一次；没有前缀 / 后缀就原样返回
+        assert_eq!("foofoo".trim_prefix("foo"), "foo");
+        assert_eq!("foofoo".trim_start_matches("foo"), "");
+        assert_eq!("bar".trim_prefix("foo"), "bar");
+        assert_eq!("bar:foo".trim_suffix(":foo"), "bar");
+        assert_eq!("<https://example.com/>".trim_prefix('<').trim_suffix('>'), "https://example.com/");
+
+        // 切片：前缀不匹配时原样返回
+        let frame = [0xAA_u8, 0x55, 1, 2, 0x0D];
+        assert_eq!(frame.trim_prefix(&[0xAA, 0x55]).trim_suffix(&[0x0D]), [1, 2]);
+        assert_eq!(frame.trim_prefix(&[0x55]), frame);
+
+        // Path：按路径组件匹配，`/home/dev/proj` 不是 `/home/dev/project/...` 的前缀
+        let file = Path::new("/home/dev/project/src/main.rs");
+        assert_eq!(file.trim_prefix("/home/dev/project"), Path::new("src/main.rs"));
+        assert_eq!(file.trim_prefix("/home/dev/proj"), file);
+
+        // Vec / 切片可以直接与 Cow<[T]> 比较
+        let cow: Cow<'_, [i32]> = Cow::Borrowed(&[1, 2, 3]);
+        assert!(vec![1, 2, 3] == cow);
+        assert!(&[1, 2, 3][..] == cow);
+        let mut array = [1, 2, 3];
+        let slice: &mut [i32] = &mut array;
+        assert!(slice == cow);
     }
 }
